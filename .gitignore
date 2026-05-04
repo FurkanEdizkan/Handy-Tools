@@ -1,0 +1,31 @@
+# Binaries
+/bin/
+/dist/
+handy
+handyd
+*.exe
+*.test
+*.out
+
+# Go
+vendor/
+*.prof
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+
+# Local config
+.env
+.env.local
+*.local.yaml
+
+# Generated docs / coverage
+coverage.out
+coverage.html
+
+# Mascot work-in-progress assets
+internal/ui/mascot/art/*.draft.txt
