@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package handy.v1;
+
+option go_package = "github.com/furkandedizkan/handy/gen/handy/v1;handyv1";
+
+// Severity level for messages emitted during a job.
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  SEVERITY_INFO = 1;
+  SEVERITY_WARNING = 2;
+  SEVERITY_ERROR = 3;
+}
+
+// Job is a server-side identifier for a long-running operation.
+message Job {
+  string id = 1;
+  string tool = 2;        // "image", "archive", "pdf"
+  string action = 3;      // "convert", "extract", ...
+  int64 started_unix_ms = 4;
+}
+
+// Progress is streamed from long-running tool calls. Either bytes_done +
+// bytes_total OR fraction (0.0..1.0) is set, depending on what the tool can
+// measure.
+message Progress {
+  Job job = 1;
+  string current_item = 2;       // e.g. "photo3.jpg" or "page 12"
+  int64 bytes_done = 3;
+  int64 bytes_total = 4;
+  double fraction = 5;
+  Severity level = 6;
+  string message = 7;            // human-readable status / log line
+  bool completed = 8;
+  Error error = 9;               // set only on terminal failure
+}
+
+// Error reported by a tool when an operation fails.
+message Error {
+  string code = 1;   // stable machine-readable code, e.g. "MISSING_BINARY"
+  string message = 2;
+  string detail = 3;  // optional extra context
+}
+
+// Where output should land. Tools may also fall back to a configured default.
+message OutputLocation {
+  oneof target {
+    string directory = 1;   // existing directory; tool picks filenames
+    string file = 2;        // exact output path (single-output tools)
+  }
+  bool overwrite = 3;
+}
+
+// FileRef is a path on the server's filesystem (or in the user's session
+// for the TUI). Servers MUST validate paths against allowed roots when
+// running in service mode.
+message FileRef {
+  string path = 1;
+  int64 size_bytes = 2;
+  string sha256 = 3;     // optional, for integrity checks
+}

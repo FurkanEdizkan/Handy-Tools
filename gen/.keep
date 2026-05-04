@@ -1,0 +1,3 @@
+# Generated Go code goes here. Run `make proto` (which calls `buf generate`)
+# to populate this directory. Generated files are checked in so contributors
+# don't need protoc/buf to build.

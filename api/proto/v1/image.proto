@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package handy.v1;
+
+import "v1/common.proto";
+
+option go_package = "github.com/furkandedizkan/handy/gen/handy/v1;handyv1";
+
+enum ImageFormat {
+  IMAGE_FORMAT_UNSPECIFIED = 0;
+  IMAGE_FORMAT_PNG = 1;
+  IMAGE_FORMAT_JPEG = 2;
+  IMAGE_FORMAT_GIF = 3;
+  IMAGE_FORMAT_BMP = 4;
+  IMAGE_FORMAT_TIFF = 5;
+  IMAGE_FORMAT_WEBP = 6;
+  IMAGE_FORMAT_HEIC = 7;   // requires system "magick"
+}
+
+message ImageOptions {
+  // 1..100. Honored by lossy formats (jpeg, webp); ignored otherwise.
+  int32 quality = 1;
+  // Optional resize. 0 means "keep this dimension".
+  int32 max_width = 2;
+  int32 max_height = 3;
+  // Strip EXIF / metadata.
+  bool strip_metadata = 4;
+}
+
+service ImageService {
+  rpc Convert(ConvertRequest) returns (stream Progress);
+  rpc BatchConvert(BatchConvertRequest) returns (stream Progress);
+}
+
+message ConvertRequest {
+  FileRef source = 1;
+  ImageFormat target_format = 2;
+  ImageOptions options = 3;
+  OutputLocation output = 4;
+}
+
+message BatchConvertRequest {
+  repeated FileRef sources = 1;
+  ImageFormat target_format = 2;
+  ImageOptions options = 3;
+  OutputLocation output = 4;
+}

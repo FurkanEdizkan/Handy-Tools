@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package handy.v1;
+
+import "v1/common.proto";
+
+option go_package = "github.com/furkandedizkan/handy/gen/handy/v1;handyv1";
+
+enum ArchiveFormat {
+  ARCHIVE_FORMAT_UNSPECIFIED = 0;
+  ARCHIVE_FORMAT_ZIP = 1;
+  ARCHIVE_FORMAT_TAR = 2;
+  ARCHIVE_FORMAT_TAR_GZ = 3;
+  ARCHIVE_FORMAT_TAR_BZ2 = 4;
+  ARCHIVE_FORMAT_TAR_ZST = 5;
+  ARCHIVE_FORMAT_RAR = 6;     // requires unrar; multi-part supported
+  ARCHIVE_FORMAT_SEVENZ = 7;  // requires 7z; multi-part supported
+}
+
+service ArchiveService {
+  // Inspect describes an archive without extracting. For multi-part archives
+  // this returns the detected list of parts and which ones the caller still
+  // needs to provide. Use this before Extract to confirm with the user.
+  rpc Inspect(InspectRequest) returns (InspectResponse);
+
+  // Extract a single- or multi-part archive into a destination directory.
+  rpc Extract(ExtractRequest) returns (stream Progress);
+
+  // Compress a list of files into a new archive.
+  rpc Compress(CompressRequest) returns (stream Progress);
+}
+
+message InspectRequest {
+  // The archive entry point. For multi-part archives this is typically the
+  // first volume (.part1.rar, .7z.001, .zip with .z01 siblings).
+  FileRef source = 1;
+}
+
+message InspectResponse {
+  ArchiveFormat format = 1;
+  bool multi_part = 2;
+  repeated FileRef detected_parts = 3;
+  repeated string missing_parts = 4;     // expected filenames not found on disk
+  int64 uncompressed_size_bytes = 5;
+  int32 entry_count = 6;
+  bool requires_password = 7;
+  string requires_binary = 8;            // "" if pure-Go path is available
+  bool binary_available = 9;
+}
+
+message ExtractRequest {
+  FileRef source = 1;
+  // Optional explicit list of parts. If empty, the server uses the parts
+  // returned by Inspect.
+  repeated FileRef parts = 2;
+  string destination_dir = 3;
+  string password = 4;       // optional
+  bool overwrite = 5;
+  // If true, multi-part archives are extracted without a confirmation hop.
+  // The TUI sets this from the user's settings.
+  bool auto_accept_multi_part = 6;
+}
+
+message CompressRequest {
+  repeated FileRef sources = 1;
+  ArchiveFormat target_format = 2;
+  OutputLocation output = 3;
+  string password = 4;       // optional, formats that support it
+  int32 compression_level = 5;  // 0=store..9=max where applicable
+}

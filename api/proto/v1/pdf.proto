@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package handy.v1;
+
+import "v1/common.proto";
+import "v1/image.proto";
+
+option go_package = "github.com/furkandedizkan/handy/gen/handy/v1;handyv1";
+
+service PdfService {
+  rpc ToImage(PdfToImageRequest) returns (stream Progress);
+  rpc ToText(PdfToTextRequest) returns (stream Progress);
+  rpc Merge(PdfMergeRequest) returns (stream Progress);
+  rpc Split(PdfSplitRequest) returns (stream Progress);
+}
+
+message PageRange {
+  int32 from = 1;     // 1-based, inclusive
+  int32 to = 2;       // 0 = last page
+}
+
+message PdfToImageRequest {
+  FileRef source = 1;
+  ImageFormat target_format = 2;   // PNG / JPEG
+  PageRange pages = 3;             // empty = all pages
+  int32 dpi = 4;                   // default 150
+  OutputLocation output = 5;
+}
+
+message PdfToTextRequest {
+  FileRef source = 1;
+  PageRange pages = 2;
+  bool layout = 3;                 // preserve layout (-layout flag)
+  OutputLocation output = 4;
+}
+
+message PdfMergeRequest {
+  repeated FileRef sources = 1;    // order is preserved
+  OutputLocation output = 2;
+}
+
+message PdfSplitRequest {
+  FileRef source = 1;
+  // Either page_ranges (multiple output files) or every_n (split every N pages)
+  repeated PageRange page_ranges = 2;
+  int32 every_n = 3;
+  OutputLocation output = 4;
+}
