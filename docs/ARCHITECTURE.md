@@ -2,7 +2,7 @@
 
 Handy is split into three layers, each depending only on the layer above it:
 
-```
+```text
                 +----------------------------+
                 |   internal/tools/<x>       |   pure Go API per feature
                 |   (image, archive, pdf)    |   no UI, no network
@@ -71,14 +71,26 @@ crash.
 
 ## Roadmap
 
-See the phases listed in the project plan:
+The eight initial phases are now landed on `main`:
 
-1. Repo scaffolding & governance ............ this PR
-2. CI/CD baseline
-3. gRPC API contract first
-4. Core tool packages (image, archive, pdf)
-5. Settings/config layer
-6. TUI shell with Bubble Tea
-7. gRPC server
-8. Release & docs polish
-9. Stretch: plugin system, web UI
+1. Repo scaffolding & governance — done
+2. CI/CD baseline — done
+3. gRPC API contract first — done
+4. Core tool packages (image, archive, pdf) — done
+5. Settings/config layer — done
+6. TUI shell with Bubble Tea — done
+7. gRPC server — done
+8. Release & docs polish — done
+
+### Stretch / next up
+
+- **Plugin system**: tool registry so contributors can ship a new tool by
+  adding one package + one proto file, no UI changes.
+- **WebP encoder**: currently disabled (no pure-Go encoder); add via
+  `chai2010/webp` once we accept its CGO requirement.
+- **Real YAML lib**: swap the hand-rolled config parser for
+  `gopkg.in/yaml.v3` once we have other reasons to take that dep.
+- **`pdfcpu` library import**: pull merge/split into pure Go instead of
+  shelling out to the CLI.
+- **Web UI**: a thin gRPC-Web or REST gateway over `handyd` for the
+  "deploy as a service" use case.

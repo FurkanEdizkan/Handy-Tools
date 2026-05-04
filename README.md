@@ -58,12 +58,29 @@ amd64 & arm64.
 ## Build from source
 
 ```sh
+make proto       # generate Go bindings under gen/ (run once after clone)
 make build       # builds bin/handy and bin/handyd
 make tui         # runs the TUI
-make serve       # runs the gRPC server on :7777
+make serve       # runs the gRPC server on the address from config (default :7777)
 make test        # unit tests
 make lint        # golangci-lint + buf lint
 ```
+
+## Quick tour
+
+```sh
+handy                 # launch the TUI; tab cycles Home / Files / Settings
+handy doctor          # show which optional system tools are installed
+
+# Service mode:
+handyd --listen :7777 --allow-roots /srv/uploads,/srv/output
+# Use grpcurl in another terminal:
+grpcurl -plaintext localhost:7777 list
+grpcurl -plaintext localhost:7777 handy.v1.ArchiveService/Inspect <<<'{"source":{"path":"/srv/uploads/foo.7z.001"}}'
+```
+
+The gRPC server refuses to start without `allow_roots` — every `FileRef.path`
+is checked against that list before the underlying tool is called.
 
 ## Contributing
 

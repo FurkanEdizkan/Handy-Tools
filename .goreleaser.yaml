@@ -1,0 +1,84 @@
+version: 2
+
+before:
+  hooks:
+    - sh -c "buf generate"
+    - go mod tidy
+
+builds:
+  - id: handy
+    main: ./cmd/handy
+    binary: handy
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.ShortCommit}}
+      - -X main.date={{.Date}}
+
+  - id: handyd
+    main: ./cmd/handyd
+    binary: handyd
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.ShortCommit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+      - docs/**/*
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore"
+      - "^ci"
+  groups:
+    - title: Features
+      regexp: "^.*feat(\\(.+\\))?!?:"
+      order: 0
+    - title: Bug fixes
+      regexp: "^.*fix(\\(.+\\))?!?:"
+      order: 1
+    - title: Other
+      order: 999
+
+release:
+  github:
+    owner: furkandedizkan
+    name: handy
+  prerelease: auto
+  draft: false
+  name_template: "v{{ .Version }}"
+  footer: |
+    ## Install
+
+    Pick the archive for your OS/arch from the assets below, extract, and put `handy` and `handyd` on your PATH.
+
+    See [README](https://github.com/furkandedizkan/handy#readme) for system dependency hints.
