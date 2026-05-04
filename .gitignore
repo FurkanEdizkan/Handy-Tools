@@ -1,11 +1,13 @@
-# Binaries
+# Build outputs
 /bin/
 /dist/
-handy
-handyd
 *.exe
 *.test
 *.out
+
+# Built TUI / server binaries when produced at repo root by ad-hoc `go build`
+/handy
+/handyd
 
 # Go
 vendor/
