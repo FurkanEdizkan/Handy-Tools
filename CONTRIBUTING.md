@@ -24,6 +24,7 @@ git clone https://github.com/furkandedizkan/handy.git
 cd handy
 git checkout test          # always branch off test, never main
 git switch -c feat/my-thing
+make proto                 # generates Go bindings under gen/ from api/proto
 make build
 make test
 ```
