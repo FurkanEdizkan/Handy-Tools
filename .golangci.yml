@@ -21,7 +21,7 @@ linters:
 
 linters-settings:
   goimports:
-    local-prefixes: github.com/OWNER/handy
+    local-prefixes: github.com/furkandedizkan/handy
   revive:
     rules:
       - name: exported

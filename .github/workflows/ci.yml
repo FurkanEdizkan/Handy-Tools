@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main, test]
+  pull_request:
+    branches: [main, test]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-go:
+    name: Lint (Go)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.59
+          args: --timeout=5m
+
+  lint-proto:
+    name: Lint (proto)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bufbuild/buf-setup-action@v1
+      - run: |
+          if [ -d api/proto ]; then
+            buf lint
+          else
+            echo "No proto sources yet, skipping."
+          fi
+
+  test:
+    name: Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+      - name: Install optional system deps (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            p7zip-full unrar-free poppler-utils imagemagick
+      - name: Install optional system deps (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install p7zip poppler imagemagick || true
+      - name: Tidy check
+        run: |
+          go mod tidy
+          if ! git diff --exit-code -- go.mod go.sum 2>/dev/null; then
+            echo "go.mod / go.sum is not tidy. Run 'go mod tidy' and commit." >&2
+            exit 1
+          fi
+      - name: Test
+        run: go test -race -count=1 ./...
+
+  build:
+    name: Build
+    needs: [lint-go, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+      - name: Build (skip if no cmd/ yet)
+        run: |
+          if [ -d cmd/handy ] && [ -d cmd/handyd ]; then
+            mkdir -p bin
+            go build -ldflags="-s -w" -o bin/handy  ./cmd/handy
+            go build -ldflags="-s -w" -o bin/handyd ./cmd/handyd
+          else
+            echo "cmd/ not present yet, skipping build."
+          fi

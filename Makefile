@@ -1,6 +1,6 @@
 SHELL := /usr/bin/env bash
 
-MODULE      := github.com/OWNER/handy
+MODULE      := github.com/furkandedizkan/handy
 BIN_DIR     := bin
 TUI_BIN     := $(BIN_DIR)/handy
 SERVER_BIN  := $(BIN_DIR)/handyd

@@ -1,0 +1,71 @@
+name: Promote test -> main
+
+on:
+  push:
+    branches: [test]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  open-or-update-pr:
+    name: Open / update promotion PR
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.head_commit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Wait for CI on test
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: "Test (ubuntu-latest)"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 20
+
+      - name: Ensure test is ahead of main
+        id: ahead
+        run: |
+          git fetch origin main
+          AHEAD=$(git rev-list --count origin/main..HEAD)
+          echo "ahead=$AHEAD" >> "$GITHUB_OUTPUT"
+          echo "test is $AHEAD commits ahead of main"
+
+      - name: Skip if test == main
+        if: steps.ahead.outputs.ahead == '0'
+        run: echo "Nothing to promote." && exit 0
+
+      - name: Find existing promotion PR
+        id: existing
+        if: steps.ahead.outputs.ahead != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NUM=$(gh pr list --base main --head test --state open --json number --jq '.[0].number // empty')
+          echo "number=$NUM" >> "$GITHUB_OUTPUT"
+
+      - name: Open promotion PR
+        if: steps.ahead.outputs.ahead != '0' && steps.existing.outputs.number == ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create \
+            --base main \
+            --head test \
+            --title "chore(release): promote test to main" \
+            --body "Automated promotion of \`test\` into \`main\`. Review the changes and merge when ready.
+
+          This PR is opened automatically when CI on \`test\` is green.
+          Maintainers should ensure all changes are release-worthy before merging."
+
+      - name: Update existing promotion PR description
+        if: steps.ahead.outputs.ahead != '0' && steps.existing.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment "${{ steps.existing.outputs.number }}" \
+            --body "Refreshed: \`test\` is now ${{ steps.ahead.outputs.ahead }} commits ahead of \`main\` (sha: ${{ github.sha }})."

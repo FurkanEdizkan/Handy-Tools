@@ -12,15 +12,15 @@ Be kind. Assume good faith.
 
 - Go 1.22+
 - `make`
-- `buf` (for protobuf) — https://buf.build/docs/installation
-- `golangci-lint` — https://golangci-lint.run/welcome/install/
+- `buf` (for protobuf) — see [installation](https://buf.build/docs/installation)
+- `golangci-lint` — see [installation](https://golangci-lint.run/welcome/install/)
 - Optional system tools to exercise all features locally: `unrar`, `7z`,
   `poppler-utils`, `imagemagick` (see the table in [README.md](README.md)).
 
 ## Getting started
 
 ```sh
-git clone https://github.com/OWNER/handy.git
+git clone https://github.com/furkandedizkan/handy.git
 cd handy
 git checkout test          # always branch off test, never main
 git switch -c feat/my-thing
@@ -32,7 +32,7 @@ make test
 
 Handy uses a two-trunk model.
 
-```
+```text
 contributors  ->  feature/*  ->  PR into test  ->  CI green  ->  merged into test
                                                                        |
                                                           automated PR test -> main
@@ -67,7 +67,7 @@ We follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1
 
 Format:
 
-```
+```text
 <type>(<scope>): <subject>
 
 [optional body]
@@ -89,7 +89,7 @@ Examples:
 
 Breaking changes use `!` and a `BREAKING CHANGE:` footer:
 
-```
+```text
 feat(api)!: rename ExtractRequest.path to ExtractRequest.source
 
 BREAKING CHANGE: clients must update field name.
