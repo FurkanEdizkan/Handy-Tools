@@ -58,7 +58,10 @@ jobs:
         os:
           - ubuntu-22.04
           - ubuntu-24.04
-          - macos-13
+          # macos-13 (Intel x86_64) is being phased out by GitHub and frequently
+          # gets stuck "waiting for a runner". macos-14/15 are Apple Silicon
+          # and have capacity. GoReleaser still builds darwin/amd64; we just
+          # don't have CI coverage for it.
           - macos-14
           - macos-15
     steps:
