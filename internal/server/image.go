@@ -3,8 +3,8 @@ package server
 import (
 	"context"
 
-	"github.com/furkandedizkan/handy/internal/tools"
-	"github.com/furkandedizkan/handy/internal/tools/image"
+	"github.com/furkandedizkan/handy-tools/internal/tools"
+	"github.com/furkandedizkan/handy-tools/internal/tools/image"
 )
 
 // ImageHandler adapts the image tool package to the gRPC ImageService.

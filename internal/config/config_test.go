@@ -7,10 +7,10 @@ import (
 
 func TestDefaultsHaveSensibleValues(t *testing.T) {
 	c := Defaults()
-	if c.Theme.Name != "snow" {
-		t.Fatalf("theme name: got %q want snow", c.Theme.Name)
+	if c.Theme.Name != "forge" {
+		t.Fatalf("theme name: got %q want forge", c.Theme.Name)
 	}
-	if !c.Mascot.Enabled || c.Mascot.Style != "snow-fox" {
+	if !c.Mascot.Enabled || c.Mascot.Style != "wrenly" {
 		t.Fatalf("mascot defaults wrong: %+v", c.Mascot)
 	}
 	if c.Image.DefaultJPEGQuality != 90 {
@@ -24,20 +24,20 @@ func TestDefaultsHaveSensibleValues(t *testing.T) {
 	}
 }
 
-func TestPathRespectsHandyConfigEnv(t *testing.T) {
-	t.Setenv("HANDY_CONFIG", "/tmp/handy.yaml")
+func TestPathRespectsConfigEnv(t *testing.T) {
+	t.Setenv("HANDY_TOOLS_CONFIG", "/tmp/handy-tools.yaml")
 	p, err := Path()
 	if err != nil {
 		t.Fatalf("path: %v", err)
 	}
-	if p != "/tmp/handy.yaml" {
+	if p != "/tmp/handy-tools.yaml" {
 		t.Fatalf("path: got %q", p)
 	}
 }
 
 func TestSaveLoadRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("HANDY_CONFIG", filepath.Join(dir, "handy.yaml"))
+	t.Setenv("HANDY_TOOLS_CONFIG", filepath.Join(dir, "config.yaml"))
 
 	c := Defaults()
 	c.Theme.Name = "ember"
@@ -74,13 +74,13 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 
 func TestLoadMissingFileReturnsDefaults(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("HANDY_CONFIG", filepath.Join(dir, "does-not-exist.yaml"))
+	t.Setenv("HANDY_TOOLS_CONFIG", filepath.Join(dir, "does-not-exist.yaml"))
 
 	c, _, err := Load()
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if c.Theme.Name != "snow" {
+	if c.Theme.Name != "forge" {
 		t.Fatalf("expected defaults, got %+v", c)
 	}
 }

@@ -41,7 +41,7 @@ will use it during review.
 ## Docs
 
 - [ ] README updated if user-facing behavior or system deps changed.
-- [ ] `handy doctor` output reflects any new optional system tool.
+- [ ] `htools doctor` output reflects any new optional system tool.
 - [ ] If a new tool was added, `docs/ARCHITECTURE.md` mentions it.
 
 ## CI

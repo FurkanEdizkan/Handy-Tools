@@ -1,9 +1,9 @@
 // Package sysdep performs runtime detection of the optional system binaries
-// Handy uses for features that have no good pure-Go alternative.
+// Handy Tools uses for features that have no good pure-Go alternative.
 //
 // Tool packages call sysdep.Lookup(name) at request time and surface a
 // structured "MISSING_BINARY" error when a required binary is absent. The
-// `handy doctor` command also calls sysdep.All() to enumerate everything.
+// `htools doctor` command also calls sysdep.All() to enumerate everything.
 package sysdep
 
 import (

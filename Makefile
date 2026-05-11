@@ -1,9 +1,9 @@
 SHELL := /usr/bin/env bash
 
-MODULE      := github.com/furkandedizkan/handy
+MODULE      := github.com/furkandedizkan/handy-tools
 BIN_DIR     := bin
-TUI_BIN     := $(BIN_DIR)/handy
-SERVER_BIN  := $(BIN_DIR)/handyd
+TUI_BIN     := $(BIN_DIR)/htools
+SERVER_BIN  := $(BIN_DIR)/htoolsd
 
 GO          ?= go
 GOFLAGS     ?=
@@ -22,19 +22,19 @@ build: $(TUI_BIN) $(SERVER_BIN) ## Build both binaries
 
 $(TUI_BIN):
 	@mkdir -p $(BIN_DIR)
-	$(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(TUI_BIN) ./cmd/handy
+	$(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(TUI_BIN) ./cmd/htools
 
 $(SERVER_BIN):
 	@mkdir -p $(BIN_DIR)
-	$(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(SERVER_BIN) ./cmd/handyd
+	$(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(SERVER_BIN) ./cmd/htoolsd
 
 .PHONY: tui
 tui: ## Run the TUI
-	$(GO) run ./cmd/handy
+	$(GO) run ./cmd/htools
 
 .PHONY: serve
 serve: ## Run the gRPC server
-	$(GO) run ./cmd/handyd
+	$(GO) run ./cmd/htoolsd
 
 .PHONY: test
 test: ## Run unit tests
@@ -44,6 +44,10 @@ test: ## Run unit tests
 cover: ## Run tests with coverage report
 	$(GO) test -race -count=1 -coverprofile=coverage.out $(PKGS)
 	$(GO) tool cover -html=coverage.out -o coverage.html
+
+.PHONY: fuzz
+fuzz: ## Run short fuzz pass over hand-rolled YAML parser
+	$(GO) test -run=^$$ -fuzz=FuzzDecodeMinimalYAML -fuzztime=20s ./internal/config
 
 .PHONY: lint
 lint: ## Run linters

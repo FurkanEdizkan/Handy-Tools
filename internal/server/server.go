@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/furkandedizkan/handy/internal/tools"
+	"github.com/furkandedizkan/handy-tools/internal/tools"
 )
 
 // Options control common server behavior. AllowRoots is a list of filesystem
@@ -53,7 +53,7 @@ func (o Options) CheckPath(p string) (string, error) {
 
 // asProto converts a tool Progress event into the proto wire form. It is
 // declared here so handlers don't reach into internal/tools and the proto
-// package directly. The actual proto types live in gen/handy/v1; the
+// package directly. The actual proto types live in gen/v1; the
 // `make proto` (`buf generate`) target populates that package, so this
 // helper is implemented in adapters_proto.go alongside the generated code.
 

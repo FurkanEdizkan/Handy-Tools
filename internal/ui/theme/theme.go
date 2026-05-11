@@ -21,8 +21,27 @@ type Palette struct {
 	MascotEye   lipgloss.Color
 }
 
-// Snow is the default solid-dark palette inspired by a snow fox: deep blue-
-// black background, off-white fur, soft cyan accent.
+// Forge is the default orange-on-black palette: black background, deep amber
+// accents, warm rust mascot fur. It matches the installer's ANSI banner and
+// the brand colors used by Handy Tools across surfaces (TUI, future web,
+// Chrome extension).
+var Forge = Palette{
+	Name:       "forge",
+	Background: lipgloss.Color("#0a0807"),
+	Surface:    lipgloss.Color("#141110"),
+	Border:     lipgloss.Color("#3a2a1f"),
+	Accent:     lipgloss.Color("#ff8c1a"),
+	AccentSoft: lipgloss.Color("#a35a14"),
+	Text:       lipgloss.Color("#f5ece2"),
+	TextDim:    lipgloss.Color("#9a877a"),
+	Success:    lipgloss.Color("#9bdc8a"),
+	Warning:    lipgloss.Color("#f0c674"),
+	Error:      lipgloss.Color("#e57373"),
+	MascotFur:  lipgloss.Color("#ff8c1a"),
+	MascotEye: lipgloss.Color("#1a0f08"),
+}
+
+// Snow is a cool blue-black palette (kept for users who prefer it).
 var Snow = Palette{
 	Name:       "snow",
 	Background: lipgloss.Color("#0b0f14"),
@@ -39,7 +58,7 @@ var Snow = Palette{
 	MascotEye:  lipgloss.Color("#7ad7f0"),
 }
 
-// Ember is a warm alternative.
+// Ember is a warm alternative with softer orange tones.
 var Ember = Palette{
 	Name:       "ember",
 	Background: lipgloss.Color("#140d0a"),
@@ -56,13 +75,17 @@ var Ember = Palette{
 	MascotEye:  lipgloss.Color("#f0a05a"),
 }
 
-// Resolve returns the palette by name; falls back to Snow.
+// Resolve returns the palette by name; falls back to Forge.
 func Resolve(name string) Palette {
 	switch name {
+	case "snow":
+		return Snow
 	case "ember":
 		return Ember
+	case "forge":
+		return Forge
 	default:
-		return Snow
+		return Forge
 	}
 }
 

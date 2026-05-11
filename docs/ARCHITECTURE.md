@@ -1,6 +1,7 @@
 # Architecture
 
-Handy is split into three layers, each depending only on the layer above it:
+Handy Tools is split into three layers, each depending only on the layer above
+it:
 
 ```text
                 +----------------------------+
@@ -16,7 +17,7 @@ Handy is split into three layers, each depending only on the layer above it:
      +-----------------+              +-----------------+
               ^                               ^
               |                               |
-       cmd/handy (TUI)                  cmd/handyd (server)
+       cmd/htools (TUI)                  cmd/htoolsd (server)
 ```
 
 ## Packages
@@ -47,7 +48,8 @@ channels onto streaming RPC responses. Handlers contain no business logic.
 ### `internal/config`
 
 Loads and persists user settings from the XDG config directory
-(`$XDG_CONFIG_HOME/handy/config.yaml` or `~/.config/handy/config.yaml`).
+(`$XDG_CONFIG_HOME/handy-tools/config.yaml` or `~/.config/handy-tools/config.yaml`,
+overridable via `$HANDY_TOOLS_CONFIG`).
 
 ## API contract
 
@@ -57,15 +59,15 @@ need `protoc` to build.
 
 ## System dependencies
 
-Handy is a single Go binary, but some features call out to system tools when
-present:
+Handy Tools is a single Go binary, but some features call out to system tools
+when present:
 
 - `unrar` — RAR extraction (single & multi-part)
 - `7z` — 7z multi-part extraction
 - `pdftoppm`, `pdftotext` — PDF rasterization & text extraction
 - `magick` — HEIC decoding
 
-`handy doctor` enumerates which are installed and which features they unlock.
+`htools doctor` enumerates which are installed and which features they unlock.
 A missing tool disables the corresponding action with an inline hint, never a
 crash.
 
@@ -92,5 +94,7 @@ The eight initial phases are now landed on `main`:
   `gopkg.in/yaml.v3` once we have other reasons to take that dep.
 - **`pdfcpu` library import**: pull merge/split into pure Go instead of
   shelling out to the CLI.
-- **Web UI**: a thin gRPC-Web or REST gateway over `handyd` for the
+- **Web UI**: a thin gRPC-Web or REST gateway over `htoolsd` for the
   "deploy as a service" use case.
+- **Chrome extension**: a popup that calls into a local or hosted `htoolsd`
+  for quick file conversions from the browser.

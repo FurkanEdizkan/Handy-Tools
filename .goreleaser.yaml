@@ -1,36 +1,38 @@
 version: 2
 
+project_name: handy-tools
+
 before:
   hooks:
     - sh -c "buf generate"
     - go mod tidy
 
 builds:
-  - id: handy
-    main: ./cmd/handy
-    binary: handy
+  - id: htools
+    main: ./cmd/htools
+    binary: htools
     env:
       - CGO_ENABLED=0
     goos: [linux, darwin]
     goarch: [amd64, arm64]
     ldflags:
       - -s -w
-      - -X main.version={{.Version}}
-      - -X main.commit={{.ShortCommit}}
-      - -X main.date={{.Date}}
+      - -X github.com/furkandedizkan/handy-tools/internal/buildinfo.Version={{.Version}}
+      - -X github.com/furkandedizkan/handy-tools/internal/buildinfo.Commit={{.ShortCommit}}
+      - -X github.com/furkandedizkan/handy-tools/internal/buildinfo.Date={{.Date}}
 
-  - id: handyd
-    main: ./cmd/handyd
-    binary: handyd
+  - id: htoolsd
+    main: ./cmd/htoolsd
+    binary: htoolsd
     env:
       - CGO_ENABLED=0
     goos: [linux, darwin]
     goarch: [amd64, arm64]
     ldflags:
       - -s -w
-      - -X main.version={{.Version}}
-      - -X main.commit={{.ShortCommit}}
-      - -X main.date={{.Date}}
+      - -X github.com/furkandedizkan/handy-tools/internal/buildinfo.Version={{.Version}}
+      - -X github.com/furkandedizkan/handy-tools/internal/buildinfo.Commit={{.ShortCommit}}
+      - -X github.com/furkandedizkan/handy-tools/internal/buildinfo.Date={{.Date}}
 
 archives:
   - id: default
@@ -43,6 +45,11 @@ archives:
       - LICENSE
       - README.md
       - docs/**/*
+
+source:
+  enabled: true
+  name_template: "{{ .ProjectName }}_{{ .Version }}_source"
+  format: tar.gz
 
 checksum:
   name_template: "checksums.txt"
@@ -72,13 +79,17 @@ changelog:
 release:
   github:
     owner: furkandedizkan
-    name: handy
+    name: handy-tools
   prerelease: auto
   draft: false
   name_template: "v{{ .Version }}"
   footer: |
     ## Install
 
-    Pick the archive for your OS/arch from the assets below, extract, and put `handy` and `handyd` on your PATH.
+    ```sh
+    curl -fsSL https://raw.githubusercontent.com/furkandedizkan/handy-tools/main/install.sh | sh
+    ```
 
-    See [README](https://github.com/furkandedizkan/handy#readme) for system dependency hints.
+    Or pick the archive for your OS/arch from the assets below, extract, and put `htools` and `htoolsd` on your PATH. Each release also includes a `*_source.tar.gz` and `checksums.txt`.
+
+    See [README](https://github.com/furkandedizkan/handy-tools#readme) for system dependency hints.

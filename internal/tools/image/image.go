@@ -24,11 +24,11 @@ import (
 	"golang.org/x/image/tiff"
 	xwebp "golang.org/x/image/webp" // decoder only
 
-	"github.com/furkandedizkan/handy/internal/tools"
-	"github.com/furkandedizkan/handy/internal/tools/sysdep"
+	"github.com/furkandedizkan/handy-tools/internal/tools"
+	"github.com/furkandedizkan/handy-tools/internal/tools/sysdep"
 )
 
-// Format enumerates the formats Handy understands.
+// Format enumerates the formats Handy Tools understands.
 type Format int
 
 const (
@@ -174,7 +174,7 @@ func decodeHEIC(path string) (image.Image, error) {
 			Detail:  "install with: " + r.Tool.InstallHint["linux"],
 		}
 	}
-	tmp, err := os.CreateTemp("", "handy-heic-*.png")
+	tmp, err := os.CreateTemp("", "handy-tools-heic-*.png")
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +230,7 @@ func encodeViaMagick(path string, img image.Image) error {
 	if !r.Found {
 		return &tools.Error{Code: tools.CodeMissingBinary, Message: "HEIC encoding requires ImageMagick"}
 	}
-	tmp, err := os.CreateTemp("", "handy-encode-*.png")
+	tmp, err := os.CreateTemp("", "handy-tools-encode-*.png")
 	if err != nil {
 		return err
 	}

@@ -1,10 +1,10 @@
 // File grpc.go contains the bindings between the wire-shape-agnostic
 // handlers (image.go, archive.go, pdf.go) and the generated proto types
-// in gen/handy/v1.
+// in gen/v1.
 //
 // The proto types are produced by `buf generate` (Make target: `make proto`).
 // CI runs that step before building, so this file always sees a populated
-// gen/handy/v1 package. To work locally, run:
+// gen/v1 package. To work locally, run:
 //
 //	make proto
 //
@@ -20,10 +20,10 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
-	handyv1 "github.com/furkandedizkan/handy/gen/handy/v1"
-	"github.com/furkandedizkan/handy/internal/tools"
-	"github.com/furkandedizkan/handy/internal/tools/archive"
-	"github.com/furkandedizkan/handy/internal/tools/image"
+	handytoolsv1 "github.com/furkandedizkan/handy-tools/gen/v1"
+	"github.com/furkandedizkan/handy-tools/internal/tools"
+	"github.com/furkandedizkan/handy-tools/internal/tools/archive"
+	"github.com/furkandedizkan/handy-tools/internal/tools/image"
 )
 
 // Server bundles the handlers + the gRPC server.
@@ -50,9 +50,9 @@ func New(opts Options) *Server {
 // given listener. Call Stop() from another goroutine to shut down.
 func (s *Server) Serve(lis net.Listener) error {
 	s.grpc = grpc.NewServer()
-	handyv1.RegisterImageServiceServer(s.grpc, &grpcImageServer{h: s.Image})
-	handyv1.RegisterArchiveServiceServer(s.grpc, &grpcArchiveServer{h: s.Archive})
-	handyv1.RegisterPdfServiceServer(s.grpc, &grpcPDFServer{h: s.PDF})
+	handytoolsv1.RegisterImageServiceServer(s.grpc, &grpcImageServer{h: s.Image})
+	handytoolsv1.RegisterArchiveServiceServer(s.grpc, &grpcArchiveServer{h: s.Archive})
+	handytoolsv1.RegisterPdfServiceServer(s.grpc, &grpcPDFServer{h: s.PDF})
 	reflection.Register(s.grpc)
 	return s.grpc.Serve(lis)
 }
@@ -67,11 +67,11 @@ func (s *Server) Stop() {
 // ---- gRPC adapter shims -----------------------------------------------------
 
 type grpcImageServer struct {
-	handyv1.UnimplementedImageServiceServer
+	handytoolsv1.UnimplementedImageServiceServer
 	h *ImageHandler
 }
 
-func (g *grpcImageServer) Convert(req *handyv1.ConvertRequest, stream handyv1.ImageService_ConvertServer) error {
+func (g *grpcImageServer) Convert(req *handytoolsv1.ConvertRequest, stream handytoolsv1.ImageService_ConvertServer) error {
 	out := ""
 	if req.GetOutput().GetFile() != "" {
 		out = req.GetOutput().GetFile()
@@ -96,20 +96,20 @@ func (g *grpcImageServer) Convert(req *handyv1.ConvertRequest, stream handyv1.Im
 }
 
 type grpcArchiveServer struct {
-	handyv1.UnimplementedArchiveServiceServer
+	handytoolsv1.UnimplementedArchiveServiceServer
 	h *ArchiveHandler
 }
 
-func (g *grpcArchiveServer) Inspect(ctx context.Context, req *handyv1.InspectRequest) (*handyv1.InspectResponse, error) {
+func (g *grpcArchiveServer) Inspect(ctx context.Context, req *handytoolsv1.InspectRequest) (*handytoolsv1.InspectResponse, error) {
 	ins, err := g.h.Inspect(ctx, InspectParams{Source: req.GetSource().GetPath()})
 	if err != nil {
 		return nil, err
 	}
-	parts := make([]*handyv1.FileRef, 0, len(ins.DetectedParts))
+	parts := make([]*handytoolsv1.FileRef, 0, len(ins.DetectedParts))
 	for _, p := range ins.DetectedParts {
-		parts = append(parts, &handyv1.FileRef{Path: p})
+		parts = append(parts, &handytoolsv1.FileRef{Path: p})
 	}
-	return &handyv1.InspectResponse{
+	return &handytoolsv1.InspectResponse{
 		Format:                 archiveFormatToProto(ins.Format),
 		MultiPart:              ins.MultiPart,
 		DetectedParts:          parts,
@@ -122,7 +122,7 @@ func (g *grpcArchiveServer) Inspect(ctx context.Context, req *handyv1.InspectReq
 	}, nil
 }
 
-func (g *grpcArchiveServer) Extract(req *handyv1.ExtractRequest, stream handyv1.ArchiveService_ExtractServer) error {
+func (g *grpcArchiveServer) Extract(req *handytoolsv1.ExtractRequest, stream handytoolsv1.ArchiveService_ExtractServer) error {
 	parts := make([]string, 0, len(req.GetParts()))
 	for _, p := range req.GetParts() {
 		parts = append(parts, p.GetPath())
@@ -141,25 +141,25 @@ func (g *grpcArchiveServer) Extract(req *handyv1.ExtractRequest, stream handyv1.
 }
 
 type grpcPDFServer struct {
-	handyv1.UnimplementedPdfServiceServer
+	handytoolsv1.UnimplementedPdfServiceServer
 	h *PDFHandler
 }
 
-func (g *grpcPDFServer) ToImage(req *handyv1.PdfToImageRequest, stream handyv1.PdfService_ToImageServer) error {
+func (g *grpcPDFServer) ToImage(req *handytoolsv1.PdfToImageRequest, stream handytoolsv1.PdfService_ToImageServer) error {
 	params := PDFToImageParams{
 		Source:    req.GetSource().GetPath(),
 		From:      int(req.GetPages().GetFrom()),
 		To:        int(req.GetPages().GetTo()),
 		DPI:       int(req.GetDpi()),
 		OutputDir: req.GetOutput().GetDirectory(),
-		JPEG:      req.GetTargetFormat() == handyv1.ImageFormat_IMAGE_FORMAT_JPEG,
+		JPEG:      req.GetTargetFormat() == handytoolsv1.ImageFormat_IMAGE_FORMAT_JPEG,
 	}
 	return g.h.ToImage(stream.Context(), params, func(p tools.Progress) error {
 		return stream.Send(progressToProto(p))
 	})
 }
 
-func (g *grpcPDFServer) ToText(req *handyv1.PdfToTextRequest, stream handyv1.PdfService_ToTextServer) error {
+func (g *grpcPDFServer) ToText(req *handytoolsv1.PdfToTextRequest, stream handytoolsv1.PdfService_ToTextServer) error {
 	params := PDFToTextParams{
 		Source:     req.GetSource().GetPath(),
 		From:       int(req.GetPages().GetFrom()),
@@ -172,7 +172,7 @@ func (g *grpcPDFServer) ToText(req *handyv1.PdfToTextRequest, stream handyv1.Pdf
 	})
 }
 
-func (g *grpcPDFServer) Merge(req *handyv1.PdfMergeRequest, stream handyv1.PdfService_MergeServer) error {
+func (g *grpcPDFServer) Merge(req *handytoolsv1.PdfMergeRequest, stream handytoolsv1.PdfService_MergeServer) error {
 	srcs := make([]string, 0, len(req.GetSources()))
 	for _, s := range req.GetSources() {
 		srcs = append(srcs, s.GetPath())
@@ -185,13 +185,17 @@ func (g *grpcPDFServer) Merge(req *handyv1.PdfMergeRequest, stream handyv1.PdfSe
 
 // ---- proto <-> domain ------------------------------------------------------
 
-func progressToProto(p tools.Progress) *handyv1.Progress {
-	out := &handyv1.Progress{
-		Job: &handyv1.Job{
+func progressToProto(p tools.Progress) *handytoolsv1.Progress {
+	startedMs := p.StartedAt.UnixMilli()
+	if p.StartedAt.IsZero() {
+		startedMs = time.Now().UnixMilli()
+	}
+	out := &handytoolsv1.Progress{
+		Job: &handytoolsv1.Job{
 			Id:            p.JobID,
 			Tool:          p.Tool,
 			Action:        p.Action,
-			StartedUnixMs: p.StartedAt.UnixMilli(),
+			StartedUnixMs: startedMs,
 		},
 		CurrentItem: p.CurrentItem,
 		BytesDone:   p.BytesDone,
@@ -202,66 +206,63 @@ func progressToProto(p tools.Progress) *handyv1.Progress {
 		Completed:   p.Completed,
 	}
 	if p.Err != nil {
-		out.Error = &handyv1.Error{
+		out.Error = &handytoolsv1.Error{
 			Code:    p.Err.Code,
 			Message: p.Err.Message,
 			Detail:  p.Err.Detail,
 		}
 	}
-	if out.Job.StartedUnixMs == 0 {
-		out.Job.StartedUnixMs = time.Now().UnixMilli()
-	}
 	return out
 }
 
-func severityToProto(s tools.Severity) handyv1.Severity {
+func severityToProto(s tools.Severity) handytoolsv1.Severity {
 	switch s {
 	case tools.SeverityInfo:
-		return handyv1.Severity_SEVERITY_INFO
+		return handytoolsv1.Severity_SEVERITY_INFO
 	case tools.SeverityWarning:
-		return handyv1.Severity_SEVERITY_WARNING
+		return handytoolsv1.Severity_SEVERITY_WARNING
 	case tools.SeverityError:
-		return handyv1.Severity_SEVERITY_ERROR
+		return handytoolsv1.Severity_SEVERITY_ERROR
 	}
-	return handyv1.Severity_SEVERITY_UNSPECIFIED
+	return handytoolsv1.Severity_SEVERITY_UNSPECIFIED
 }
 
-func imageFormatFromProto(f handyv1.ImageFormat) image.Format {
+func imageFormatFromProto(f handytoolsv1.ImageFormat) image.Format {
 	switch f {
-	case handyv1.ImageFormat_IMAGE_FORMAT_PNG:
+	case handytoolsv1.ImageFormat_IMAGE_FORMAT_PNG:
 		return image.FormatPNG
-	case handyv1.ImageFormat_IMAGE_FORMAT_JPEG:
+	case handytoolsv1.ImageFormat_IMAGE_FORMAT_JPEG:
 		return image.FormatJPEG
-	case handyv1.ImageFormat_IMAGE_FORMAT_GIF:
+	case handytoolsv1.ImageFormat_IMAGE_FORMAT_GIF:
 		return image.FormatGIF
-	case handyv1.ImageFormat_IMAGE_FORMAT_BMP:
+	case handytoolsv1.ImageFormat_IMAGE_FORMAT_BMP:
 		return image.FormatBMP
-	case handyv1.ImageFormat_IMAGE_FORMAT_TIFF:
+	case handytoolsv1.ImageFormat_IMAGE_FORMAT_TIFF:
 		return image.FormatTIFF
-	case handyv1.ImageFormat_IMAGE_FORMAT_WEBP:
+	case handytoolsv1.ImageFormat_IMAGE_FORMAT_WEBP:
 		return image.FormatWebP
-	case handyv1.ImageFormat_IMAGE_FORMAT_HEIC:
+	case handytoolsv1.ImageFormat_IMAGE_FORMAT_HEIC:
 		return image.FormatHEIC
 	}
 	return image.FormatUnspecified
 }
 
-func archiveFormatToProto(f archive.Format) handyv1.ArchiveFormat {
+func archiveFormatToProto(f archive.Format) handytoolsv1.ArchiveFormat {
 	switch f {
 	case archive.FormatZip:
-		return handyv1.ArchiveFormat_ARCHIVE_FORMAT_ZIP
+		return handytoolsv1.ArchiveFormat_ARCHIVE_FORMAT_ZIP
 	case archive.FormatTar:
-		return handyv1.ArchiveFormat_ARCHIVE_FORMAT_TAR
+		return handytoolsv1.ArchiveFormat_ARCHIVE_FORMAT_TAR
 	case archive.FormatTarGz:
-		return handyv1.ArchiveFormat_ARCHIVE_FORMAT_TAR_GZ
+		return handytoolsv1.ArchiveFormat_ARCHIVE_FORMAT_TAR_GZ
 	case archive.FormatTarBz2:
-		return handyv1.ArchiveFormat_ARCHIVE_FORMAT_TAR_BZ2
+		return handytoolsv1.ArchiveFormat_ARCHIVE_FORMAT_TAR_BZ2
 	case archive.FormatTarZst:
-		return handyv1.ArchiveFormat_ARCHIVE_FORMAT_TAR_ZST
+		return handytoolsv1.ArchiveFormat_ARCHIVE_FORMAT_TAR_ZST
 	case archive.FormatRar:
-		return handyv1.ArchiveFormat_ARCHIVE_FORMAT_RAR
+		return handytoolsv1.ArchiveFormat_ARCHIVE_FORMAT_RAR
 	case archive.FormatSevenZ:
-		return handyv1.ArchiveFormat_ARCHIVE_FORMAT_SEVENZ
+		return handytoolsv1.ArchiveFormat_ARCHIVE_FORMAT_SEVENZ
 	}
-	return handyv1.ArchiveFormat_ARCHIVE_FORMAT_UNSPECIFIED
+	return handytoolsv1.ArchiveFormat_ARCHIVE_FORMAT_UNSPECIFIED
 }

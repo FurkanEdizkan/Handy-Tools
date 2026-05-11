@@ -1,5 +1,5 @@
-// Command handyd is the gRPC server. It exposes the same tool packages the
-// TUI uses (image, archive, pdf) over gRPC so Handy can run as a service.
+// Command htoolsd is the gRPC server. It exposes the same tool packages the
+// TUI uses (image, archive, pdf) over gRPC so Handy Tools can run as a service.
 package main
 
 import (
@@ -11,14 +11,20 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/furkandedizkan/handy/internal/config"
-	"github.com/furkandedizkan/handy/internal/server"
+	"github.com/furkandedizkan/handy-tools/internal/buildinfo"
+	"github.com/furkandedizkan/handy-tools/internal/config"
+	"github.com/furkandedizkan/handy-tools/internal/server"
 )
 
 func main() {
 	listen := flag.String("listen", "", "address to listen on (overrides config)")
 	allow := flag.String("allow-roots", "", "comma-separated allow-list of filesystem roots; overrides config")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println(buildinfo.String())
+		return
+	}
 
 	cfg, _, err := config.Load()
 	if err != nil {
@@ -54,7 +60,7 @@ func main() {
 		srv.Stop()
 	}()
 
-	log.Printf("handyd listening on %s; roots=%v", addr, roots)
+	log.Printf("htoolsd listening on %s; roots=%v", addr, roots)
 	if err := srv.Serve(lis); err != nil {
 		log.Fatalf("serve: %v", err)
 	}

@@ -11,7 +11,7 @@ labels: enhancement
 
 ## Proposal
 
-<!-- What should Handy do? Sketch the user flow if it's a UI change. -->
+<!-- What should Handy Tools do? Sketch the user flow if it's a UI change. -->
 
 ## Alternatives considered
 

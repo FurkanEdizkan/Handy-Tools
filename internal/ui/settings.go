@@ -6,8 +6,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/furkandedizkan/handy/internal/config"
-	"github.com/furkandedizkan/handy/internal/ui/theme"
+	"github.com/furkandedizkan/handy-tools/internal/config"
+	"github.com/furkandedizkan/handy-tools/internal/ui/theme"
 )
 
 type settingsField struct {
@@ -31,10 +31,13 @@ func newSettingsPage(s theme.Styles, cfg *config.Config) Page {
 			label: "Theme",
 			get:   func(c *config.Config) string { return c.Theme.Name },
 			cycle: func(c *config.Config) {
-				if c.Theme.Name == "snow" {
-					c.Theme.Name = "ember"
-				} else {
+				switch c.Theme.Name {
+				case "forge":
 					c.Theme.Name = "snow"
+				case "snow":
+					c.Theme.Name = "ember"
+				default:
+					c.Theme.Name = "forge"
 				}
 			},
 		},

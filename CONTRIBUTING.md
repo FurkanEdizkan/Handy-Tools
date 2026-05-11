@@ -1,7 +1,8 @@
-# Contributing to Handy
+# Contributing to Handy Tools
 
-Thanks for your interest in Handy! This document explains how to set up your
-environment, the branching model, and the rules we ask contributors to follow.
+Thanks for your interest in Handy Tools! This document explains how to set up
+your environment, the branching model, and the rules we ask contributors to
+follow.
 
 ## Code of conduct
 
@@ -20,8 +21,8 @@ Be kind. Assume good faith.
 ## Getting started
 
 ```sh
-git clone https://github.com/furkandedizkan/handy.git
-cd handy
+git clone https://github.com/furkandedizkan/handy-tools.git
+cd handy-tools
 git checkout test          # always branch off test, never main
 git switch -c feat/my-thing
 make proto                 # generates Go bindings under gen/ from api/proto
@@ -31,7 +32,7 @@ make test
 
 ## Branching model
 
-Handy uses a two-trunk model.
+Handy Tools uses a two-trunk model.
 
 ```text
 contributors  ->  feature/*  ->  PR into test  ->  CI green  ->  merged into test
@@ -110,7 +111,7 @@ BREAKING CHANGE: clients must update field name.
 3. Wire it into `internal/server/` as a thin adapter.
 4. Add a TUI view under `internal/ui/<tool>/` that calls the same package.
 5. Document required system binaries (if any) in the README table and in
-   `handy doctor`.
+   `htools doctor`.
 
 ## Reporting bugs / requesting features
 

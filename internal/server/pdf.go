@@ -3,8 +3,8 @@ package server
 import (
 	"context"
 
-	"github.com/furkandedizkan/handy/internal/tools"
-	"github.com/furkandedizkan/handy/internal/tools/pdf"
+	"github.com/furkandedizkan/handy-tools/internal/tools"
+	"github.com/furkandedizkan/handy-tools/internal/tools/pdf"
 )
 
 type PDFHandler struct {

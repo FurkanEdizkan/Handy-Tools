@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// decodeMinimalYAML is a deliberately tiny YAML decoder targeting Handy's
+// decodeMinimalYAML is a deliberately tiny YAML decoder targeting Handy Tools.
 // flat config schema: top-level mapping keys with one level of nesting,
 // scalar values, and short list-of-strings under `allow_roots:` and `recent:`.
 //
@@ -50,6 +50,12 @@ func decodeMinimalYAML(body []byte, cfg *Config) error {
 					cfg.Recent = nil
 				}
 				section = ""
+				continue
+			}
+			// top-level list opener like "recent:"
+			if key == "recent" {
+				cfg.Recent = nil
+				listTarget = &cfg.Recent
 			}
 			continue
 		}

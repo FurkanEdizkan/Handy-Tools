@@ -7,7 +7,7 @@ package tools
 
 import "time"
 
-// Severity mirrors handy.v1.Severity.
+// Severity mirrors handytools.v1.Severity.
 type Severity int
 
 const (

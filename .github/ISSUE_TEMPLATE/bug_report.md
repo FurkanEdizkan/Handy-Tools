@@ -19,10 +19,10 @@ labels: bug
 
 ## Environment
 
-- Handy version / commit:
+- Handy Tools version / commit:
 - OS + version:
 - Go version (`go version`):
-- Output of `handy doctor`:
+- Output of `htools doctor`:
 
 ## Logs / screenshots
 

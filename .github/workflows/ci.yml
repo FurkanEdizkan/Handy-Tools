@@ -23,6 +23,9 @@ jobs:
         with:
           go-version: "1.22"
           cache: true
+      - uses: bufbuild/buf-setup-action@v1
+      - name: Generate proto bindings
+        run: buf generate
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
@@ -43,12 +46,17 @@ jobs:
           fi
 
   test:
-    name: Test
+    name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os:
+          - ubuntu-22.04
+          - ubuntu-24.04
+          - macos-13
+          - macos-14
+          - macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -57,13 +65,13 @@ jobs:
           cache: true
       - uses: bufbuild/buf-setup-action@v1
       - name: Install optional system deps (Linux)
-        if: matrix.os == 'ubuntu-latest'
+        if: startsWith(matrix.os, 'ubuntu-')
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             p7zip-full unrar-free poppler-utils imagemagick
       - name: Install optional system deps (macOS)
-        if: matrix.os == 'macos-latest'
+        if: startsWith(matrix.os, 'macos-')
         run: |
           brew install p7zip poppler imagemagick || true
       - name: Generate proto bindings
@@ -77,6 +85,77 @@ jobs:
           fi
       - name: Test
         run: go test -race -count=1 ./...
+      - name: Read Handy Tools version
+        id: hv
+        shell: bash
+        run: |
+          v=$(tr -d '[:space:]' < internal/buildinfo/version.txt)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - name: Record compatibility result
+        if: always()
+        shell: bash
+        env:
+          STATUS: ${{ job.status }}
+          OS_LABEL: ${{ matrix.os }}
+          RUNNER_OS_NAME: ${{ runner.os }}
+          RUNNER_ARCH_NAME: ${{ runner.arch }}
+          HANDY_TOOLS_VERSION: ${{ steps.hv.outputs.version }}
+        run: |
+          mkdir -p compat-artifacts
+          cat > "compat-artifacts/${OS_LABEL}.json" <<EOF
+          {
+            "os": "${OS_LABEL}",
+            "runner_os": "${RUNNER_OS_NAME}",
+            "runner_arch": "${RUNNER_ARCH_NAME}",
+            "version": "${HANDY_TOOLS_VERSION:-unknown}",
+            "go_version": "1.22",
+            "status": "${STATUS}",
+            "sha": "${GITHUB_SHA}",
+            "ref": "${GITHUB_REF}",
+            "run_id": "${GITHUB_RUN_ID}"
+          }
+          EOF
+      - name: Upload compatibility artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compat-${{ matrix.os }}
+          path: compat-artifacts/*.json
+          retention-days: 30
+
+  build-windows:
+    name: Build (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+      - uses: bufbuild/buf-setup-action@v1
+      - name: Generate proto bindings
+        run: buf generate
+      - name: Build
+        shell: bash
+        run: |
+          mkdir -p bin
+          go build -ldflags="-s -w" -o bin/htools.exe  ./cmd/htools
+          go build -ldflags="-s -w" -o bin/htoolsd.exe ./cmd/htoolsd
+
+  fuzz:
+    name: Fuzz (yaml_min, short)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+      - uses: bufbuild/buf-setup-action@v1
+      - name: Generate proto bindings
+        run: buf generate
+      - name: Fuzz yaml_min parser (20s)
+        run: go test -run=^$ -fuzz=FuzzDecodeMinimalYAML -fuzztime=20s ./internal/config
 
   build:
     name: Build
@@ -94,5 +173,92 @@ jobs:
       - name: Build
         run: |
           mkdir -p bin
-          go build -ldflags="-s -w" -o bin/handy  ./cmd/handy
-          go build -ldflags="-s -w" -o bin/handyd ./cmd/handyd
+          go build -ldflags="-s -w" -o bin/htools  ./cmd/htools
+          go build -ldflags="-s -w" -o bin/htoolsd ./cmd/htoolsd
+
+  update-compatibility:
+    name: Update COMPATIBILITY.md
+    needs: [test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download all compat artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: compat-*
+          path: compat-in
+          merge-multiple: true
+
+      - name: Regenerate COMPATIBILITY.md
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(tr -d '[:space:]' < internal/buildinfo/version.txt)
+          today=$(date -u +%Y-%m-%d)
+
+          if ! ls compat-in/*.json >/dev/null 2>&1; then
+            echo "No compat artifacts to process; nothing to update."
+            exit 0
+          fi
+
+          new_rows=$(
+            for f in compat-in/*.json; do
+              hv=$(jq -r .version "$f")
+              [ "$hv" = "$version" ] || continue
+              os=$(jq -r .os "$f")
+              ros=$(jq -r .runner_os "$f")
+              rarch=$(jq -r .runner_arch "$f")
+              status=$(jq -r .status "$f")
+              icon='[FAIL]'
+              [ "$status" = "success" ] && icon='[PASS]'
+              printf '| v%s | %s | %s/%s | %s | %s |\n' \
+                "$version" "$os" "$ros" "$rarch" "$icon" "$today"
+            done | LC_ALL=C sort
+          )
+
+          if [ -z "$new_rows" ]; then
+            echo "No matching artifacts for v$version; nothing to update."
+            exit 0
+          fi
+
+          if [ -f COMPATIBILITY.md ]; then
+            other_rows=$(grep -E '^\| v' COMPATIBILITY.md | grep -v "^| v${version} |" || true)
+          else
+            other_rows=""
+          fi
+
+          {
+            cat <<'HEADER'
+          # Compatibility
+
+          Auto-generated from CI matrix runs on `main`. Each row records that the listed Handy Tools version's test suite passed on that OS/arch combination on the date shown. Older versions are preserved; the row for the current version is overwritten on every push.
+
+          | Version | Runner image | OS / Arch | Status | Recorded |
+          | --- | --- | --- | --- | --- |
+          HEADER
+            printf '%s\n' "$new_rows"
+            if [ -n "$other_rows" ]; then printf '%s\n' "$other_rows"; fi
+          } > COMPATIBILITY.md
+
+          rm -rf compat-in
+
+      - name: Commit if changed
+        shell: bash
+        run: |
+          if git diff --quiet -- COMPATIBILITY.md; then
+            echo "COMPATIBILITY.md unchanged."
+            exit 0
+          fi
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add COMPATIBILITY.md
+          git commit -m "chore(compat): record CI matrix results for v$(tr -d '[:space:]' < internal/buildinfo/version.txt) [skip ci]"
+          git push origin main

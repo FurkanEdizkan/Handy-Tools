@@ -1,13 +1,16 @@
 package archive
 
 import (
+	"archive/tar"
 	"archive/zip"
+	"compress/gzip"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
-	"github.com/furkandedizkan/handy/internal/tools"
+	"github.com/furkandedizkan/handy-tools/internal/tools"
 )
 
 func makeZip(t *testing.T, dir string, entries map[string]string) string {
@@ -138,5 +141,116 @@ func TestFindSevenZParts(t *testing.T) {
 	}
 	if len(missing) != 0 {
 		t.Fatalf("expected no missing, got %v", missing)
+	}
+}
+
+func writeTar(t *testing.T, path string, entries map[string]string, gz bool) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create tar: %v", err)
+	}
+	defer f.Close()
+	var tw *tar.Writer
+	if gz {
+		gw := gzip.NewWriter(f)
+		defer gw.Close()
+		tw = tar.NewWriter(gw)
+	} else {
+		tw = tar.NewWriter(f)
+	}
+	defer tw.Close()
+	for name, body := range entries {
+		hdr := &tar.Header{
+			Name:     name,
+			Mode:     0o644,
+			Size:     int64(len(body)),
+			Typeflag: tar.TypeReg,
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatalf("write header: %v", err)
+		}
+		if _, err := tw.Write([]byte(body)); err != nil {
+			t.Fatalf("write body: %v", err)
+		}
+	}
+}
+
+func TestExtractTarWritesAllEntries(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "in.tar")
+	writeTar(t, src, map[string]string{"a.txt": "hello", "sub/b.txt": "world"}, false)
+	dst := filepath.Join(dir, "out")
+
+	progress := collect(Extract(context.Background(), ExtractRequest{Source: src, Destination: dst}))
+	if last := progress[len(progress)-1]; last.Err != nil {
+		t.Fatalf("extract: %v", last.Err)
+	}
+	body, err := os.ReadFile(filepath.Join(dst, "sub", "b.txt"))
+	if err != nil {
+		t.Fatalf("read extracted: %v", err)
+	}
+	if string(body) != "world" {
+		t.Fatalf("body mismatch: got %q", string(body))
+	}
+}
+
+func TestExtractTarGzWritesAllEntries(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "in.tar.gz")
+	writeTar(t, src, map[string]string{"hello.txt": "compressed body"}, true)
+	dst := filepath.Join(dir, "out")
+
+	progress := collect(Extract(context.Background(), ExtractRequest{Source: src, Destination: dst}))
+	if last := progress[len(progress)-1]; last.Err != nil {
+		t.Fatalf("extract: %v", last.Err)
+	}
+	body, err := os.ReadFile(filepath.Join(dst, "hello.txt"))
+	if err != nil {
+		t.Fatalf("read extracted: %v", err)
+	}
+	if string(body) != "compressed body" {
+		t.Fatalf("body mismatch: got %q", string(body))
+	}
+}
+
+// TestExtract7zRoundTripsViaBinary self-bootstraps a fixture using the system
+// 7z binary, then exercises the binary-extraction code path. Skips locally
+// when 7z isn't on PATH; CI installs p7zip-full so it actually runs there.
+func TestExtract7zRoundTripsViaBinary(t *testing.T) {
+	bin := ""
+	for _, name := range []string{"7z", "7zz", "7za"} {
+		if p, err := exec.LookPath(name); err == nil {
+			bin = p
+			break
+		}
+	}
+	if bin == "" {
+		t.Skip("7z not on PATH; skipping binary-path archive test")
+	}
+
+	dir := t.TempDir()
+	plain := filepath.Join(dir, "hello.txt")
+	if err := os.WriteFile(plain, []byte("seven zip body"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	src := filepath.Join(dir, "fixture.7z")
+	cmd := exec.Command(bin, "a", "-bso0", "-bse0", src, plain)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("create 7z fixture: %v\n%s", err, out)
+	}
+
+	dst := filepath.Join(dir, "out")
+	progress := collect(Extract(context.Background(), ExtractRequest{Source: src, Destination: dst}))
+	if last := progress[len(progress)-1]; last.Err != nil {
+		t.Fatalf("extract: %v", last.Err)
+	}
+	body, err := os.ReadFile(filepath.Join(dst, "hello.txt"))
+	if err != nil {
+		t.Fatalf("read extracted: %v", err)
+	}
+	if string(body) != "seven zip body" {
+		t.Fatalf("body mismatch: got %q", string(body))
 	}
 }

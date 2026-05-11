@@ -4,7 +4,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/furkandedizkan/handy/internal/ui/theme"
+	"github.com/furkandedizkan/handy-tools/internal/ui/theme"
 )
 
 type tool struct {

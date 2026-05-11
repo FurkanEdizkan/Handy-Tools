@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/furkandedizkan/handy/internal/tools"
-	"github.com/furkandedizkan/handy/internal/tools/sysdep"
+	"github.com/furkandedizkan/handy-tools/internal/tools"
+	"github.com/furkandedizkan/handy-tools/internal/tools/sysdep"
 )
 
 // Range describes a 1-based inclusive page range. To == 0 means "to the end".

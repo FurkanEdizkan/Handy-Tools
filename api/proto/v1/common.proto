@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package handy.v1;
+package handytools.v1;
 
-option go_package = "github.com/furkandedizkan/handy/gen/handy/v1;handyv1";
+option go_package = "github.com/furkandedizkan/handy-tools/gen/v1;handytoolsv1";
 
 // Severity level for messages emitted during a job.
 enum Severity {

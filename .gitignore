@@ -6,8 +6,8 @@
 *.out
 
 # Built TUI / server binaries when produced at repo root by ad-hoc `go build`
-/handy
-/handyd
+/htools
+/htoolsd
 
 # Go
 vendor/

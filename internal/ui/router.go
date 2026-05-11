@@ -9,9 +9,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/furkandedizkan/handy/internal/config"
-	"github.com/furkandedizkan/handy/internal/ui/mascot"
-	"github.com/furkandedizkan/handy/internal/ui/theme"
+	"github.com/furkandedizkan/handy-tools/internal/config"
+	"github.com/furkandedizkan/handy-tools/internal/ui/mascot"
+	"github.com/furkandedizkan/handy-tools/internal/ui/theme"
 )
 
 // PageID identifies a top-level page.
@@ -127,7 +127,7 @@ func (m Model) View() string {
 		return ""
 	}
 	page := m.pages[m.current]
-	header := m.styles.Title.Render("Handy  -  " + page.Title())
+	header := m.styles.Title.Render("Handy Tools  -  " + page.Title())
 	help := m.styles.Status.Render("tab: switch page  -  q: quit")
 
 	body := lipgloss.JoinHorizontal(

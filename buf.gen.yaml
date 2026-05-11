@@ -3,7 +3,7 @@ managed:
   enabled: true
   override:
     - file_option: go_package_prefix
-      value: github.com/furkandedizkan/handy/gen
+      value: github.com/furkandedizkan/handy-tools/gen
 plugins:
   - remote: buf.build/protocolbuffers/go:v1.34.2
     out: gen

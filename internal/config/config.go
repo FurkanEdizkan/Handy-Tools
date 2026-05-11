@@ -1,9 +1,9 @@
 // Package config loads and persists user settings.
 //
 // Lookup order:
-//  1. $HANDY_CONFIG (if set, treated as a file path)
-//  2. $XDG_CONFIG_HOME/handy/config.yaml
-//  3. ~/.config/handy/config.yaml
+//  1. $HANDY_TOOLS_CONFIG (if set, treated as a file path)
+//  2. $XDG_CONFIG_HOME/handy-tools/config.yaml
+//  3. ~/.config/handy-tools/config.yaml
 //
 // The on-disk format is YAML with stable keys. Defaults() returns a complete
 // Config so we can safely round-trip even partial files.
@@ -30,14 +30,14 @@ type Config struct {
 }
 
 type Theme struct {
-	Name       string `yaml:"name"       json:"name"`        // "snow" (default), "ember"
+	Name       string `yaml:"name"       json:"name"`        // "forge" (default), "snow", "ember"
 	Background string `yaml:"background" json:"background"`  // hex; empty -> theme default
 	Accent     string `yaml:"accent"     json:"accent"`
 }
 
 type Mascot struct {
 	Enabled bool   `yaml:"enabled" json:"enabled"`
-	Style   string `yaml:"style"   json:"style"`   // "snow-fox" (default)
+	Style   string `yaml:"style"   json:"style"`   // "wrenly" (default)
 }
 
 type Archive struct {
@@ -63,8 +63,8 @@ type Server struct {
 // Defaults returns a freshly-populated Config.
 func Defaults() Config {
 	return Config{
-		Theme: Theme{Name: "snow"},
-		Mascot: Mascot{Enabled: true, Style: "snow-fox"},
+		Theme: Theme{Name: "forge"},
+		Mascot: Mascot{Enabled: true, Style: "wrenly"},
 		Archive: Archive{
 			AutoExtractMultiPart: false,
 			OverwriteByDefault:   false,
@@ -77,17 +77,17 @@ func Defaults() Config {
 
 // Path returns the resolved config file path according to the lookup order.
 func Path() (string, error) {
-	if v := os.Getenv("HANDY_CONFIG"); v != "" {
+	if v := os.Getenv("HANDY_TOOLS_CONFIG"); v != "" {
 		return v, nil
 	}
 	if v := os.Getenv("XDG_CONFIG_HOME"); v != "" {
-		return filepath.Join(v, "handy", "config.yaml"), nil
+		return filepath.Join(v, "handy-tools", "config.yaml"), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".config", "handy", "config.yaml"), nil
+	return filepath.Join(home, ".config", "handy-tools", "config.yaml"), nil
 }
 
 // Load reads the config from disk. Missing file -> Defaults() with no error.
@@ -112,7 +112,7 @@ func Save(c Config) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return path, err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".handy-config-*.yaml")
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".handy-tools-config-*.yaml")
 	if err != nil {
 		return path, err
 	}

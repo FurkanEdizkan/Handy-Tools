@@ -22,11 +22,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/furkandedizkan/handy/internal/tools"
-	"github.com/furkandedizkan/handy/internal/tools/sysdep"
+	"github.com/furkandedizkan/handy-tools/internal/tools"
+	"github.com/furkandedizkan/handy-tools/internal/tools/sysdep"
 )
 
-// Format enumerates the archive types Handy understands.
+// Format enumerates the archive types Handy Tools understands.
 type Format int
 
 const (
