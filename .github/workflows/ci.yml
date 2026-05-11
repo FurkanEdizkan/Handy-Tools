@@ -24,6 +24,8 @@ jobs:
           go-version: "1.22"
           cache: true
       - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Generate proto bindings
         run: buf generate
       - name: golangci-lint
@@ -38,6 +40,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
       - run: |
           if [ -d api/proto ]; then
             buf lint
@@ -64,6 +68,8 @@ jobs:
           go-version: "1.22"
           cache: true
       - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install optional system deps (Linux)
         if: startsWith(matrix.os, 'ubuntu-')
         run: |
@@ -133,6 +139,8 @@ jobs:
           go-version: "1.22"
           cache: true
       - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Generate proto bindings
         run: buf generate
       - name: Build
@@ -152,6 +160,8 @@ jobs:
           go-version: "1.22"
           cache: true
       - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Generate proto bindings
         run: buf generate
       - name: Fuzz yaml_min parser (20s)
@@ -168,6 +178,8 @@ jobs:
           go-version: "1.22"
           cache: true
       - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Generate proto bindings
         run: buf generate
       - name: Build
