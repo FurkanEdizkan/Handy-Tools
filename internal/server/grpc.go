@@ -1,10 +1,10 @@
 // File grpc.go contains the bindings between the wire-shape-agnostic
 // handlers (image.go, archive.go, pdf.go) and the generated proto types
-// in gen/v1.
+// in gen/handytools/v1.
 //
 // The proto types are produced by `buf generate` (Make target: `make proto`).
 // CI runs that step before building, so this file always sees a populated
-// gen/v1 package. To work locally, run:
+// gen/handytools/v1 package. To work locally, run:
 //
 //	make proto
 //
@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
-	handytoolsv1 "github.com/furkandedizkan/handy-tools/gen/v1"
+	handytoolsv1 "github.com/furkandedizkan/handy-tools/gen/handytools/v1"
 	"github.com/furkandedizkan/handy-tools/internal/tools"
 	"github.com/furkandedizkan/handy-tools/internal/tools/archive"
 	"github.com/furkandedizkan/handy-tools/internal/tools/image"
@@ -110,15 +110,15 @@ func (g *grpcArchiveServer) Inspect(ctx context.Context, req *handytoolsv1.Inspe
 		parts = append(parts, &handytoolsv1.FileRef{Path: p})
 	}
 	return &handytoolsv1.InspectResponse{
-		Format:                 archiveFormatToProto(ins.Format),
-		MultiPart:              ins.MultiPart,
-		DetectedParts:          parts,
-		MissingParts:           ins.MissingParts,
-		UncompressedSizeBytes:  ins.UncompressedSz,
-		EntryCount:             int32(ins.EntryCount),
-		RequiresPassword:       ins.RequiresPwd,
-		RequiresBinary:         ins.RequiresBinary,
-		BinaryAvailable:        ins.BinaryAvailable,
+		Format:                archiveFormatToProto(ins.Format),
+		MultiPart:             ins.MultiPart,
+		DetectedParts:         parts,
+		MissingParts:          ins.MissingParts,
+		UncompressedSizeBytes: ins.UncompressedSz,
+		EntryCount:            int32(ins.EntryCount),
+		RequiresPassword:      ins.RequiresPwd,
+		RequiresBinary:        ins.RequiresBinary,
+		BinaryAvailable:       ins.BinaryAvailable,
 	}, nil
 }
 

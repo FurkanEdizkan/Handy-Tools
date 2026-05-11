@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	handytoolsv1 "github.com/furkandedizkan/handy-tools/gen/v1"
+	handytoolsv1 "github.com/furkandedizkan/handy-tools/gen/handytools/v1"
 	"github.com/furkandedizkan/handy-tools/internal/tools"
 	"github.com/furkandedizkan/handy-tools/internal/tools/archive"
 	"github.com/furkandedizkan/handy-tools/internal/tools/image"

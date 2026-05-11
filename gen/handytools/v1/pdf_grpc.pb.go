@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             (unknown)
-// source: v1/pdf.proto
+// source: handytools/v1/pdf.proto
 
 package handytoolsv1
 
@@ -243,5 +243,5 @@ var PdfService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "v1/pdf.proto",
+	Metadata: "handytools/v1/pdf.proto",
 }

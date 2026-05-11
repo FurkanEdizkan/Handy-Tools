@@ -28,7 +28,7 @@ CI uses Go 1.22 and `golangci-lint v1.59` — match locally or lint output may d
 
 ## Generated code
 
-`gen/` holds the protobuf/gRPC bindings produced by `buf generate`. They are checked in so contributors don't need `protoc`. After editing anything under `api/proto/v1/`, run `make proto` and commit the regenerated files. The `go_package_prefix` in [buf.gen.yaml](buf.gen.yaml) pins them under `github.com/furkandedizkan/handy-tools/gen`. The proto package is `handytools.v1` (output dir `gen/v1/`).
+`gen/` holds the protobuf/gRPC bindings produced by `buf generate`. They are checked in so contributors don't need `protoc`. After editing anything under `api/proto/v1/`, run `make proto` and commit the regenerated files. The `go_package_prefix` in [buf.gen.yaml](buf.gen.yaml) pins them under `github.com/furkandedizkan/handy-tools/gen`. The proto package is `handytools.v1` (output dir `gen/handytools/v1/`).
 
 ## Tool/feature contract
 

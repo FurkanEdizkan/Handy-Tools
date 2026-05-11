@@ -26,12 +26,12 @@ type Range struct {
 
 // ToImageRequest renders pages to PNG/JPEG.
 type ToImageRequest struct {
-	Source      string
-	Pages       Range
-	DPI         int
-	OutputDir   string
-	OutputBase  string // file stem; default = basename(Source) without ext
-	JPEG        bool   // false = PNG
+	Source     string
+	Pages      Range
+	DPI        int
+	OutputDir  string
+	OutputBase string // file stem; default = basename(Source) without ext
+	JPEG       bool   // false = PNG
 }
 
 // ToImage rasterizes a PDF using pdftoppm.

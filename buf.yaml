@@ -3,9 +3,15 @@ modules:
   - path: api/proto
 lint:
   use:
-    - DEFAULT
+    - STANDARD
   except:
     - PACKAGE_VERSION_SUFFIX
+    # Every long-running RPC streams a shared `Progress` message; wrapping
+    # each one in a uniquely-named `XxxResponse` would just be a noise type
+    # around the same payload. These three rules conflict with that design.
+    - RPC_REQUEST_RESPONSE_UNIQUE
+    - RPC_RESPONSE_STANDARD_NAME
+    - RPC_REQUEST_STANDARD_NAME
 breaking:
   use:
     - FILE

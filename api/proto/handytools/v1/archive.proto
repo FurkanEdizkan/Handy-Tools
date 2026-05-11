@@ -2,9 +2,9 @@ syntax = "proto3";
 
 package handytools.v1;
 
-import "v1/common.proto";
+import "handytools/v1/common.proto";
 
-option go_package = "github.com/furkandedizkan/handy-tools/gen/v1;handytoolsv1";
+option go_package = "github.com/furkandedizkan/handy-tools/gen/handytools/v1;handytoolsv1";
 
 enum ArchiveFormat {
   ARCHIVE_FORMAT_UNSPECIFIED = 0;

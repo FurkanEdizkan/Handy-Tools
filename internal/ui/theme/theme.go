@@ -6,19 +6,19 @@ import "github.com/charmbracelet/lipgloss"
 
 // Palette describes a single named theme.
 type Palette struct {
-	Name        string
-	Background  lipgloss.Color
-	Surface     lipgloss.Color
-	Border      lipgloss.Color
-	Accent      lipgloss.Color
-	AccentSoft  lipgloss.Color
-	Text        lipgloss.Color
-	TextDim     lipgloss.Color
-	Success     lipgloss.Color
-	Warning     lipgloss.Color
-	Error       lipgloss.Color
-	MascotFur   lipgloss.Color
-	MascotEye   lipgloss.Color
+	Name       string
+	Background lipgloss.Color
+	Surface    lipgloss.Color
+	Border     lipgloss.Color
+	Accent     lipgloss.Color
+	AccentSoft lipgloss.Color
+	Text       lipgloss.Color
+	TextDim    lipgloss.Color
+	Success    lipgloss.Color
+	Warning    lipgloss.Color
+	Error      lipgloss.Color
+	MascotFur  lipgloss.Color
+	MascotEye  lipgloss.Color
 }
 
 // Forge is the default orange-on-black palette: black background, deep amber
@@ -38,7 +38,7 @@ var Forge = Palette{
 	Warning:    lipgloss.Color("#f0c674"),
 	Error:      lipgloss.Color("#e57373"),
 	MascotFur:  lipgloss.Color("#ff8c1a"),
-	MascotEye: lipgloss.Color("#1a0f08"),
+	MascotEye:  lipgloss.Color("#1a0f08"),
 }
 
 // Snow is a cool blue-black palette (kept for users who prefer it).
@@ -91,17 +91,17 @@ func Resolve(name string) Palette {
 
 // Styles bundles the most-used Lip Gloss styles for a palette.
 type Styles struct {
-	P           Palette
-	App         lipgloss.Style
-	Title       lipgloss.Style
-	Card        lipgloss.Style
-	CardActive  lipgloss.Style
-	HelpKey     lipgloss.Style
-	HelpDesc    lipgloss.Style
-	Status      lipgloss.Style
-	Error       lipgloss.Style
-	MascotFur   lipgloss.Style
-	MascotEye   lipgloss.Style
+	P          Palette
+	App        lipgloss.Style
+	Title      lipgloss.Style
+	Card       lipgloss.Style
+	CardActive lipgloss.Style
+	HelpKey    lipgloss.Style
+	HelpDesc   lipgloss.Style
+	Status     lipgloss.Style
+	Error      lipgloss.Style
+	MascotFur  lipgloss.Style
+	MascotEye  lipgloss.Style
 }
 
 // Build returns a Styles populated from p.
@@ -118,7 +118,7 @@ func Build(p Palette) Styles {
 		App:        base,
 		Title:      base.Bold(true).Foreground(p.Accent).Padding(0, 1),
 		Card:       card,
-		CardActive: card.Copy().BorderForeground(p.Accent).Foreground(p.Text),
+		CardActive: card.BorderForeground(p.Accent).Foreground(p.Text),
 		HelpKey:    lipgloss.NewStyle().Foreground(p.Accent).Bold(true),
 		HelpDesc:   lipgloss.NewStyle().Foreground(p.TextDim),
 		Status:     lipgloss.NewStyle().Foreground(p.TextDim),

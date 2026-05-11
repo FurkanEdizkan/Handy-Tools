@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             (unknown)
-// source: v1/image.proto
+// source: handytools/v1/image.proto
 
 package handytoolsv1
 
@@ -161,5 +161,5 @@ var ImageService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "v1/image.proto",
+	Metadata: "handytools/v1/image.proto",
 }

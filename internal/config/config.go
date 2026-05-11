@@ -20,24 +20,24 @@ import (
 
 // Config is the persisted user settings tree.
 type Config struct {
-	Theme    Theme    `yaml:"theme"    json:"theme"`
-	Mascot   Mascot   `yaml:"mascot"   json:"mascot"`
-	Archive  Archive  `yaml:"archive"  json:"archive"`
-	Image    Image    `yaml:"image"    json:"image"`
-	PDF      PDF      `yaml:"pdf"      json:"pdf"`
-	Server   Server   `yaml:"server"   json:"server"`
-	Recent   []string `yaml:"recent"   json:"recent"`
+	Theme   Theme    `yaml:"theme"    json:"theme"`
+	Mascot  Mascot   `yaml:"mascot"   json:"mascot"`
+	Archive Archive  `yaml:"archive"  json:"archive"`
+	Image   Image    `yaml:"image"    json:"image"`
+	PDF     PDF      `yaml:"pdf"      json:"pdf"`
+	Server  Server   `yaml:"server"   json:"server"`
+	Recent  []string `yaml:"recent"   json:"recent"`
 }
 
 type Theme struct {
-	Name       string `yaml:"name"       json:"name"`        // "forge" (default), "snow", "ember"
-	Background string `yaml:"background" json:"background"`  // hex; empty -> theme default
+	Name       string `yaml:"name"       json:"name"`       // "forge" (default), "snow", "ember"
+	Background string `yaml:"background" json:"background"` // hex; empty -> theme default
 	Accent     string `yaml:"accent"     json:"accent"`
 }
 
 type Mascot struct {
 	Enabled bool   `yaml:"enabled" json:"enabled"`
-	Style   string `yaml:"style"   json:"style"`   // "wrenly" (default)
+	Style   string `yaml:"style"   json:"style"` // "wrenly" (default)
 }
 
 type Archive struct {
@@ -56,14 +56,14 @@ type PDF struct {
 }
 
 type Server struct {
-	Listen     string   `yaml:"listen"      json:"listen"`     // ":7777"
+	Listen     string   `yaml:"listen"      json:"listen"`      // ":7777"
 	AllowRoots []string `yaml:"allow_roots" json:"allow_roots"` // empty -> CWD only
 }
 
 // Defaults returns a freshly-populated Config.
 func Defaults() Config {
 	return Config{
-		Theme: Theme{Name: "forge"},
+		Theme:  Theme{Name: "forge"},
 		Mascot: Mascot{Enabled: true, Style: "wrenly"},
 		Archive: Archive{
 			AutoExtractMultiPart: false,

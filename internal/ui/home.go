@@ -29,9 +29,9 @@ type homePage struct {
 
 func newHomePage(s theme.Styles) Page { return &homePage{styles: s} }
 
-func (h *homePage) Init() tea.Cmd                  { return nil }
-func (h *homePage) ID() PageID                     { return PageHome }
-func (h *homePage) Title() string                  { return "Home" }
+func (h *homePage) Init() tea.Cmd { return nil }
+func (h *homePage) ID() PageID    { return PageHome }
+func (h *homePage) Title() string { return "Home" }
 func (h *homePage) Update(msg tea.Msg) (Page, tea.Cmd) {
 	if k, ok := msg.(tea.KeyMsg); ok {
 		switch k.String() {
