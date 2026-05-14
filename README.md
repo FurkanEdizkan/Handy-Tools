@@ -305,16 +305,17 @@ plain semver, no `v` prefix. To cut a release:
 2. CI on `test` validates the value (semver check lives in
    `internal/buildinfo/buildinfo_test.go`).
 3. The promotion PR carries the bump into `main`.
-4. On push to `main`,
-   [`.github/workflows/auto-tag.yml`](.github/workflows/auto-tag.yml) waits
-   for CI to go green, sees that `version.txt` changed, and pushes a
-   `vX.Y.Z` tag.
+4. CI runs on `main`. When it goes green,
+   [`.github/workflows/auto-tag.yml`](.github/workflows/auto-tag.yml) fires
+   via `workflow_run`, reads `version.txt`, and pushes a `vX.Y.Z` tag if
+   one doesn't already exist.
 5. The tag push triggers
    [`.github/workflows/release.yml`](.github/workflows/release.yml), which
    runs GoReleaser.
 
-Reusing an existing version is rejected by the auto-tag workflow — bump
-again to recover.
+Auto-tag is idempotent: if `vX.Y.Z` already exists, the workflow logs
+"already published" and exits cleanly — so a no-op CI run on the same
+version is harmless. To cut another release, bump `version.txt`.
 
 ## Contributing
 

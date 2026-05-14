@@ -1,7 +1,13 @@
 name: Auto-tag on version bump
 
+# Fires only after CI on main has completed. This avoids the
+# self-wait deadlock we hit with lewagon/wait-on-check-action@v1.3.4 —
+# its `running-workflow-name` filter didn't exclude this job's own
+# check from the wait set, so the action polled itself forever.
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -16,18 +22,18 @@ jobs:
   tag:
     name: Tag if version.txt bumped
     runs-on: ubuntu-latest
+    # Only proceed when CI succeeded. Manual workflow_dispatch runs
+    # always proceed (no upstream conclusion to check).
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Wait for CI on main
-        uses: lewagon/wait-on-check-action@v1.3.4
-        with:
-          ref: ${{ github.sha }}
-          running-workflow-name: 'Auto-tag on version bump'
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 20
+          # For workflow_run, the default checkout points at the default
+          # branch's HEAD, which can drift past the commit that triggered
+          # CI. Pin to the triggering commit so version.txt + the tag
+          # describe the same SHA.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Read version
         id: ver
@@ -46,38 +52,25 @@ jobs:
             exit 1
           fi
 
-      - name: Did this push change version.txt?
-        id: bumped
-        shell: bash
-        run: |
-          before='${{ github.event.before }}'
-          # On the very first push to a branch `before` is all-zeros; treat as bumped.
-          if [[ "$before" =~ ^0+$ ]] || [ -z "$before" ]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if git diff --name-only "$before" "$GITHUB_SHA" -- internal/buildinfo/version.txt | grep -q .; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Skip — version.txt not touched
-        if: steps.bumped.outputs.changed != 'true'
-        run: echo "version.txt unchanged in this push; nothing to tag."
-
-      - name: Refuse — tag already exists
-        if: steps.bumped.outputs.changed == 'true'
+      - name: Does the tag for this version already exist?
+        id: exists
         shell: bash
         run: |
           tag='${{ steps.ver.outputs.tag }}'
           if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
-            echo "::error::tag $tag already exists; bump internal/buildinfo/version.txt to a new value" >&2
-            exit 1
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Skip — tag already published
+        if: steps.exists.outputs.exists == 'true'
+        run: |
+          echo "Tag ${{ steps.ver.outputs.tag }} already exists; nothing to do."
+          echo "Bump internal/buildinfo/version.txt to cut a new release."
+
       - name: Create and push tag
-        if: steps.bumped.outputs.changed == 'true'
+        if: steps.exists.outputs.exists == 'false'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

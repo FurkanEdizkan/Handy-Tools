@@ -67,7 +67,7 @@ The asset name template (`handy-tools_${VERSION}_${OS}_${ARCH}.tar.gz`) must sta
 
 Version lives in [internal/buildinfo/version.txt](internal/buildinfo/version.txt) — one line, plain semver, no `v` prefix. The buildinfo package embeds it via `//go:embed` so `htools --version` and `htoolsd --version` always reflect what's checked in. Release builds override `buildinfo.Version` (and `Commit`, `Date`) via `-ldflags "-X"`; see [.goreleaser.yaml](.goreleaser.yaml).
 
-Release flow: bump `version.txt` in a PR to `test` → promote to `main` → [auto-tag.yml](.github/workflows/auto-tag.yml) waits for CI, then pushes a `vX.Y.Z` tag → tag triggers [release.yml](.github/workflows/release.yml). Reusing an existing version causes the auto-tag step to fail loudly. Don't tag manually; let the workflow do it.
+Release flow: bump `version.txt` in a PR to `test` → promote to `main` → CI runs → on green, [auto-tag.yml](.github/workflows/auto-tag.yml) fires via `workflow_run` and pushes a `vX.Y.Z` tag → tag triggers [release.yml](.github/workflows/release.yml). Auto-tag is **idempotent**: if `vX.Y.Z` already exists on origin, the workflow logs "already published" and exits 0 — so re-running CI on the same version is a no-op rather than a loud failure. Don't tag manually; let the workflow do it.
 
 `TestEmbeddedVersionIsSemver` in `internal/buildinfo/buildinfo_test.go` is the canonical semver gate — if the file is malformed, `make test` fails before anything is tagged.
 
