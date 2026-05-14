@@ -97,10 +97,11 @@ stepper. Below is the prioritized path from "good demo" → "real product."
       sees `curl: (22) The requested URL returned error: 404` and an
       "ambiguous rate-limited?" hint. Distinguish 404 (no release / bad
       slug) from 403 (rate limited) and print which one happened.
-- [ ] **Ship a first release.** Until `v0.1.0` is tagged on
-      `main`, the installer can't succeed for anyone. Bump
+- [x] ~~Ship a first release.~~ — done in `v0.2.0` (first cut of the
+      new TUI). Future releases: bump
       [`internal/buildinfo/version.txt`](internal/buildinfo/version.txt)
-      via the `test` → `main` flow so `auto-tag.yml` cuts the tag.
+      on a PR, let CI go green on `main`, auto-tag (workflow_run) does
+      the rest.
 - [ ] **Test the installer mascot under `NO_COLOR=1`.** The new face
       mascot in [`install.sh`](install.sh#L53) was only verified in
       color mode. Make sure the no-color branch (line 54) still prints
