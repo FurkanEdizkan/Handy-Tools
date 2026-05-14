@@ -1,5 +1,7 @@
 # TODO
 
+main test
+
 A living list of concrete, in-repo improvements — the kind a code agent
 (or human) can pick up and verify. For the longer-horizon roadmap (plugin
 registry, web/Chrome surfaces, pure-Go PDF), see
