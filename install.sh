@@ -3,7 +3,7 @@
 # verifies the checksum, drops `htools` and `htoolsd` into an install dir, and
 # optionally installs the small set of optional system tools Handy Tools uses.
 #
-#   curl -fsSL https://raw.githubusercontent.com/furkandedizkan/handy-tools/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/install.sh | sh
 #
 # Knobs (env or flag):
 #   HANDY_TOOLS_VERSION=0.2.0          # pin a specific version (default: latest)
@@ -17,7 +17,7 @@
 
 set -eu
 
-REPO="furkandedizkan/handy-tools"
+REPO="FurkanEdizkan/Handy-Tools"
 PROJECT_NAME="handy-tools"
 DEFAULT_INSTALL_DIR="${HOME}/.local/bin"
 
@@ -69,7 +69,7 @@ Handy Tools installer — downloads the latest (or pinned) release from GitHub,
 verifies the checksum, drops `htools` and `htoolsd` into an install dir, and
 optionally installs the small set of optional system tools Handy Tools uses.
 
-  curl -fsSL https://raw.githubusercontent.com/furkandedizkan/handy-tools/main/install.sh | sh
+  curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/install.sh | sh
 
 Knobs (env or flag):
   HANDY_TOOLS_VERSION=0.2.0          # pin a specific version (default: latest)
@@ -142,9 +142,24 @@ esac
 # ---- resolve version -------------------------------------------------------
 if [ -z "$VERSION" ]; then
   log "looking up latest release of $REPO"
-  api="https://api.github.com/repos/${REPO}/releases/latest"
-  # parse tag_name without jq: grep + sed for the first occurrence.
-  tag=$($DL "$api" | grep -m1 '"tag_name"' | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' || true)
+  # Handy Tools ships every CI-green commit as a calver pre-release
+  # (v{YYYY}.{M}.{D}-beta.{N}). GitHub's /releases/latest endpoint
+  # deliberately skips pre-releases, so we list /releases and pick the
+  # newest non-draft entry instead (pre-releases are fine — they're
+  # the norm pre-1.0).
+  api="https://api.github.com/repos/${REPO}/releases?per_page=10"
+  # GitHub's JSON emits "tag_name" before "draft" for each release entry.
+  # Buffer the most recent tag_name and print it when the following
+  # "draft": false is seen. POSIX-compatible, no jq.
+  tag=$($DL "$api" \
+    | grep -E '"(tag_name|draft)"' \
+    | awk '
+        /"tag_name":/ { tag=$0; next }
+        /"draft":/ {
+          if ($0 ~ /false/ && tag != "") { print tag; exit }
+          tag=""
+        }' \
+    | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' || true)
   [ -n "$tag" ] || die "could not determine latest release (rate limited? set HANDY_TOOLS_VERSION explicitly)"
   VERSION="${tag#v}"
 fi
