@@ -73,11 +73,14 @@ End-to-end flow on every push to `main`:
 
 1. CI runs (lint, tests, fuzz, build).
 2. On CI success, [auto-tag.yml](.github/workflows/auto-tag.yml) fires via `workflow_run`, computes the next available `v{YYYY}.{M}.{D}-beta.{N}` (one more than the highest counter for today, or 1 if none), and pushes the tag.
-3. Tag push triggers [release.yml](.github/workflows/release.yml) → GoReleaser builds linux/darwin × amd64/arm64 archives, computes `checksums.txt`, publishes the GitHub release.
+3. auto-tag.yml then invokes [release.yml](.github/workflows/release.yml) directly via `workflow_call` (a tag-push trigger wouldn't fire downstream workflows because the tag was pushed with `GITHUB_TOKEN`) → GoReleaser builds linux/darwin × amd64/arm64 archives, computes `checksums.txt`, publishes the GitHub release.
+4. The `release: published` event triggers [verify-install.yml](.github/workflows/verify-install.yml), which runs `install.sh` against the new release on Ubuntu 22.04/24.04 and macOS 14 and asserts `htools --version` matches. This catches installer/release-format drift before users do.
 
 Release notes use GoReleaser's commit-message grouping: `feat:` → "Changes", `fix:` → "Fixes", everything else under "Other"; `docs/test/chore/ci:` commits are filtered out. The release title is "Handy Tools {version}".
 
 Don't tag manually; the workflow owns the tag/release surface. When we eventually cut `v1.0.0` we'll switch back to plain semver and drop the per-day counter.
+
+**Installer gotcha:** every calver build is marked Pre-release on GitHub (`prerelease: auto` in `.goreleaser.yaml`). GitHub's `/releases/latest` API endpoint deliberately skips prereleases, so `install.sh` lists `/releases?per_page=10` and picks the newest non-draft entry instead. Don't "simplify" the installer back to `/releases/latest` without first flipping releases to non-prerelease — and that won't be appropriate until v1.0.0.
 
 ## Compatibility matrix
 

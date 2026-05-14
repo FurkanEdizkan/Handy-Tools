@@ -57,3 +57,27 @@ will use it during review.
 - Maintainers squash-merge into `test`. The squash commit message is the PR
   title (so the title must be a valid Conventional Commit).
 - The automated `test -> main` PR will pick the change up on the next green run.
+
+## Branch protection (maintainer setup)
+
+The `test -> main` promotion automation only matters if direct pushes to `main`
+are blocked. These settings must be configured in the GitHub UI under
+**Settings → Branches → Branch protection rules** for `main` (they can't be
+checked in to the repo without admin-scoped API tokens):
+
+- [ ] **Require a pull request before merging.**
+- [ ] **Require status checks to pass before merging.** Add as required checks:
+  - `lint-go`, `lint-proto`
+  - every `test` matrix entry (`test (ubuntu-22.04)`, `test (ubuntu-24.04)`,
+    `test (macos-13)`, `test (macos-14)`, `test (macos-15)`)
+  - `build`, `build-windows`, `fuzz`
+  - `commitlint` (from the commitlint workflow)
+- [ ] **Require linear history** (matches the squash-merge convention).
+- [ ] **Restrict who can push to matching branches.** Allow only
+  `github-actions[bot]` so the `update-compatibility` job's `[skip ci]` commit
+  still lands; everyone else is PR-only.
+- [ ] **Do not** require approvals from a separate reviewer while the project
+  has a single maintainer — that would block your own promotion PRs.
+
+The same settings on `test` are optional but recommended (require PR + CI green)
+so that direct pushes can't bypass the `test -> main` chain.

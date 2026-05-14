@@ -81,9 +81,11 @@ changelog:
       order: 999
 
 release:
-  github:
-    owner: furkandedizkan
-    name: handy-tools
+  # Owner/name are auto-detected from `git remote -v` at release time.
+  # Don't hardcode them: a lowercase mismatch against the canonical
+  # FurkanEdizkan/Handy-Tools casing previously caused the publish step
+  # to 404 even though the build itself was fine.
+  #
   # `auto` marks the release as prerelease when the version contains a
   # prerelease suffix (e.g. `-beta.3`). Every calver release fits, so
   # every release ships as Pre-release on GitHub.
@@ -98,12 +100,12 @@ release:
     ## Install
 
     ```sh
-    curl -fsSL https://raw.githubusercontent.com/furkandedizkan/handy-tools/main/install.sh | sh
+    curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/install.sh | sh
     ```
 
     Or pick the archive for your OS/arch from the assets below, extract, and put `htools` and `htoolsd` on your PATH. Each release also includes a `*_source.tar.gz` and `checksums.txt`.
 
-    See [README](https://github.com/furkandedizkan/handy-tools#readme) for system dependency hints.
+    See [README](https://github.com/FurkanEdizkan/Handy-Tools#readme) for system dependency hints.
 
     ## Versioning
 

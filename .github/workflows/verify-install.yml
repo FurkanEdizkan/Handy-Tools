@@ -1,0 +1,55 @@
+name: Verify install
+
+# Smoke-tests the installer against a just-published release. Triggered
+# on `release: published`, which fires only after release.yml has
+# successfully created the GitHub Release. If install.sh can't find,
+# download, verify, or run the published binaries on a clean Linux or
+# macOS runner, this workflow goes red and notifies the maintainer
+# immediately — instead of waiting for an end user to report a broken
+# `curl … | sh`.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        required: true
+        type: string
+        description: "Existing tag to verify (e.g. v2026.5.14-beta.1)."
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    name: curl | sh on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Install from the published release
+        env:
+          # On `release: published`, github.event.release.tag_name is set.
+          # On workflow_dispatch, fall back to the input.
+          HANDY_TOOLS_VERSION: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          set -eu
+          # install.sh accepts both "v1.2.3" and "1.2.3"; strip the prefix
+          # to keep this script unambiguous.
+          VER="${HANDY_TOOLS_VERSION#v}"
+          curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh" \
+            | HANDY_TOOLS_VERSION="$VER" sh
+
+      - name: Verify binaries on PATH
+        env:
+          HANDY_TOOLS_VERSION: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          set -eu
+          export PATH="$HOME/.local/bin:$PATH"
+          htools --version
+          htoolsd --version
+          VER="${HANDY_TOOLS_VERSION#v}"
+          htools --version | grep -q "$VER" || { echo "::error::version mismatch — expected $VER in htools --version"; exit 1; }
+          htoolsd --version | grep -q "$VER" || { echo "::error::version mismatch — expected $VER in htoolsd --version"; exit 1; }
