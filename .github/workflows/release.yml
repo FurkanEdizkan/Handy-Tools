@@ -60,3 +60,14 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  verify:
+    name: Verify installer against new release
+    needs: goreleaser
+    # Releases created by GITHUB_TOKEN don't trigger `release: published`
+    # workflows (same recursion-prevention rule as tag pushes), so chain
+    # the smoke test explicitly here.
+    uses: ./.github/workflows/verify-install.yml
+    with:
+      tag: ${{ inputs.tag }}
+    secrets: inherit
