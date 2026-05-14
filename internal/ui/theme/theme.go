@@ -105,25 +105,25 @@ type Styles struct {
 
 	// Extended pieces used by the design-driven layout. These all derive
 	// from the palette but are pre-built so pages don't re-construct them.
-	Brand      lipgloss.Style // accent + bold + letterspaced wordmark
-	Sub        lipgloss.Style // dim secondary label
-	Section    lipgloss.Style // section title strip
-	IconBtn    lipgloss.Style // header button (settings cog etc.)
-	Crumb      lipgloss.Style // breadcrumb text
-	KbdChip    lipgloss.Style // small inline shortcut hint
-	Toast      lipgloss.Style // floating toast
-	BadgeOK    lipgloss.Style // green pill
-	BadgeWarn  lipgloss.Style // amber pill
-	BadgeErr   lipgloss.Style // red pill
-	BadgeRun   lipgloss.Style // accent pill
-	BadgeMute  lipgloss.Style // dim pill
-	BarTrack   lipgloss.Style // progress-bar background
-	BarFill    lipgloss.Style // progress-bar filled portion
-	Accent     lipgloss.Style // accent foreground only
-	Dim        lipgloss.Style // dim foreground only
-	OK         lipgloss.Style // success foreground only
-	Warn       lipgloss.Style // warning foreground only
-	Err        lipgloss.Style // error foreground only
+	Brand     lipgloss.Style // accent + bold + letterspaced wordmark
+	Sub       lipgloss.Style // dim secondary label
+	Section   lipgloss.Style // section title strip
+	IconBtn   lipgloss.Style // header button (settings cog etc.)
+	Crumb     lipgloss.Style // breadcrumb text
+	KbdChip   lipgloss.Style // small inline shortcut hint
+	Toast     lipgloss.Style // floating toast
+	BadgeOK   lipgloss.Style // green pill
+	BadgeWarn lipgloss.Style // amber pill
+	BadgeErr  lipgloss.Style // red pill
+	BadgeRun  lipgloss.Style // accent pill
+	BadgeMute lipgloss.Style // dim pill
+	BarTrack  lipgloss.Style // progress-bar background
+	BarFill   lipgloss.Style // progress-bar filled portion
+	Accent    lipgloss.Style // accent foreground only
+	Dim       lipgloss.Style // dim foreground only
+	OK        lipgloss.Style // success foreground only
+	Warn      lipgloss.Style // warning foreground only
+	Err       lipgloss.Style // error foreground only
 }
 
 // Build returns a Styles populated from p.

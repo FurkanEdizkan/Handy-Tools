@@ -131,7 +131,7 @@ func seedQueue() []Job {
 		{
 			ID: "q3", Label: "manual.pdf → 32 pages", Kind: "pdf",
 			Status: JobFailed, Time: "14:08",
-			Err: "pdftoppm not found · brew install poppler",
+			Err:      "pdftoppm not found · brew install poppler",
 			Expanded: true,
 			Logs: []LogLine{
 				{T: "14:08:22.004", Lvl: "INFO", Msg: "pdf.render: opening manual.pdf"},

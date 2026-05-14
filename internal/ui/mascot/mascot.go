@@ -81,10 +81,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 // face renders the four-line Wrenly face for the given eyes / mouth.
 //
-//	   /\___/\
-//	  ( L . R )
-//	   \  M  /
-//	    `---`
+//	 /\___/\
+//	( L . R )
+//	 \  M  /
+//	  `---`
 func face(leftEye, rightEye, mouth string, decor string) string {
 	row1 := "   /\\___/\\"
 	if decor != "" {

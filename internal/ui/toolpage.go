@@ -17,10 +17,10 @@ import (
 	"github.com/furkandedizkan/handy-tools/internal/ui/theme"
 )
 
-// imageFormats / archiveFormats track the cycle order used by the design's
-// fmt-select dropdowns.
+// imageFormats tracks the cycle order used by the design's image-mode
+// fmt-select dropdown. (Archive output formats use a hardcoded default
+// for now; keyboard cycling for archive format is in the project backlog.)
 var imageFormats = []string{"JPEG", "PNG", "WebP", "GIF", "BMP", "TIFF"}
-var archiveFormats = []string{"zip", "tar.gz", "tar.bz2", "zstd", "7z"}
 
 // outDest is the 3-way output destination picker.
 type outDest int
@@ -76,11 +76,11 @@ func (p pdfOp) Label() string {
 type focusKind int
 
 const (
-	focusInput focusKind = iota // dropzone (Browse / drop simulation)
-	focusFile                   // one of the file rows
-	focusOutDest                // one of the three output rows
-	focusOptions                // one of the option rows
-	focusRun                    // the Run button
+	focusInput   focusKind = iota // dropzone (Browse / drop simulation)
+	focusFile                     // one of the file rows
+	focusOutDest                  // one of the three output rows
+	focusOptions                  // one of the option rows
+	focusRun                      // the Run button
 )
 
 // toolPage is the right-column screen for a single tool.
@@ -93,9 +93,9 @@ type toolPage struct {
 	archive archiveMode
 	pdfop   pdfOp
 
-	files       []fileItem
-	defaultFmt  string // default image-mode target
-	archiveOut  string // pack-mode output format
+	files      []fileItem
+	defaultFmt string // default image-mode target
+	archiveOut string // pack-mode output format
 
 	// focus rotation: (kind, index)
 	focusKind focusKind
@@ -138,7 +138,7 @@ func newToolPage(s theme.Styles, t tool) *toolPage {
 }
 
 func (p *toolPage) SetWidth(w int) { p.width = w }
-func (p *toolPage) Tool() tool      { return p.tool }
+func (p *toolPage) Tool() tool     { return p.tool }
 
 // sampleFiles returns the design's pre-populated file rows for the current
 // mode. Real input wiring would replace this with the user's actual selection.
@@ -733,14 +733,14 @@ func (p *toolPage) renderOutDest() string {
 	}
 	rows := []string{head,
 		mk(0, p.out == outDefault,
-			lipgloss.NewStyle().Foreground(s.P.Text).Render("Default location") +
+			lipgloss.NewStyle().Foreground(s.P.Text).Render("Default location")+
 				s.Dim.Render(" — ./out"), "RECOMMENDED"),
 		mk(1, p.out == outAlongside,
-			lipgloss.NewStyle().Foreground(s.P.Text).Render("Alongside input") +
+			lipgloss.NewStyle().Foreground(s.P.Text).Render("Alongside input")+
 				s.Dim.Render(" — write next to each source file"), ""),
 		mk(2, p.out == outCustom,
-			lipgloss.NewStyle().Foreground(s.P.Text).Render("Custom path") +
-				s.Dim.Render(" — ") +
+			lipgloss.NewStyle().Foreground(s.P.Text).Render("Custom path")+
+				s.Dim.Render(" — ")+
 				lipgloss.NewStyle().Foreground(s.P.Text).
 					Border(lipgloss.NormalBorder()).BorderForeground(s.P.Border).
 					Padding(0, 1).Render(p.customPath),
@@ -865,7 +865,7 @@ func (p *toolPage) optText(idx int, label, val string) string {
 func (p *toolPage) renderRunRow() string {
 	s := p.styles
 	summary := s.Dim.Render("ready: ") +
-		lipgloss.NewStyle().Foreground(s.P.Text).Bold(true).Render(itoa(len(p.files)) + " inputs") +
+		lipgloss.NewStyle().Foreground(s.P.Text).Bold(true).Render(itoa(len(p.files))+" inputs") +
 		s.Dim.Render("  ·  ") + s.Accent.Bold(true).Render(p.summary())
 	focused := p.focusKind == focusRun
 	btn := lipgloss.NewStyle().

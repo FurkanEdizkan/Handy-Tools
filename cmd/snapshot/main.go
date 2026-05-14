@@ -43,10 +43,13 @@ func main() {
 	if err := os.MkdirAll(*outDir, 0o755); err != nil {
 		fail(err)
 	}
-	if err := os.WriteFile(filepath.Join(*outDir, "htools-home.txt"), []byte(home+"\n"), 0o644); err != nil {
+	// 0o600 keeps gosec G306 quiet. The files are checked into git so the
+	// effective on-disk mode after a fresh clone is set by the user's umask,
+	// not by this WriteFile call.
+	if err := os.WriteFile(filepath.Join(*outDir, "htools-home.txt"), []byte(home+"\n"), 0o600); err != nil {
 		fail(err)
 	}
-	if err := os.WriteFile(filepath.Join(*outDir, "htools-tool.txt"), []byte(tool+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(*outDir, "htools-tool.txt"), []byte(tool+"\n"), 0o600); err != nil {
 		fail(err)
 	}
 	fmt.Printf("wrote %s/htools-home.txt and %s/htools-tool.txt\n", *outDir, *outDir)

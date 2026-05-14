@@ -23,9 +23,9 @@ const (
 
 // LogLine is one rendered stderr entry in a job's expandable log view.
 type LogLine struct {
-	T    string // pre-formatted timestamp ("14:08:22.034")
-	Lvl  string // INFO / DEBUG / WARN / ERROR / HINT / DONE / FAIL
-	Msg  string
+	T   string // pre-formatted timestamp ("14:08:22.034")
+	Lvl string // INFO / DEBUG / WARN / ERROR / HINT / DONE / FAIL
+	Msg string
 }
 
 // Job is one row in the queue panel.
@@ -79,12 +79,13 @@ func stateBlock(s theme.Styles, st mascot.State, taskLabel string, progress int,
 		meta = s.OK.Render("complete")
 	}
 
+	gap := lipgloss.NewStyle().Width(intMax(1, width-len(stateName)-22)).Render("")
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		row("state", stateStyle.Bold(true).Render(stateName)),
 		row("current", task),
 		"",
 		bar,
-		lipgloss.JoinHorizontal(lipgloss.Top, meta, lipgloss.NewStyle().Width(intMax(1, width-len(lipgloss.NewStyle().Render(strings.ToLower(string(stateName))))-12)).Render(""), pct),
+		lipgloss.JoinHorizontal(lipgloss.Top, meta, gap, pct),
 	)
 
 	card := s.Card
@@ -235,7 +236,7 @@ func renderJobLogs(s theme.Styles, j Job, width int) string {
 	)
 	body := []string{title}
 	for _, l := range j.Logs {
-		body = append(body, renderLogLine(s, l, width))
+		body = append(body, renderLogLine(s, l))
 	}
 	if j.Status == JobRunning {
 		body = append(body, s.Dim.Render("[…] …   streaming…"))
@@ -249,7 +250,7 @@ func renderJobLogs(s theme.Styles, j Job, width int) string {
 	return box
 }
 
-func renderLogLine(s theme.Styles, l LogLine, width int) string {
+func renderLogLine(s theme.Styles, l LogLine) string {
 	lvlStyle := s.Dim
 	msgStyle := lipgloss.NewStyle().Foreground(s.P.Text)
 	switch l.Lvl {
@@ -284,31 +285,4 @@ func intMax(a, b int) int {
 		return a
 	}
 	return b
-}
-
-// stateName returns a human-readable label for a mascot.State.
-//
-// Mascot exports StatusLabel for the badge but the state block wants the
-// lowercase variant ("idle", "working", …).
-func init() {
-	// no-op
-}
-
-// Add a small helper on mascot.State via a method. Because we can't add
-// methods to types outside this module, we provide a string mapper here.
-var stateStrings = map[mascot.State]string{
-	mascot.StateIdle:     "idle",
-	mascot.StateThinking: "thinking",
-	mascot.StateWorking:  "working",
-	mascot.StateSuccess:  "done",
-	mascot.StateError:    "error",
-}
-
-// String makes mascot.State printable via stateStrings.
-// We can't add it to mascot.State directly, so this helper lives here.
-func stringForState(st mascot.State) string {
-	if v, ok := stateStrings[st]; ok {
-		return v
-	}
-	return "idle"
 }
