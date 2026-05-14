@@ -97,3 +97,7 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       tag: ${{ needs.tag.outputs.tag }}
+    # Pass GITHUB_TOKEN (and any future repo secrets) through to the
+    # reusable release workflow. Without this, the called workflow only
+    # sees its declared inputs.
+    secrets: inherit
