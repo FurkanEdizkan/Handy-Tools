@@ -43,6 +43,9 @@ will use it during review.
 - [ ] README updated if user-facing behavior or system deps changed.
 - [ ] `htools doctor` output reflects any new optional system tool.
 - [ ] If a new tool was added, `docs/ARCHITECTURE.md` mentions it.
+- [ ] If the TUI layout, keymap, home menu, or tool detail page changed,
+      re-run `go run ./cmd/snapshot` and commit the updated
+      `docs/screenshots/htools-*.txt` previews referenced from the README.
 
 ## CI
 

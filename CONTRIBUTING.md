@@ -109,9 +109,31 @@ BREAKING CHANGE: clients must update field name.
 1. Add the proto in `api/proto/v1/<tool>.proto`. Run `make proto`.
 2. Implement `internal/tools/<tool>/` with a clean Go API mirroring the proto.
 3. Wire it into `internal/server/` as a thin adapter.
-4. Add a TUI view under `internal/ui/<tool>/` that calls the same package.
+4. Wire it into the TUI: append the new entry to `defaultTools` in
+   [internal/ui/home.go](internal/ui/home.go) (id, glyph, label, desc, mode),
+   add a per-tool speech bubble line in `speechFor`, and extend
+   [internal/ui/toolpage.go](internal/ui/toolpage.go) to handle the new mode
+   (sample files, options block, summary line). The tool page is the only
+   UI file you need to touch — the queue, state block, and mascot all
+   already pick up the new tool automatically.
 5. Document required system binaries (if any) in the README table and in
    `htools doctor`.
+6. Re-generate the README's TUI previews with `go run ./cmd/snapshot` if
+   the home menu changed.
+
+## TUI layout, at a glance
+
+The TUI is a two-pane layout (see [internal/ui/router.go](internal/ui/router.go)):
+
+- **Left column (fixed)**: mascot card → state block (current task + progress)
+  → queue panel with expandable per-job stderr logs.
+- **Right column**: either the **Home** tool menu or a **Tool detail page**
+  (input dropzone, file list with per-file format override, output
+  destination radio, options grid, run button).
+
+Tool logic stays in `internal/tools/<x>/`. The router just translates
+keystrokes into messages (`OpenTool`, `GoHome`, `RunJob`) and lets each page
+re-render — there is no tool logic in `internal/ui/`.
 
 ## Reporting bugs / requesting features
 

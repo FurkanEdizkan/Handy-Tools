@@ -4,10 +4,9 @@
 
 ```text
    /\___/\
-  ( o   o )
-   ( v )--[o]
-  /~~~~~~~\
-   \_____/
+  ( o . o )
+   \  v  /
+    `---`
 ```
 
 **A friendly terminal toolbox for everyday file work**
@@ -47,16 +46,16 @@ TUI and the server. The architecture is on one page in
 
 ### What it can do today
 
-| Domain       | What you get                                                        | Pure Go?               |
-| ------------ | ------------------------------------------------------------------- | ---------------------- |
-| **Images**   | Convert PNG / JPEG / GIF / BMP / TIFF / WebP (decode-only).         | Yes                    |
-| **Images**   | HEIC / HEIF decoding.                                               | Needs `magick`         |
-| **Archives** | Extract & inspect zip, tar, gz, bz2, zst.                           | Yes                    |
-| **Archives** | RAR (incl. multi-part `.partN.rar`) and 7z (incl. `.7z.001` parts). | Needs `unrar` / `7z`   |
-| **PDF**      | Merge, split, metadata.                                             | Yes                    |
-| **PDF**      | Render pages to images, extract text.                               | Needs Poppler          |
-| **TUI**      | Home / Files / Settings pages, orange-black theme, mascot animation.| —                      |
-| **gRPC**     | Streaming progress, allow-rooted path sandbox, reflection enabled.  | —                      |
+| Domain       | What you get                                                                               | Pure Go?             |
+| ------------ | ------------------------------------------------------------------------------------------ | -------------------- |
+| **Images**   | Convert PNG / JPEG / GIF / BMP / TIFF / WebP (decode-only).                                | Yes                  |
+| **Images**   | HEIC / HEIF decoding.                                                                      | Needs `magick`       |
+| **Archives** | Extract & inspect zip, tar, gz, bz2, zst.                                                  | Yes                  |
+| **Archives** | RAR (incl. multi-part `.partN.rar`) and 7z (incl. `.7z.001` parts).                        | Needs `unrar` / `7z` |
+| **PDF**      | Merge, split, metadata.                                                                    | Yes                  |
+| **PDF**      | Render pages to images, extract text.                                                      | Needs Poppler        |
+| **TUI**      | Home menu + per-tool detail page, live queue with expandable logs, three themes, mascot.   | —                    |
+| **gRPC**     | Streaming progress, allow-rooted path sandbox, reflection enabled.                         | —                    |
 
 ### What's coming
 
@@ -123,7 +122,15 @@ on every push to `main` from CI artifacts.
 ## Quick tour
 
 ```sh
-# TUI: tab cycles Home / Files / Settings
+# TUI:
+#   ↑↓ or j/k     move through the tool menu  (or focus rows on the tool page)
+#   enter         open the highlighted tool
+#   esc           back to home
+#   tab           cycle themes (forge / snow / ember)
+#   ,             toggle the settings popover
+#   1-5           jump to a tool by number
+#   r             run the configured tool (on the tool page)
+#   q             quit
 htools
 
 # Doctor: which optional tools are present, and what each one unlocks
@@ -140,6 +147,94 @@ grpcurl -plaintext localhost:7777 list
 grpcurl -plaintext localhost:7777 \
   handytools.v1.ArchiveService/Inspect \
   <<<'{"source":{"path":"/srv/uploads/foo.7z.001"}}'
+```
+
+### What it looks like
+
+Two-pane terminal layout: a fixed left column with the **Wrenly** mascot, a
+state block (current task + progress), and a live queue panel; a right column
+that swaps between the home menu and a per-tool detail page. Full plain-text
+snapshots live under [`docs/screenshots/`](docs/screenshots/) — here is the
+home view abridged:
+
+```text
+  ⚙ settings    ◤ HANDY TOOLS / htools › Home                                                                       v0.1.0 ●
+
+╭─────────────────────────────────╮    Welcome to Handy Tools — a friendly toolbox for everyday file work.
+│ wrenly · IDLE                   │    Pick a tool to set up an input, output and options.  ↑↓  /  ENTER
+│                                 │
+│    /\___/\                      │    AVAILABLE TOOLS  ────────────────────────────────────────────  1 / 5
+│   ( o . o )                     │
+│    \  v  /                      │    ╭──────────────────────────────────────────────────────────────────╮
+│     `---`                       │    │ ▸ ◇  Convert images — PNG · JPEG · WebP · GIF · BMP · TIFF    ↵ │
+│                                 │    ╰──────────────────────────────────────────────────────────────────╯
+│ Hi! I'm Wrenly.                 │       ▢  Pack into archive — zip · tar.gz · tar.bz2 · zstd · 7z
+│ Throw any image at me — I'll    │       ◰  Extract archive — zip · 7z · rar · tar · gz · bz2 · zst
+│ re-encode it.                   │       ◫  PDF utilities — merge · split · pages → image · text
+╰─────────────────────────────────╯       ◊  Doctor — check optional system tools
+
+╭───────────────────────────────────╮
+│ STATE  idle                       │
+│ CURRENT  — no active task —       │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░  0%     │
+╰───────────────────────────────────╯
+
+╭───────────────────────────────────╮
+│ QUEUE  0 run · 1 done · 1 fail    │
+│   ✓ invoice-2026-04.png  DONE     │
+│   ✕ manual.pdf → 32 pgs  FAIL  ▾  │
+│     STDERR · q3  10 lines         │
+│     [14:08] ERROR  MISSING_BINARY │
+│     [14:08] HINT   brew install   │
+│            poppler  # macOS       │
+│   • photos.zip          WAIT      │
+│   • big-batch (24 PNGs) WAIT      │
+╰───────────────────────────────────╯
+```
+
+And the per-tool detail page (Convert images), with the **WebP** override on
+row 3 visibly diverging from the JPEG default and the run summary on the
+bottom reflecting the mixed targets:
+
+```text
+  ⚙ settings    ◤ HANDY TOOLS / htools › Convert images                                                              v0.1.0 ●
+
+  ← back    Convert images
+            Reencode between PNG · JPEG · WebP · GIF · BMP · TIFF
+
+  INPUT  ────────────────────────────────────  accepts PNG · JPEG · WebP · GIF · BMP · TIFF · HEIC
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │                       Drop files or a folder here                         │
+  │                    ▸ Browse files     ▸ Browse folder                    │
+  │                       — or —  press  b  to browse                        │
+  ╰──────────────────────────────────────────────────────────────────────────╯
+
+  FILES (4)  ────────────────────────  default → JPEG   (f) cycle row · (F) apply to all
+    ▪ screenshot-2026-05-14.png                          PNG → [ JPEG ▾ ]   2.1 MB
+    ▪ logo-mark.png                                      PNG → [ JPEG ▾ ]   184 KB
+    ▪ export@2x.png                                      PNG → [ WebP ▾ ]   5.4 MB
+    ▪ cover-shot.jpg                                    JPEG → [ JPEG ▾ ]   1.8 MB
+
+  OUTPUT DESTINATION  ─────────────────────────────────────────────────────────────────
+    (●)  Default location — ./out                                  RECOMMENDED
+    ( )  Alongside input — write next to each source file
+    ( )  Custom path — [ /Users/me/converted ]
+
+  OPTIONS  ──────────────────────────────────────────────────────────────
+    JPEG/WebP quality    ▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱  90
+    Overwrite existing    [ ]
+    Preserve mtime        [●]
+    Recurse subfolders    [●]
+
+  ready: 4 inputs  ·  3 → JPEG · 1 → WebP        [   ▸ RUN   ]   press  r  or  ENTER
+```
+
+Re-generate the full-width previews after any TUI change with:
+
+```sh
+go run ./cmd/snapshot                 # writes docs/screenshots/htools-*.txt
+go run ./cmd/snapshot -stdout         # print to stdout instead
+go run ./cmd/snapshot -width 200      # render at a different terminal width
 ```
 
 `htoolsd` refuses to start without `--allow-roots` (or `server.allow_roots`

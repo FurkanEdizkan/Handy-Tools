@@ -11,6 +11,8 @@ Handy Tools is a single Go module that produces two binaries from one core:
 
 Both depend on `internal/tools/<feature>/` (image, archive, pdf), which is the **only** layer allowed to touch files, run external binaries, or know about formats. `internal/ui/` and `internal/server/` are thin adapters — never put tool logic in either. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+A third entry point, `cmd/snapshot`, is a developer-only helper that renders the TUI views into `docs/screenshots/htools-*.txt` so the README previews stay in sync. It is **excluded** from release builds (not listed under `builds:` in `.goreleaser.yaml`). Re-run `go run ./cmd/snapshot` after any UI-shaping change.
+
 ## Common commands
 
 ```sh
@@ -87,7 +89,24 @@ If you add a new OS to the test matrix, also update the runner-list section in [
 
 ## Branding
 
-Display brand is **Handy Tools**. Binary names are `htools` and `htoolsd`. The proto package is `handytools.v1`. The companion mascot is **Wrenly** — a red panda holding a wrench, rendered in ASCII for the TUI and via ANSI in the installer banner. The default theme `forge` is orange-and-black; `snow` (cyan) and `ember` (warm orange) remain as alternative palettes for users who prefer them.
+Display brand is **Handy Tools**. Binary names are `htools` and `htoolsd`. The proto package is `handytools.v1`. The companion mascot is **Wrenly** — a small red panda rendered as a face-only ASCII silhouette (`/\___/\` ears, `( o . o )` eyes, `\  v  /` mouth, `` `---` `` chin). Different per-state frames (idle blink, thinking `?`, working, success sparkles, error `x x`) cover the animation hooks — the wrench-bearing body was retired on 2026-05-14 in favor of the cleaner face after design iteration. The default theme `forge` is orange-and-black; `snow` (cyan) and `ember` (warm orange) remain as alternative palettes.
+
+## TUI layout
+
+The TUI is a two-pane layout owned by [internal/ui/router.go](internal/ui/router.go):
+
+- **Left column (fixed)**: `mascot.Model` → state block (current task + progress) → queue panel with expandable per-job stderr logs.
+- **Right column**: either the **Home** menu (tool catalog in [internal/ui/home.go](internal/ui/home.go)) or a **Tool detail page** ([internal/ui/toolpage.go](internal/ui/toolpage.go)) with input dropzone, file list with per-file format override, output destination radio, options grid, and a run button.
+
+Pages don't reach into each other — every navigation/state change is a `tea.Msg` (`OpenTool`, `GoHome`, `RunJob`, `MascotMsg`). The router holds the shared state (mascot, queue, progress, toast) and re-renders the active page.
+
+Adding a tool to the TUI means: append to `defaultTools` in `home.go`, add a `speechFor` case, and extend `toolpage.go` to handle the new `toolMode`. The queue, state block, and mascot already work for every tool — no changes there.
+
+When you change the TUI in any visible way, regenerate the README previews:
+
+```sh
+go run ./cmd/snapshot
+```
 
 ## Branching & PR workflow
 

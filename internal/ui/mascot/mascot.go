@@ -2,10 +2,11 @@
 // component-shaped struct (Update + View) so any page can embed one and
 // flip its state via Set(state).
 //
-// The character is Wrenly: a small red panda with facial stripes and a
-// wrench, intentionally drawn in plain ASCII so it renders consistently on
-// every terminal and is trivial to translate into a flat-vector hero image
-// for web/Chrome-extension surfaces later.
+// The character is Wrenly: a small red panda rendered in pure ASCII as a
+// stylized face only — ears, eyes, nose, mouth, chin. Per-state frames give
+// idle/thinking/working/success/error a distinct expression so the animation
+// hook is already in place. Pure ASCII keeps every column locked in any
+// monospace terminal and stays trivial to lift onto other surfaces.
 package mascot
 
 import (
@@ -34,6 +35,7 @@ type Model struct {
 	state    State
 	frame    int
 	greeting string
+	speech   string
 	styles   theme.Styles
 	width    int
 }
@@ -46,8 +48,14 @@ func New(s theme.Styles) Model {
 // Set switches the mascot to the given state.
 func (m *Model) Set(s State) { m.state = s; m.frame = 0 }
 
-// Say replaces the greeting text.
+// State reports the current animation state.
+func (m Model) State() State { return m.state }
+
+// Say replaces the greeting text shown under the face.
 func (m *Model) Say(text string) { m.greeting = text }
+
+// Whisper replaces the secondary speech line (lower-contrast).
+func (m *Model) Whisper(text string) { m.speech = text }
 
 // SetStyles updates the palette (e.g. after the user changes themes).
 func (m *Model) SetStyles(s theme.Styles) { m.styles = s }
@@ -71,40 +79,113 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	return m, nil
 }
 
+// face renders the four-line Wrenly face for the given eyes / mouth.
+//
+//	   /\___/\
+//	  ( L . R )
+//	   \  M  /
+//	    `---`
+func face(leftEye, rightEye, mouth string, decor string) string {
+	row1 := "   /\\___/\\"
+	if decor != "" {
+		row1 += "   " + decor
+	}
+	return strings.Join([]string{
+		row1,
+		"  ( " + leftEye + " . " + rightEye + " )",
+		"   \\  " + mouth + "  /",
+		"    `---`",
+	}, "\n")
+}
+
 // art returns the multi-line ASCII for the current state and animation frame.
+// Animation cycles a small set of frames per state.
 func (m Model) art() string {
 	switch m.state {
 	case StateThinking:
-		return wrenlyWithEyes("?")
+		// alternate winks with a hovering '?'
+		switch m.frame % 2 {
+		case 0:
+			return face("o", "-", "~", "?")
+		default:
+			return face("-", "o", "~", "?")
+		}
 	case StateWorking:
-		dots := strings.Repeat(".", (m.frame%3)+1)
-		return wrenlyWithEyes("o") + "\n  working" + dots
+		// alternate "focused" and "happy-effort" frames
+		if m.frame%2 == 0 {
+			return face("o", "o", "o", "")
+		}
+		return face("^", "^", "o", "")
 	case StateSuccess:
-		return wrenlyWithEyes("^")
+		// sparkles dance left/right around the head
+		switch m.frame % 3 {
+		case 0:
+			return face("^", "^", "w", "*")
+		case 1:
+			return face("^", "^", "w", "")
+		default:
+			return face("^", "^", "w", "*")
+		}
 	case StateError:
-		return wrenlyWithEyes("x")
+		return face("x", "x", "_", "")
 	}
-	return wrenlyWithEyes("o")
+	// idle: subtle blink / look-around cycle
+	switch m.frame % 4 {
+	case 0:
+		return face("o", "o", "v", "")
+	case 1:
+		return face("-", "-", "v", "")
+	case 2:
+		return face("o", "O", "v", "")
+	default:
+		return face("O", "o", "v", "")
+	}
 }
 
-// wrenlyWithEyes returns a small red-panda figure holding a wrench. eye is the
-// character drawn in the eye slots so we can switch expression without
-// redrawing the whole figure. Pure ASCII so the same art works in every
-// terminal and can be lifted into other surfaces verbatim.
-func wrenlyWithEyes(eye string) string {
-	return "" +
-		"   /\\___/\\\n" +
-		"  ( " + eye + "   " + eye + " )\n" +
-		"   ( v )--[o]\n" +
-		"  /~~~~~~~\\\n" +
-		"   \\_____/\n"
+// String returns the lowercase name of a State ("idle", "thinking", …).
+func (s State) String() string {
+	switch s {
+	case StateThinking:
+		return "thinking"
+	case StateWorking:
+		return "working"
+	case StateSuccess:
+		return "done"
+	case StateError:
+		return "error"
+	}
+	return "idle"
 }
 
-// View renders the mascot inside a card.
+// StatusLabel returns a short uppercase tag for the current state — used by
+// the surrounding TUI to render a "wrenly · WORKING" badge.
+func (m Model) StatusLabel() string {
+	switch m.state {
+	case StateThinking:
+		return "THINKING"
+	case StateWorking:
+		return "WORKING"
+	case StateSuccess:
+		return "DONE"
+	case StateError:
+		return "ERROR"
+	}
+	return "IDLE"
+}
+
+// View renders the mascot inside a card with the badge + face + greeting.
 func (m Model) View() string {
-	body := m.styles.MascotFur.Render(m.art())
-	caption := lipgloss.NewStyle().Foreground(m.styles.P.TextDim).Render(m.greeting)
-	content := lipgloss.JoinVertical(lipgloss.Left, body, caption)
+	furStyle := m.styles.MascotFur.Bold(true)
+	badge := lipgloss.NewStyle().Foreground(m.styles.P.TextDim).Render("wrenly · ") +
+		lipgloss.NewStyle().Foreground(m.styles.P.Accent).Bold(true).Render(m.StatusLabel())
+	body := furStyle.Render(m.art())
+	greet := lipgloss.NewStyle().Foreground(m.styles.P.Text).Bold(true).Render(m.greeting)
+
+	parts := []string{badge, "", body, "", greet}
+	if m.speech != "" {
+		parts = append(parts, lipgloss.NewStyle().Foreground(m.styles.P.TextDim).Render(m.speech))
+	}
+	content := lipgloss.JoinVertical(lipgloss.Left, parts...)
 	if m.width > 0 {
 		return m.styles.Card.Width(m.width).Render(content)
 	}

@@ -54,10 +54,10 @@ banner() {
   [ "$USE_COLOR" = "1" ] || { printf 'Handy Tools installer\n\n'; return; }
   cat <<EOF
 
-$(orange '   ___')$(amber '       __')
-$(orange '  (o o)')$(dim '   /')$(amber '  \\')$(dim '___')   $(bold "$(orange 'Handy Tools')")  $(dim 'one-line installer')
-$(orange '  (\")(\")')$(dim ' /  ')$(amber 'wrench')   $(dim "$REPO")
-$(orange '   ---')$(dim '   \\______/')
+$(orange '   /\___/\')      $(bold "$(orange 'Handy Tools')")  $(dim 'one-line installer')
+$(orange '  ( ')$(amber 'o')$(orange ' . ')$(amber 'o')$(orange ' )')    $(dim "$REPO")
+$(orange '   \  ')$(amber 'v')$(orange '  /')
+$(orange "    '---'")
 
 EOF
 }

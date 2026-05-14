@@ -36,9 +36,29 @@ binaries, or knows anything about formats.
 
 ### `internal/ui`
 
-Bubble Tea models. The router stacks pages: Home, FileBrowser, ToolView,
-Settings. The mascot is a reusable component with idle / working / success /
-error / thinking states; each page can `mascot.Set(state)` via a `tea.Cmd`.
+Bubble Tea models, arranged as a two-pane layout:
+
+```text
++--------------------+----------------------------------+
+| mascot (Wrenly)    |                                  |
++--------------------+   home menu  OR  tool page       |
+| state + progress   |   (input · files · output ·      |
++--------------------+    options · run)                |
+| queue (jobs+logs)  |                                  |
++--------------------+----------------------------------+
+```
+
+- **Left column (fixed)**: `mascot.Model` (idle / thinking / working /
+  success / error states), the state block (current task + progress bar),
+  and the queue panel with expandable per-job stderr-style logs.
+- **Right column**: the **Home** tool catalog or a **Tool detail page**
+  (`toolpage.go`) with mode-specific UI for image conversion, archive
+  pack/extract, PDF utilities, and `htools doctor`.
+
+The router (`router.go`) owns the shared state (mascot, queue, progress,
+toast) and dispatches cross-page messages (`OpenTool`, `GoHome`, `RunJob`,
+`MascotMsg`). Pages don't reach into each other directly — every nav or
+state change is a `tea.Msg`.
 
 ### `internal/server`
 

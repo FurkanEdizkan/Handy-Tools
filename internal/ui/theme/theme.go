@@ -102,6 +102,28 @@ type Styles struct {
 	Error      lipgloss.Style
 	MascotFur  lipgloss.Style
 	MascotEye  lipgloss.Style
+
+	// Extended pieces used by the design-driven layout. These all derive
+	// from the palette but are pre-built so pages don't re-construct them.
+	Brand      lipgloss.Style // accent + bold + letterspaced wordmark
+	Sub        lipgloss.Style // dim secondary label
+	Section    lipgloss.Style // section title strip
+	IconBtn    lipgloss.Style // header button (settings cog etc.)
+	Crumb      lipgloss.Style // breadcrumb text
+	KbdChip    lipgloss.Style // small inline shortcut hint
+	Toast      lipgloss.Style // floating toast
+	BadgeOK    lipgloss.Style // green pill
+	BadgeWarn  lipgloss.Style // amber pill
+	BadgeErr   lipgloss.Style // red pill
+	BadgeRun   lipgloss.Style // accent pill
+	BadgeMute  lipgloss.Style // dim pill
+	BarTrack   lipgloss.Style // progress-bar background
+	BarFill    lipgloss.Style // progress-bar filled portion
+	Accent     lipgloss.Style // accent foreground only
+	Dim        lipgloss.Style // dim foreground only
+	OK         lipgloss.Style // success foreground only
+	Warn       lipgloss.Style // warning foreground only
+	Err        lipgloss.Style // error foreground only
 }
 
 // Build returns a Styles populated from p.
@@ -113,6 +135,7 @@ func Build(p Palette) Styles {
 		Background(p.Surface).
 		Foreground(p.Text).
 		Padding(0, 1)
+	pill := lipgloss.NewStyle().Padding(0, 1).Bold(true)
 	return Styles{
 		P:          p,
 		App:        base,
@@ -125,5 +148,25 @@ func Build(p Palette) Styles {
 		Error:      lipgloss.NewStyle().Foreground(p.Error).Bold(true),
 		MascotFur:  lipgloss.NewStyle().Foreground(p.MascotFur),
 		MascotEye:  lipgloss.NewStyle().Foreground(p.MascotEye),
+
+		Brand:     lipgloss.NewStyle().Foreground(p.Accent).Bold(true),
+		Sub:       lipgloss.NewStyle().Foreground(p.TextDim),
+		Section:   lipgloss.NewStyle().Foreground(p.TextDim).Bold(true),
+		IconBtn:   lipgloss.NewStyle().Foreground(p.TextDim).Background(p.Surface).Padding(0, 1).Border(lipgloss.NormalBorder(), false).BorderForeground(p.Border),
+		Crumb:     lipgloss.NewStyle().Foreground(p.TextDim),
+		KbdChip:   lipgloss.NewStyle().Foreground(p.Accent).Bold(true).Padding(0, 1),
+		Toast:     lipgloss.NewStyle().Foreground(p.Text).Background(p.Surface).Padding(0, 1).Border(lipgloss.RoundedBorder()).BorderForeground(p.Accent),
+		BadgeOK:   pill.Foreground(p.Success),
+		BadgeWarn: pill.Foreground(p.Warning),
+		BadgeErr:  pill.Foreground(p.Error),
+		BadgeRun:  pill.Foreground(p.Accent),
+		BadgeMute: pill.Foreground(p.TextDim),
+		BarTrack:  lipgloss.NewStyle().Foreground(p.Border),
+		BarFill:   lipgloss.NewStyle().Foreground(p.Accent),
+		Accent:    lipgloss.NewStyle().Foreground(p.Accent),
+		Dim:       lipgloss.NewStyle().Foreground(p.TextDim),
+		OK:        lipgloss.NewStyle().Foreground(p.Success),
+		Warn:      lipgloss.NewStyle().Foreground(p.Warning),
+		Err:       lipgloss.NewStyle().Foreground(p.Error),
 	}
 }

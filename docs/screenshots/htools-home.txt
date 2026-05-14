@@ -1,0 +1,77 @@
+  ⚙ settings    ◤ HANDY TOOLS / htools › Home                                                                                       v0.1.0 ●
+                                                                                                                                            
+╭─────────────────────────────────╮    Welcome to Handy Tools — a friendly toolbox for everyday file work.                                  
+│ wrenly · IDLE                   │    Pick a tool to set up an input, output and options.  ↑↓  /  ENTER                                    
+│                                 │                                                                                                         
+│    /\___/\                      │    AVAILABLE TOOLS  ───────────────────────────────────────────────────────────────────  1 / 5          
+│   ( o . o )                     │                                                                                                         
+│    \  v  /                      │    ╭─────────────────────────────────────────────────────────────────────────────────────────────────╮  
+│     `---`                       │    │ ▸ ◇  Convert images — PNG · JPEG · WebP · GIF · BMP · TIFF                                    ↵ │  
+│                                 │    ╰─────────────────────────────────────────────────────────────────────────────────────────────────╯  
+│ Hi! I'm Wrenly.                 │    ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐  
+│ Throw any image at me — I'll    │    │   ▢  Pack into archive — zip · tar.gz · tar.bz2 · zstd · 7z                                     │  
+│ re-encode it.                   │    └─────────────────────────────────────────────────────────────────────────────────────────────────┘  
+╰─────────────────────────────────╯    ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐  
+╭───────────────────────────────────╮  │   ◰  Extract archive — zip · 7z · rar · tar · gz · bz2 · zst                                    │  
+│ STATE  idle                       │  └─────────────────────────────────────────────────────────────────────────────────────────────────┘  
+│ CURRENT  — no active task —       │  ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐  
+│                                   │  │   ◫  PDF utilities — merge · split · pages → image · text                                       │  
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     │  └─────────────────────────────────────────────────────────────────────────────────────────────────┘  
+│ waiting for input                 │  ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐  
+│ 0%                                │  │   ◊  Doctor — check optional system tools                                                       │  
+╰───────────────────────────────────╯  └─────────────────────────────────────────────────────────────────────────────────────────────────┘  
+╭───────────────────────────────────╮                                                                                                       
+│ QUEUE  0 run · 1 done · 1 failed  │                                                                                                       
+│ · 2 queued                        │                                                                                                       
+│                                   │                                                                                                       
+│   ✓ invoice-   14:02  DONE  ▸     │                                                                                                       
+│   2026-                           │                                                                                                       
+│   04.png →                        │                                                                                                       
+│   JPEG ·                          │                                                                                                       
+│   image                           │                                                                                                       
+│   ✕ manual.pdf 14:08  FAIL  ▾     │                                                                                                       
+│   → 32 pages                      │                                                                                                       
+│   · pdf                           │                                                                                                       
+│ ───────────────────────────────── │                                                                                                       
+│ ───────────────────────────────── │                                                                                                       
+│ ───────────────────────────       │                                                                                                       
+│  STDERR · q3  10 lines            │                                                                                                       
+│  [14:08:22.004] INFO  pdf.render: │                                                                                                       
+│ opening manual.pdf                │                                                                                                       
+│  [14:08:22.018] DEBUG             │                                                                                                       
+│ pdf.inspect: 32 pages · 8.4 MB ·  │                                                                                                       
+│ PDF 1.7                           │                                                                                                       
+│  [14:08:22.020] INFO  render      │                                                                                                       
+│ plan: 32 pages → PNG @ 150 dpi →  │                                                                                                       
+│ ./out/manual/                     │                                                                                                       
+│  [14:08:22.022] DEBUG             │                                                                                                       
+│ sysdep.find: looking for          │                                                                                                       
+│ "pdftoppm" on $PATH               │                                                                                                       
+│  [14:08:22.031] WARN              │                                                                                                       
+│ sysdep.find: tried                │                                                                                                       
+│ /usr/local/bin, /usr/bin,         │                                                                                                       
+│ /opt/homebrew/bin                 │                                                                                                       
+│  [14:08:22.032] ERROR             │                                                                                                       
+│ sysdep.MISSING_BINARY: pdftoppm   │                                                                                                       
+│ not present                       │                                                                                                       
+│  [14:08:22.033] ERROR             │                                                                                                       
+│ tools/pdf.render: cannot render   │                                                                                                       
+│ without pdftoppm (code            │                                                                                                       
+│ MISSING_BINARY)                   │                                                                                                       
+│  [14:08:22.034] HINT  brew        │                                                                                                       
+│ install poppler  # macOS          │                                                                                                       
+│  [14:08:22.034] HINT  apt install │                                                                                                       
+│ poppler-utils  # Debian / Ubuntu  │                                                                                                       
+│  [14:08:22.035] FAIL  job aborted │                                                                                                       
+│ after 318 ms · 0 pages rendered   │                                                                                                       
+│   • photos.zip —  WAIT            │                                                                                                       
+│   →                               │                                                                                                       
+│   ./photos/                       │                                                                                                       
+│   · archive                       │                                                                                                       
+│   • big-batch  —  WAIT            │                                                                                                       
+│   (24 PNGs)                       │                                                                                                       
+│   → WebP ·                        │                                                                                                       
+│   image                           │                                                                                                       
+╰───────────────────────────────────╯                                                                                                       
+                                                                                                                                            
+ ↑↓  move    ↵  open    1-5  jump    tab  theme    ,  settings    q  quit                                            idle · htoolsd offline 

@@ -1,0 +1,77 @@
+  ⚙ settings    ◤ HANDY TOOLS / htools › Convert images                                                                             v0.1.0 ●
+                                                                                                                                            
+╭─────────────────────────────────╮      ← back    Convert images                                                                           
+│ wrenly · THINKING               │                Reencode between PNG · JPEG · WebP · GIF · BMP · TIFF                                    
+│                                 │                                                                                                         
+│    /\___/\   ?                  │    INPUT  ───────────────────────────────────────────────────────────────  accepts PNG · JPEG · WebP ·  
+│   ( o . - )                     │    GIF · BMP · TIFF · HEIC                                                                              
+│    \  ~  /                      │    ╭───────────────────────────────────────────────────────────────────────────────────────────────╮    
+│     `---`                       │    │                                                                                               │    
+│                                 │    │                                  Drop files or a folder here                                  │    
+│ Hi! I'm Wrenly.                 │    │                                                                                               │    
+│ Drop in your files and pick an  │    │                              ▸ Browse files     ▸ Browse folder                               │    
+│ output format.                  │    │                                     — or —  press  b  to browse                               │    
+╰─────────────────────────────────╯    │                                                                                               │    
+╭───────────────────────────────────╮  ╰───────────────────────────────────────────────────────────────────────────────────────────────╯    
+│ STATE  thinking                   │                                                                                                       
+│ CURRENT  — no active task —       │  FILES (4)  ───────────────────────────────────────────────────  default → JPEG   (f) cycle row ·     
+│                                   │  (F) apply to all                                                                                     
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     │    ▪ screenshot-2026-05-14.png                                        PNG → ┌────────┐                
+│ waiting for input                 │        │ JPEG ▾ │                                                                                     
+│ 0%                                │        └────────┘  2.1 MB                                                                             
+╰───────────────────────────────────╯    ▪ logo-mark.png                                                    PNG → ┌────────┐                
+╭───────────────────────────────────╮        │ JPEG ▾ │                                                                                     
+│ QUEUE  0 run · 1 done · 1 failed  │        └────────┘  184 KB                                                                             
+│ · 2 queued                        │    ▪ export@2x.png                                                    PNG → ┌────────┐                
+│                                   │        │ WebP ▾ │                                                                                     
+│   ✓ invoice-   14:02  DONE  ▸     │        └────────┘  5.4 MB                                                                             
+│   2026-                           │    ▪ cover-shot.jpg                                                  JPEG → ┌────────┐                
+│   04.png →                        │         │ JPEG ▾ │                                                                                    
+│   JPEG ·                          │         └────────┘  1.8 MB                                                                            
+│   image                           │                                                                                                       
+│   ✕ manual.pdf 14:08  FAIL  ▾     │  OUTPUT DESTINATION  ─────────────────────────────────────────────────────────────────────────        
+│   → 32 pages                      │    (●)  Default location — ./out  RECOMMENDED                                                         
+│   · pdf                           │    ( )  Alongside input — write next to each source file                                              
+│ ───────────────────────────────── │    ( )  Custom path — ┌─────────────────────┐                                                         
+│ ───────────────────────────────── │       │ /Users/me/converted │                                                                         
+│ ───────────────────────────       │       └─────────────────────┘                                                                         
+│  STDERR · q3  10 lines            │                                                                                                       
+│  [14:08:22.004] INFO  pdf.render: │  OPTIONS  ───────────────────────────────────────────────────────────────────────────────────         
+│ opening manual.pdf                │    JPEG/WebP quality    ▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱  90                                                          
+│  [14:08:22.018] DEBUG             │    Overwrite existing    [ ]                                                                          
+│ pdf.inspect: 32 pages · 8.4 MB ·  │    Preserve mtime    [●]                                                                              
+│ PDF 1.7                           │    Recurse subfolders    [●]                                                                          
+│  [14:08:22.020] INFO  render      │                                                                                                       
+│ plan: 32 pages → PNG @ 150 dpi →  │  ready: 4 inputs  ·  3 → JPEG · 1 → WebP    ┌───────────┐  press  r  or  ENTER                        
+│ ./out/manual/                     │                                             │   ▸ RUN   │                                             
+│  [14:08:22.022] DEBUG             │                                             └───────────┘                                             
+│ sysdep.find: looking for          │                                                                                                       
+│ "pdftoppm" on $PATH               │                                                                                                       
+│  [14:08:22.031] WARN              │                                                                                                       
+│ sysdep.find: tried                │                                                                                                       
+│ /usr/local/bin, /usr/bin,         │                                                                                                       
+│ /opt/homebrew/bin                 │                                                                                                       
+│  [14:08:22.032] ERROR             │                                                                                                       
+│ sysdep.MISSING_BINARY: pdftoppm   │                                                                                                       
+│ not present                       │                                                                                                       
+│  [14:08:22.033] ERROR             │                                                                                                       
+│ tools/pdf.render: cannot render   │                                                                                                       
+│ without pdftoppm (code            │                                                                                                       
+│ MISSING_BINARY)                   │                                                                                                       
+│  [14:08:22.034] HINT  brew        │                                                                                                       
+│ install poppler  # macOS          │                                                                                                       
+│  [14:08:22.034] HINT  apt install │                                                                                                       
+│ poppler-utils  # Debian / Ubuntu  │                                                                                                       
+│  [14:08:22.035] FAIL  job aborted │                                                                                                       
+│ after 318 ms · 0 pages rendered   │                                                                                                       
+│   • photos.zip —  WAIT            │                                                                                                       
+│   →                               │                                                                                                       
+│   ./photos/                       │                                                                                                       
+│   · archive                       │                                                                                                       
+│   • big-batch  —  WAIT            │                                                                                                       
+│   (24 PNGs)                       │                                                                                                       
+│   → WebP ·                        │                                                                                                       
+│   image                           │                                                                                                       
+╰───────────────────────────────────╯                                                                                                       
+                                                                                                                                            
+ esc  back    ↑↓  focus    space  toggle    r  run    tab  theme    ,  settings    q  quit                           idle · htoolsd offline 
