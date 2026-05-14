@@ -297,25 +297,38 @@ diverge.
 
 ## Releasing
 
-The project version lives in
-[`internal/buildinfo/version.txt`](internal/buildinfo/version.txt) — one line,
-plain semver, no `v` prefix. To cut a release:
+Releases are **automatic**: every CI-green commit on `main` gets a
+calver pre-release tag and a published GitHub release. There is no
+manual version bump.
 
-1. Open a PR against `test` that bumps `version.txt` (e.g. `0.1.0` → `0.2.0`).
-2. CI on `test` validates the value (semver check lives in
-   `internal/buildinfo/buildinfo_test.go`).
-3. The promotion PR carries the bump into `main`.
-4. CI runs on `main`. When it goes green,
-   [`.github/workflows/auto-tag.yml`](.github/workflows/auto-tag.yml) fires
-   via `workflow_run`, reads `version.txt`, and pushes a `vX.Y.Z` tag if
-   one doesn't already exist.
-5. The tag push triggers
-   [`.github/workflows/release.yml`](.github/workflows/release.yml), which
-   runs GoReleaser.
+The tag scheme is `v{YYYY}.{M}.{D}-beta.{N}` where `N` is one more
+than the highest `-beta` counter already published for that UTC date.
+For example, the third release on 2026-05-14 becomes
+`v2026.5.14-beta.3` and ships as a GitHub **Pre-release**.
 
-Auto-tag is idempotent: if `vX.Y.Z` already exists, the workflow logs
-"already published" and exits cleanly — so a no-op CI run on the same
-version is harmless. To cut another release, bump `version.txt`.
+End-to-end flow:
+
+1. Push a commit to `main`.
+2. CI runs (lint, tests, fuzz, build).
+3. On CI success,
+   [`.github/workflows/auto-tag.yml`](.github/workflows/auto-tag.yml)
+   fires via `workflow_run`, computes the next calver tag, and pushes
+   it.
+4. The tag push triggers
+   [`.github/workflows/release.yml`](.github/workflows/release.yml),
+   which runs GoReleaser. Release notes are grouped into **Changes**
+   (`feat:`) and **Fixes** (`fix:`) sections; `docs/test/chore/ci:`
+   commits are filtered out.
+
+`internal/buildinfo/version.txt` (`0.0.0-dev`) is a placeholder for
+local development only. `go run ./cmd/htools --version` shows it; the
+release binaries have the real calver version baked in via
+`-ldflags -X buildinfo.Version=…` at release time.
+
+When we eventually cut a `v1.0.0` we'll switch the scheme back to
+semver and drop the per-day beta counter; until then the calver +
+pre-release model keeps the cadence honest about the project's
+pre-alpha status.
 
 ## Contributing
 

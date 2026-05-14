@@ -65,11 +65,19 @@ The asset name template (`handy-tools_${VERSION}_${OS}_${ARCH}.tar.gz`) must sta
 
 ## Versioning & releases
 
-Version lives in [internal/buildinfo/version.txt](internal/buildinfo/version.txt) — one line, plain semver, no `v` prefix. The buildinfo package embeds it via `//go:embed` so `htools --version` and `htoolsd --version` always reflect what's checked in. Release builds override `buildinfo.Version` (and `Commit`, `Date`) via `-ldflags "-X"`; see [.goreleaser.yaml](.goreleaser.yaml).
+Handy Tools uses **calver pre-releases** while pre-1.0: every CI-green commit on `main` gets tagged `v{YYYY}.{M}.{D}-beta.{N}` (UTC date, unpadded month/day, per-day counter) and published as a GitHub pre-release. There is no manual version bump.
 
-Release flow: bump `version.txt` in a PR to `test` → promote to `main` → CI runs → on green, [auto-tag.yml](.github/workflows/auto-tag.yml) fires via `workflow_run` and pushes a `vX.Y.Z` tag → tag triggers [release.yml](.github/workflows/release.yml). Auto-tag is **idempotent**: if `vX.Y.Z` already exists on origin, the workflow logs "already published" and exits 0 — so re-running CI on the same version is a no-op rather than a loud failure. Don't tag manually; let the workflow do it.
+`internal/buildinfo/version.txt` (`0.0.0-dev`) is a placeholder used by local builds only — `go run ./cmd/htools --version` shows it. Release binaries get the real calver version baked in via `-ldflags -X buildinfo.Version=…` from [.goreleaser.yaml](.goreleaser.yaml), so the user-visible version on a real install always matches the tag. `TestEmbeddedVersionIsSemver` in `internal/buildinfo/buildinfo_test.go` validates that `version.txt` parses as semver — `0.0.0-dev` is valid, so the gate stays green.
 
-`TestEmbeddedVersionIsSemver` in `internal/buildinfo/buildinfo_test.go` is the canonical semver gate — if the file is malformed, `make test` fails before anything is tagged.
+End-to-end flow on every push to `main`:
+
+1. CI runs (lint, tests, fuzz, build).
+2. On CI success, [auto-tag.yml](.github/workflows/auto-tag.yml) fires via `workflow_run`, computes the next available `v{YYYY}.{M}.{D}-beta.{N}` (one more than the highest counter for today, or 1 if none), and pushes the tag.
+3. Tag push triggers [release.yml](.github/workflows/release.yml) → GoReleaser builds linux/darwin × amd64/arm64 archives, computes `checksums.txt`, publishes the GitHub release.
+
+Release notes use GoReleaser's commit-message grouping: `feat:` → "Changes", `fix:` → "Fixes", everything else under "Other"; `docs/test/chore/ci:` commits are filtered out. The release title is "Handy Tools {version}".
+
+Don't tag manually; the workflow owns the tag/release surface. When we eventually cut `v1.0.0` we'll switch back to plain semver and drop the per-day counter.
 
 ## Compatibility matrix
 

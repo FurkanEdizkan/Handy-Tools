@@ -58,7 +58,11 @@ snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
 changelog:
-  use: github
+  # Parse commit messages between the previous tag and this one. With the
+  # calver tagging scheme each push to main becomes its own release, so a
+  # release typically contains a single commit — but multi-commit pushes
+  # are still grouped correctly under Changes / Fixes / Other.
+  use: git
   sort: asc
   filters:
     exclude:
@@ -67,10 +71,10 @@ changelog:
       - "^chore"
       - "^ci"
   groups:
-    - title: Features
+    - title: Changes
       regexp: "^.*feat(\\(.+\\))?!?:"
       order: 0
-    - title: Bug fixes
+    - title: Fixes
       regexp: "^.*fix(\\(.+\\))?!?:"
       order: 1
     - title: Other
@@ -80,9 +84,16 @@ release:
   github:
     owner: furkandedizkan
     name: handy-tools
+  # `auto` marks the release as prerelease when the version contains a
+  # prerelease suffix (e.g. `-beta.3`). Every calver release fits, so
+  # every release ships as Pre-release on GitHub.
   prerelease: auto
   draft: false
-  name_template: "v{{ .Version }}"
+  # Friendly release title matching the calver style:
+  #   "Handy Tools 2026.5.14-beta.1"
+  name_template: "Handy Tools {{ .Version }}"
+  header: |
+    Calver pre-release built from `{{ .ShortCommit }}` on `{{ .Date }}`.
   footer: |
     ## Install
 
@@ -93,3 +104,7 @@ release:
     Or pick the archive for your OS/arch from the assets below, extract, and put `htools` and `htoolsd` on your PATH. Each release also includes a `*_source.tar.gz` and `checksums.txt`.
 
     See [README](https://github.com/furkandedizkan/handy-tools#readme) for system dependency hints.
+
+    ## Versioning
+
+    Handy Tools tags every CI-green commit on `main` as `v{YYYY}.{M}.{D}-beta.{N}` (UTC date + per-day counter). The scheme is intentionally pre-release while the project is pre-1.0; once we cut a `v1.0.0`, releases will switch back to semver.

@@ -1,9 +1,13 @@
-name: Auto-tag on version bump
+name: Auto-tag CI-green commit on main
 
-# Fires only after CI on main has completed. This avoids the
-# self-wait deadlock we hit with lewagon/wait-on-check-action@v1.3.4 —
-# its `running-workflow-name` filter didn't exclude this job's own
-# check from the wait set, so the action polled itself forever.
+# Fires after CI on main has completed successfully. Every green CI run
+# gets a calver pre-release tag v{YYYY}.{M}.{D}-beta.{N}, where N is one
+# more than the highest beta counter already published for today (UTC).
+#
+# Previous design lived on `push` and used a wait-on-check action to
+# block until CI finished — that deadlocked because the action polled
+# its own check forever. `workflow_run` is the right primitive: it only
+# fires once CI is done, so no wait step is needed.
 on:
   workflow_run:
     workflows: ["CI"]
@@ -20,57 +24,55 @@ concurrency:
 
 jobs:
   tag:
-    name: Tag if version.txt bumped
+    name: Compute and push calver tag
     runs-on: ubuntu-latest
-    # Only proceed when CI succeeded. Manual workflow_dispatch runs
-    # always proceed (no upstream conclusion to check).
+    # Only proceed when CI succeeded. workflow_dispatch always proceeds
+    # (no upstream conclusion to gate on).
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # For workflow_run, the default checkout points at the default
-          # branch's HEAD, which can drift past the commit that triggered
-          # CI. Pin to the triggering commit so version.txt + the tag
-          # describe the same SHA.
+          # Pin to the commit that triggered CI so the tag describes
+          # exactly the SHA that went green, even if main has moved on.
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - name: Read version
+      - name: Compute next calver tag
         id: ver
         shell: bash
         run: |
-          v=$(tr -d '[:space:]' < internal/buildinfo/version.txt)
-          echo "version=$v" >> "$GITHUB_OUTPUT"
-          echo "tag=v$v" >> "$GITHUB_OUTPUT"
+          # UTC date keeps cadence deterministic across runners and
+          # contributors in different timezones. %-m / %-d are GNU date
+          # extensions (no zero padding) so 2026-05-09 → 2026.5.9.
+          today=$(date -u +'%Y.%-m.%-d')
 
-      - name: Validate semver
-        shell: bash
-        run: |
-          v='${{ steps.ver.outputs.version }}'
-          if ! [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?(\+[A-Za-z0-9.-]+)?$ ]]; then
-            echo "::error file=internal/buildinfo/version.txt::not a semver string: '$v'"
+          # Refresh tags from origin and find the highest beta counter
+          # for today's date, if any.
+          git fetch --tags --force origin >/dev/null 2>&1 || true
+          existing=$(git tag --list "v${today}-beta.*" \
+            | sed -E "s|^v[0-9]+\.[0-9]+\.[0-9]+-beta\.([0-9]+)\$|\1|" \
+            | sort -n | tail -1)
+
+          if [ -z "$existing" ]; then
+            n=1
+          else
+            n=$((existing + 1))
+          fi
+          tag="v${today}-beta.${n}"
+
+          # Belt-and-suspenders: re-check origin in case a parallel run
+          # raced us. The concurrency block above should prevent this,
+          # but workflow_dispatch + workflow_run can interleave.
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::tag $tag already exists on origin (race with another run?)" >&2
             exit 1
           fi
 
-      - name: Does the tag for this version already exist?
-        id: exists
-        shell: bash
-        run: |
-          tag='${{ steps.ver.outputs.tag }}'
-          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Skip — tag already published
-        if: steps.exists.outputs.exists == 'true'
-        run: |
-          echo "Tag ${{ steps.ver.outputs.tag }} already exists; nothing to do."
-          echo "Bump internal/buildinfo/version.txt to cut a new release."
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${today}-beta.${n}" >> "$GITHUB_OUTPUT"
+          echo "Computed tag: $tag"
 
       - name: Create and push tag
-        if: steps.exists.outputs.exists == 'false'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

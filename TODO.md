@@ -97,11 +97,17 @@ stepper. Below is the prioritized path from "good demo" → "real product."
       sees `curl: (22) The requested URL returned error: 404` and an
       "ambiguous rate-limited?" hint. Distinguish 404 (no release / bad
       slug) from 403 (rate limited) and print which one happened.
-- [x] ~~Ship a first release.~~ — done in `v0.2.0` (first cut of the
-      new TUI). Future releases: bump
-      [`internal/buildinfo/version.txt`](internal/buildinfo/version.txt)
-      on a PR, let CI go green on `main`, auto-tag (workflow_run) does
-      the rest.
+- [x] ~~Ship a first release.~~ — done in `v0.2.0`. Subsequent releases
+      now ship automatically on every CI-green commit to `main` as
+      `v{YYYY}.{M}.{D}-beta.{N}` pre-releases (see
+      [auto-tag.yml](.github/workflows/auto-tag.yml)); no manual bump
+      needed.
+- [ ] **Cut the first stable `v1.0.0`** when the TUI is wired to real
+      tool calls (see "Replace the run simulator" at the top of this
+      file). Switching to `v1.0.0` is the signal to drop calver and
+      return to plain semver — update
+      [`auto-tag.yml`](.github/workflows/auto-tag.yml) and the
+      `name_template` in [`.goreleaser.yaml`](.goreleaser.yaml).
 - [ ] **Test the installer mascot under `NO_COLOR=1`.** The new face
       mascot in [`install.sh`](install.sh#L53) was only verified in
       color mode. Make sure the no-color branch (line 54) still prints
