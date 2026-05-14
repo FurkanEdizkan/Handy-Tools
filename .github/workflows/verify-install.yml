@@ -1,13 +1,22 @@
 name: Verify install
 
-# Smoke-tests the installer against a just-published release. Triggered
-# on `release: published`, which fires only after release.yml has
-# successfully created the GitHub Release. If install.sh can't find,
-# download, verify, or run the published binaries on a clean Linux or
-# macOS runner, this workflow goes red and notifies the maintainer
-# immediately — instead of waiting for an end user to report a broken
-# `curl … | sh`.
+# Smoke-tests the installer against a just-published release. Invoked
+# from release.yml via `workflow_call` immediately after GoReleaser
+# publishes (releases created by GITHUB_TOKEN don't trigger downstream
+# `release: published` workflows, so we chain explicitly the same way
+# auto-tag → release is chained).
+#
+# Also exposes workflow_dispatch for ad-hoc re-runs against an existing
+# tag, and keeps the `release: published` trigger as a safety net for
+# releases published manually through the GitHub UI (which DO trigger
+# downstream workflows because they aren't authored by GITHUB_TOKEN).
 on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+        description: "Tag of the release to verify (e.g. v2026.5.14-beta.3)."
   release:
     types: [published]
   workflow_dispatch:
