@@ -1,7 +1,21 @@
 name: Promote test -> main
 
+# Fires after CI on `test` has completed successfully and opens (or
+# refreshes) a PR from `test` into `main`. The maintainer reviews and
+# merges manually.
+#
+# Why workflow_run instead of `push: [test]` + a wait step:
+# the previous implementation used `lewagon/wait-on-check-action` to
+# block until CI on the same SHA was green. That action filters out the
+# "running workflow" by *workflow name*, but the GitHub check-runs API
+# surfaces the run as its *job name* ("Open / update promotion PR"), so
+# the action ended up waiting for itself and deadlocked indefinitely.
+# Hooking into `workflow_run` removes the need to wait at all — by the
+# time this fires, CI's conclusion is already known.
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [test]
   workflow_dispatch:
 
@@ -9,23 +23,24 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: promote-to-main
+  cancel-in-progress: false
+
 jobs:
   open-or-update-pr:
     name: Open / update promotion PR
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.head_commit }}
+    # Only proceed when CI on test succeeded. workflow_dispatch is
+    # unconditional (manual override for re-running after a fix).
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Wait for CI on test
-        uses: lewagon/wait-on-check-action@v1.3.4
-        with:
-          ref: ${{ github.sha }}
-          running-workflow-name: 'Promote test -> main'
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 20
+          # Check out the exact SHA whose CI just went green. workflow_run
+          # otherwise runs in the context of the default branch.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Ensure test is ahead of main
         id: ahead
@@ -66,6 +81,7 @@ jobs:
         if: steps.ahead.outputs.ahead != '0' && steps.existing.outputs.number != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           gh pr comment "${{ steps.existing.outputs.number }}" \
-            --body "Refreshed: \`test\` is now ${{ steps.ahead.outputs.ahead }} commits ahead of \`main\` (sha: ${{ github.sha }})."
+            --body "Refreshed: \`test\` is now ${{ steps.ahead.outputs.ahead }} commits ahead of \`main\` (sha: ${HEAD_SHA})."
