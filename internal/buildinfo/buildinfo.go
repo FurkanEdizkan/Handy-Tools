@@ -18,14 +18,26 @@ var embeddedVersion string
 
 // Version is the semver of this build, without a leading "v".
 // Overridable via -ldflags "-X github.com/furkandedizkan/handy-tools/internal/buildinfo.Version=..."
-var Version = strings.TrimSpace(embeddedVersion)
+//
+// Must be a plain string variable (no initializer expression) — the linker's
+// -X flag silently no-ops on variables with non-trivial initializers like
+// strings.TrimSpace(...). The embedded fallback is applied in init() below.
+var Version string
 
 // Commit is the short git commit hash this build was produced from.
 // Empty in plain `go build`; populated in release builds.
-var Commit = ""
+var Commit string
 
 // Date is the build timestamp in RFC3339. Empty in plain `go build`.
-var Date = ""
+var Date string
+
+func init() {
+	// Apply the embedded fallback only when -ldflags didn't already set
+	// Version. In release builds GoReleaser supplies the real calver.
+	if Version == "" {
+		Version = strings.TrimSpace(embeddedVersion)
+	}
+}
 
 // String returns a one-line human-readable build identifier.
 func String() string {
