@@ -127,7 +127,7 @@ func queueView(s theme.Styles, jobs []Job, width int, focused int) string {
 	for i, j := range jobs {
 		rows = append(rows, renderJobRow(s, j, width-4, i == focused))
 		if j.Expanded && len(j.Logs) > 0 {
-			rows = append(rows, renderJobLogs(s, j, width-4))
+			rows = append(rows, renderJobLogs(s, j))
 		}
 		if j.Err != "" && !j.Expanded {
 			rows = append(rows, s.Err.Render("  × "+j.Err))
@@ -225,10 +225,7 @@ func miniBar(s theme.Styles, pct, width int) string {
 		s.BarTrack.Render(strings.Repeat("▱", width-fill))
 }
 
-func renderJobLogs(s theme.Styles, j Job, width int) string {
-	if width < 30 {
-		width = 30
-	}
+func renderJobLogs(s theme.Styles, j Job) string {
 	title := lipgloss.JoinHorizontal(lipgloss.Top,
 		s.Accent.Bold(true).Render("STDERR · "+j.ID),
 		"  ",
