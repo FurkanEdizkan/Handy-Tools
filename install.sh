@@ -55,7 +55,7 @@ banner() {
   cat <<EOF
 
 $(orange '   /\___/\')      $(bold "$(orange 'Handy Tools')")  $(dim 'one-line installer')
-$(orange '  ( ')$(amber 'o')$(orange ' . ')$(amber 'o')$(orange ' )')    $(dim "$REPO")
+$(orange '  ( ')$(amber 'o')$(orange '.')$(amber 'o')$(orange '.')$(amber 'o')$(orange ' )')    $(dim "$REPO")
 $(orange '   \  ')$(amber 'v')$(orange '  /')
 $(orange "    '---'")
 
