@@ -4,9 +4,9 @@
 
 ```text
    /\___/\
-  ( o . o )
-   \  v  /
-    `---`
+  ( ●·•·● )
+   \  ◡  /
+    '---'
 ```
 
 **A friendly terminal toolbox for everyday file work**
@@ -24,7 +24,8 @@
 
 Handy Tools is a small toolbox for the file work you do every day — converting
 images, extracting odd archive formats, slicing PDFs apart — without leaving
-the terminal. Two binaries, one core, one mascot named **Wrenly**.
+the terminal. Two binaries, one core, one mascot named **Wrenly**
+([vector mark](docs/brand/wrenly.svg)).
 
 - **`htools`** — an interactive TUI (built with [Bubble Tea]) that lets you
   pick files, choose an action, confirm, and watch progress live.

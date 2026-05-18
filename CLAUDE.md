@@ -100,7 +100,7 @@ If you add a new OS to the test matrix, also update the runner-list section in [
 
 ## Branding
 
-Display brand is **Handy Tools**. Binary names are `htools` and `htoolsd`. The proto package is `handytools.v1`. The companion mascot is **Wrenly** — a small red panda rendered as a face-only ASCII silhouette (`/\___/\` ears, `( o . o )` eyes, `\  v  /` mouth, `` `---` `` chin). Different per-state frames (idle blink, thinking `?`, working, success sparkles, error `x x`) cover the animation hooks — the wrench-bearing body was retired on 2026-05-14 in favor of the cleaner face after design iteration. The default theme `forge` is orange-and-black; `snow` (cyan) and `ember` (warm orange) remain as alternative palettes.
+Display brand is **Handy Tools**. Binary names are `htools` and `htoolsd`. The proto package is `handytools.v1`. The companion mascot is **Wrenly** — an orange panda. The TUI renders Wrenly (or **Hopper**, the lilac rabbit alternate) as a 15×14 dot-grid sprite in [internal/ui/mascot/mascot.go](internal/ui/mascot/mascot.go); per-state expressions (idle / thinking / watching / stressed / tired / happy / worried) tint the fur and swap the eye glyph + a one-row overlay (thought dots, sparkles, sweat, huff marks). For surfaces that can't render the full sprite, the brand mark falls back to a 4-line ASCII portrait (`/\___/\` ears, `( ●·•·● )` eye-stripe-nose row, `\  ◡  /` mouth, `'---'` chin) — used in the [README.md](README.md) hero and the [install.sh](install.sh) banner. The vector form lives at [docs/brand/wrenly.svg](docs/brand/wrenly.svg) (rasterize to PNG for web/Chrome surfaces). The default theme `forge` is orange-and-black; `snow` (cyan) and `ember` (warm orange) remain as alternative palettes.
 
 ## TUI layout
 
