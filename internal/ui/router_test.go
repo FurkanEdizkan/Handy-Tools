@@ -24,7 +24,8 @@ func TestViewRendersHomeAndToolPages(t *testing.T) {
 	mustContain(t, out, "AVAILABLE TOOLS")
 	mustContain(t, out, "Convert images")
 	mustContain(t, out, "QUEUE")
-	mustContain(t, out, "wrenly")
+	mustContain(t, out, "STATE")  // state block label
+	mustContain(t, out, "wrenly") // mascot character chip
 
 	// Open the image tool. The right column should swap to the tool page,
 	// the breadcrumb should follow, and the run row + summary should render.
