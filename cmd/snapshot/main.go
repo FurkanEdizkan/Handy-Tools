@@ -19,6 +19,7 @@ import (
 
 	"github.com/furkandedizkan/handy-tools/internal/config"
 	"github.com/furkandedizkan/handy-tools/internal/ui"
+	"github.com/furkandedizkan/handy-tools/internal/ui/mascot"
 )
 
 func main() {
@@ -26,10 +27,13 @@ func main() {
 	width := flag.Int("width", 160, "terminal width to render at")
 	height := flag.Int("height", 56, "terminal height to render at")
 	outDir := flag.String("dir", "docs/screenshots", "output directory (relative to repo root)")
+	brandDir := flag.String("brand-dir", "docs/brand", "output directory for plain-text brand art")
 	flag.Parse()
 
 	home := renderView(*width, *height, nil)
 	tool := renderView(*width, *height, ui.OpenTool{ID: "convert-image"})
+	wrenly := mascot.Sprite(mascot.CharacterWrenly)
+	hopper := mascot.Sprite(mascot.CharacterHopper)
 
 	if *toStdout {
 		fmt.Println("== home ==")
@@ -37,10 +41,19 @@ func main() {
 		fmt.Println()
 		fmt.Println("== tool · convert images ==")
 		fmt.Println(tool)
+		fmt.Println()
+		fmt.Println("== brand · wrenly ==")
+		fmt.Println(wrenly)
+		fmt.Println()
+		fmt.Println("== brand · hopper ==")
+		fmt.Println(hopper)
 		return
 	}
 
 	if err := os.MkdirAll(*outDir, 0o755); err != nil {
+		fail(err)
+	}
+	if err := os.MkdirAll(*brandDir, 0o755); err != nil {
 		fail(err)
 	}
 	// 0o600 keeps gosec G306 quiet. The files are checked into git so the
@@ -52,7 +65,13 @@ func main() {
 	if err := os.WriteFile(filepath.Join(*outDir, "htools-tool.txt"), []byte(tool+"\n"), 0o600); err != nil {
 		fail(err)
 	}
-	fmt.Printf("wrote %s/htools-home.txt and %s/htools-tool.txt\n", *outDir, *outDir)
+	if err := os.WriteFile(filepath.Join(*brandDir, "wrenly.txt"), []byte(wrenly+"\n"), 0o600); err != nil {
+		fail(err)
+	}
+	if err := os.WriteFile(filepath.Join(*brandDir, "hopper.txt"), []byte(hopper+"\n"), 0o600); err != nil {
+		fail(err)
+	}
+	fmt.Printf("wrote %s/htools-{home,tool}.txt and %s/{wrenly,hopper}.txt\n", *outDir, *brandDir)
 }
 
 // renderView builds the model, dispatches an optional initial message, and
