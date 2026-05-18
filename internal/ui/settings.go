@@ -47,6 +47,11 @@ func newSettingsPage(s theme.Styles, cfg *config.Config) Page {
 			cycle: func(c *config.Config) { c.Mascot.Enabled = !c.Mascot.Enabled },
 		},
 		{
+			label: "Mascot character",
+			get:   func(c *config.Config) string { return mascotCharacterName(c.Mascot.Style) },
+			cycle: func(c *config.Config) { c.Mascot.Style = cycleMascotCharacter(c.Mascot.Style) },
+		},
+		{
 			label: "Auto-extract multi-part",
 			get:   func(c *config.Config) string { return boolWord(c.Archive.AutoExtractMultiPart) },
 			cycle: func(c *config.Config) { c.Archive.AutoExtractMultiPart = !c.Archive.AutoExtractMultiPart },
@@ -130,4 +135,22 @@ func boolWord(b bool) string {
 		return "on"
 	}
 	return "off"
+}
+
+// mascotCharacterName renders the on-disk cfg.Mascot.Style as a user-facing
+// character name. Legacy "classic" maps to "wrenly".
+func mascotCharacterName(style string) string {
+	if style == "hopper" {
+		return "hopper"
+	}
+	return "wrenly"
+}
+
+// cycleMascotCharacter advances wrenly → hopper → wrenly. The cfg field is
+// stored as a string so non-canonical values just round back to wrenly.
+func cycleMascotCharacter(style string) string {
+	if style == "hopper" {
+		return "wrenly"
+	}
+	return "hopper"
 }

@@ -49,11 +49,13 @@ func stateBlock(s theme.Styles, st mascot.State, taskLabel string, progress int,
 	switch st {
 	case mascot.StateThinking:
 		stateStyle = s.Warn
-	case mascot.StateWorking:
+	case mascot.StateWatching, mascot.StateStressed:
 		stateStyle = s.Accent
-	case mascot.StateSuccess:
+	case mascot.StateTired:
+		stateStyle = s.Dim
+	case mascot.StateHappy:
 		stateStyle = s.OK
-	case mascot.StateError:
+	case mascot.StateWorried:
 		stateStyle = s.Err
 	}
 
