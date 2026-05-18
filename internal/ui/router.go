@@ -106,11 +106,27 @@ func New(cfg config.Config) Model {
 		current: PageHome,
 		queue:   seedQueue(),
 	}
+	m.mascot.SetCharacter(characterFromConfig(cfg.Mascot.Style))
 	m.pages[PageHome] = newHomePage(styles)
 	m.pages[PageSettings] = newSettingsPage(styles, &m.cfg)
-	m.mascot.Say("Hi! I'm Wrenly.")
+	m.mascot.Say("Welcome to Handy Tools.")
 	m.mascot.Whisper(speechFor("convert-image"))
+	// Honor the worried-baseline rule from the design: if the seeded queue
+	// already has a failed job, surface that concern on first paint.
+	m.applyIdleMood()
 	return m
+}
+
+// characterFromConfig maps the on-disk cfg.Mascot.Style string onto the
+// mascot's character key. The legacy default value "classic" is treated as
+// Wrenly so existing configs keep working.
+func characterFromConfig(style string) string {
+	switch style {
+	case mascot.CharacterHopper:
+		return mascot.CharacterHopper
+	default:
+		return mascot.CharacterWrenly
+	}
 }
 
 // seedQueue mirrors the JSX INITIAL_QUEUE so the queue panel reads as
@@ -215,12 +231,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.current == PageTool && !m.running {
 				m.current = PageHome
 				m.tool = nil
-				m.mascot.Set(mascot.StateIdle)
-				m.mascot.Whisper("Pick a tool to get started.")
+				m.applyIdleMood()
 				return m, nil
 			}
 			if m.current == PageSettings {
 				m.current = PageHome
+				m.syncMascotCharacter()
 				return m, nil
 			}
 		}
@@ -240,13 +256,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tool.SetWidth(m.width - left - 6)
 		m.current = PageTool
 		m.mascot.Set(mascot.StateThinking)
-		m.mascot.Whisper("Drop in your files and pick an output format.")
+		m.mascot.Whisper(speechForState(mascot.StateThinking, t.id, t.label, 0))
 		return m, nil
 	case GoHome:
 		m.current = PageHome
 		m.tool = nil
-		m.mascot.Set(mascot.StateIdle)
-		m.mascot.Whisper("Pick a tool to get started.")
+		m.applyIdleMood()
 		return m, nil
 	case RunJob:
 		return m, m.startRun(msg)
@@ -281,6 +296,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updated, c := page.Update(msg)
 		m.pages[m.current] = updated
 		pc = c
+		// Settings page mutates shared cfg; re-read the mascot character so
+		// the user sees Wrenly ↔ Hopper flip live.
+		if m.current == PageSettings {
+			m.syncMascotCharacter()
+		}
 	}
 	return m, tea.Batch(mc, pc)
 }
@@ -311,7 +331,7 @@ func (m *Model) startRun(j RunJob) tea.Cmd {
 	m.currentTask = fmt.Sprintf("%s · 0/%d", j.Tool.label, len(j.Files))
 	m.progress = 0
 	m.mascot.Set(mascot.StateThinking)
-	m.mascot.Whisper("Working on " + j.Tool.label + "…")
+	m.mascot.Whisper(speechForState(mascot.StateThinking, j.Tool.id, j.Tool.label, 0))
 	return tea.Tick(450*time.Millisecond, func(time.Time) tea.Msg {
 		return runStepMsg{jobID: id}
 	})
@@ -373,22 +393,71 @@ func (m Model) stepRun(jobID string) (tea.Model, tea.Cmd) {
 		m.running = false
 		m.currentTask = ""
 		m.progress = 100
-		m.mascot.Set(mascot.StateSuccess)
+		m.mascot.Set(mascot.StateHappy)
+		m.mascot.Whisper(speechForState(mascot.StateHappy, m.activeToolID(), "", 100))
 		m.showToast(fmt.Sprintf("done · %d files processed", files))
+		// After basking in success briefly, drop back to the appropriate
+		// idle mood (worried if a failed job still sits on the queue).
+		nextState, nextSpeech := m.idleMood()
 		return m, tea.Tick(1800*time.Millisecond, func(time.Time) tea.Msg {
-			return MascotMsg{State: mascot.StateIdle, Speech: speechFor(m.activeToolID())}
+			return MascotMsg{State: nextState, Speech: nextSpeech}
 		})
 	}
 
 	m.queue[idx] = job
 	m.progress = job.Progress
-	m.currentTask = fmt.Sprintf("%s · %d/%d", m.tool.tool.label, done, files)
-	if job.Progress > 30 {
-		m.mascot.Set(mascot.StateWorking)
+	toolLabel := ""
+	if m.tool != nil {
+		toolLabel = m.tool.tool.label
+	}
+	m.currentTask = fmt.Sprintf("%s · %d/%d", toolLabel, done, files)
+	// Load-based mood transition from the design's app.jsx:
+	//   <38%  : watching   (calm observer)
+	//   38-78%: stressed   (lots in flight)
+	//   78-100: tired      (long-haul, almost there)
+	var moodNow mascot.State
+	switch {
+	case job.Progress < 38:
+		moodNow = mascot.StateWatching
+	case job.Progress < 78:
+		moodNow = mascot.StateStressed
+	default:
+		moodNow = mascot.StateTired
+	}
+	if m.mascot.State() != moodNow {
+		m.mascot.Set(moodNow)
+		m.mascot.Whisper(speechForState(moodNow, m.activeToolID(), toolLabel, job.Progress))
 	}
 	return m, tea.Tick(450*time.Millisecond, func(time.Time) tea.Msg {
 		return runStepMsg{jobID: jobID}
 	})
+}
+
+// idleMood picks the resting mascot state when no job is active. If any
+// failed job still sits on the queue, the mascot drops into worried instead
+// of idle — the design's "carry that concern until the user clears or
+// retries it" rule.
+func (m Model) idleMood() (mascot.State, string) {
+	for _, j := range m.queue {
+		if j.Status == JobFailed {
+			return mascot.StateWorried, speechForState(mascot.StateWorried, m.activeToolID(), "", 0)
+		}
+	}
+	return mascot.StateIdle, speechFor(m.activeToolID())
+}
+
+// applyIdleMood writes the resting mood + speech onto the mascot now. Used
+// when navigating home, escaping a tool page, or finishing a run.
+func (m *Model) applyIdleMood() {
+	state, speech := m.idleMood()
+	m.mascot.Set(state)
+	m.mascot.Whisper(speech)
+}
+
+// syncMascotCharacter re-reads cfg.Mascot.Style and updates the mascot
+// character if the user changed it in the Settings page.
+func (m *Model) syncMascotCharacter() {
+	m.mascot.SetCharacter(characterFromConfig(m.cfg.Mascot.Style))
 }
 
 func (m Model) activeToolID() string {

@@ -1,11 +1,13 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/furkandedizkan/handy-tools/internal/ui/mascot"
 	"github.com/furkandedizkan/handy-tools/internal/ui/theme"
 )
 
@@ -36,6 +38,35 @@ var defaultTools = []tool{
 	{id: "archive-extract", glyph: "◰", label: "Extract archive", desc: "zip · 7z · rar · tar · gz · bz2 · zst", mode: modeExtractArchive},
 	{id: "pdf", glyph: "◫", label: "PDF utilities", desc: "merge · split · pages → image · text", mode: modePDF},
 	{id: "doctor", glyph: "◊", label: "Doctor", desc: "check optional system tools", mode: modeDoctor},
+}
+
+// speechForState returns the per-state speech bubble line under the mascot
+// greeting, mirroring the speech switch from the design's app.jsx. When the
+// state is neutral (idle), the line falls back to the per-tool copy from
+// speechFor. The `progress` arg is only consulted for the watching state; it
+// can be any value otherwise.
+func speechForState(state mascot.State, toolID string, toolLabel string, progress int) string {
+	switch state {
+	case mascot.StateThinking:
+		if toolID != "" {
+			return "Pulling up the inputs and options…"
+		}
+		return "Hmm, thinking…"
+	case mascot.StateWatching:
+		if toolLabel != "" {
+			return fmt.Sprintf("Watching %s — %d%% done.", strings.ToLower(toolLabel), progress)
+		}
+		return "Watching the queue."
+	case mascot.StateStressed:
+		return "Lots in flight — holding it together."
+	case mascot.StateTired:
+		return "Ugh, these last ones are dragging — almost done."
+	case mascot.StateHappy:
+		return "All done. Files are in './out'."
+	case mascot.StateWorried:
+		return "Something in the queue failed. I'm keeping an eye on it."
+	}
+	return speechFor(toolID)
 }
 
 // speechFor returns the per-tool speech bubble line under the mascot greeting.
