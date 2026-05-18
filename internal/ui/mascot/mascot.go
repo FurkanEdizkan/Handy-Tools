@@ -228,6 +228,41 @@ func (m Model) StatusLabel() string {
 	return "IDLE"
 }
 
+// Sprite returns the multi-line dot-grid art for the named character using
+// the design's plain glyphs (● ○ ▪) with no ANSI color codes — surfaces that
+// can't run lipgloss (README hero, install.sh banner, brand assets generated
+// by cmd/snapshot) use this so they don't drift from the in-TUI mascot.
+// Unknown character values fall back to Wrenly.
+func Sprite(character string) string {
+	sprite := wrenlySprite
+	if character == CharacterHopper {
+		sprite = hopperSprite
+	}
+	var b strings.Builder
+	for i, row := range strings.Split(sprite, "\n") {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		for _, r := range row {
+			switch r {
+			case 'O', 'b':
+				b.WriteString(glyphFur)
+			case 'w':
+				b.WriteString(glyphCream)
+			case 'E':
+				b.WriteString("• ")
+			case 'N':
+				b.WriteString(glyphNose)
+			case 'M':
+				b.WriteString(glyphMouth)
+			default:
+				b.WriteString(glyphEmpty)
+			}
+		}
+	}
+	return b.String()
+}
+
 // art renders the multi-line sprite for the current state, character, and
 // animation frame, with per-token color applied via lipgloss.
 func (m Model) art() string {
