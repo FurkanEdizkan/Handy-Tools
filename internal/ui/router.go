@@ -26,7 +26,6 @@ type PageID int
 const (
 	PageHome PageID = iota
 	PageTool
-	PageSettings
 )
 
 // Page is the contract every right-column screen implements.
@@ -39,9 +38,6 @@ type Page interface {
 }
 
 // ---------- Cross-page messages ----------
-
-// Navigate switches the right-column page.
-type Navigate struct{ To PageID }
 
 // OpenTool is emitted by the home page when the user picks a tool.
 type OpenTool struct{ ID string }
@@ -82,6 +78,8 @@ type Model struct {
 
 	tool *toolPage // active tool page (nil when current != PageTool)
 
+	pop settingsPopover // overlay settings popover (open by `,` or cog)
+
 	queue       []Job
 	progress    int
 	currentTask string
@@ -108,7 +106,7 @@ func New(cfg config.Config) Model {
 	}
 	m.mascot.SetCharacter(characterFromConfig(cfg.Mascot.Style))
 	m.pages[PageHome] = newHomePage(styles)
-	m.pages[PageSettings] = newSettingsPage(styles, &m.cfg)
+	m.pop = newSettingsPopover()
 	m.mascot.Say("Welcome to Handy Tools.")
 	m.mascot.Whisper(speechFor("convert-image"))
 	// Honor the worried-baseline rule from the design: if the seeded queue
@@ -196,6 +194,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeyMsg:
+		// The settings popover swallows keys while it's open so the user can
+		// drive theme/mascot/scanlines/htoolsd chips without the home menu
+		// stealing them.
+		if m.pop.IsOpen() {
+			return m.updatePopoverKey(msg)
+		}
 		switch msg.String() {
 		case "ctrl+c", "q":
 			m.quitting = true
@@ -212,20 +216,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				next := order[(i+1)%len(order)]
 				m.cfg.Theme.Name = next
-				m.styles = theme.Build(theme.Resolve(next))
-				m.mascot.SetStyles(m.styles)
-				// rebuild pages with new styles
-				m.pages[PageHome] = newHomePage(m.styles)
-				m.pages[PageSettings] = newSettingsPage(m.styles, &m.cfg)
+				m.rebuildStyles()
 				m.showToast("theme · " + next)
 				return m, nil
 			}
 		case ",":
-			if m.current == PageSettings {
-				m.current = PageHome
-			} else {
-				m.current = PageSettings
-			}
+			m.pop.Toggle()
 			return m, nil
 		case "esc":
 			if m.current == PageTool && !m.running {
@@ -234,15 +230,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.applyIdleMood()
 				return m, nil
 			}
-			if m.current == PageSettings {
-				m.current = PageHome
-				m.syncMascotCharacter()
-				return m, nil
-			}
 		}
-	case Navigate:
-		m.current = msg.To
-		return m, nil
 	case OpenTool:
 		t, ok := lookupTool(msg.ID)
 		if !ok {
@@ -296,13 +284,46 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updated, c := page.Update(msg)
 		m.pages[m.current] = updated
 		pc = c
-		// Settings page mutates shared cfg; re-read the mascot character so
-		// the user sees Wrenly ↔ Hopper flip live.
-		if m.current == PageSettings {
-			m.syncMascotCharacter()
-		}
 	}
 	return m, tea.Batch(mc, pc)
+}
+
+// updatePopoverKey is the popover-specific keyboard handler. It runs first
+// when the overlay is open so home/tool keys don't fire underneath.
+func (m Model) updatePopoverKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", ",":
+		m.pop.Close()
+		return m, nil
+	case "ctrl+c", "q":
+		m.quitting = true
+		return m, tea.Quit
+	case "up", "k":
+		m.pop.MoveUp()
+		return m, nil
+	case "down", "j":
+		m.pop.MoveDown()
+		return m, nil
+	case "enter", " ", "right", "l":
+		if m.pop.Cycle(&m.cfg) {
+			m.rebuildStyles()
+			m.syncMascotCharacter()
+		}
+		return m, nil
+	}
+	return m, nil
+}
+
+// rebuildStyles refreshes the cached lipgloss styles after a theme change
+// and re-seeds the pages that own their own styled state. Called from both
+// the Tab cycle and the popover.
+func (m *Model) rebuildStyles() {
+	m.styles = theme.Build(theme.Resolve(m.cfg.Theme.Name))
+	m.mascot.SetStyles(m.styles)
+	m.pages[PageHome] = newHomePage(m.styles)
+	if m.tool != nil {
+		m.tool.styles = m.styles
+	}
 }
 
 // startRun pushes a "running" job into the queue and schedules the first
@@ -516,15 +537,13 @@ func (m Model) View() string {
 	// header strip
 	cogLabel := " ⚙ settings "
 	cog := m.styles.IconBtn.Render(cogLabel)
-	if m.current == PageSettings {
+	if m.pop.IsOpen() {
 		cog = m.styles.IconBtn.Foreground(m.styles.P.Accent).BorderForeground(m.styles.P.Accent).Render(cogLabel)
 	}
 	brand := m.styles.Brand.Render("◤ HANDY TOOLS") + m.styles.Sub.Render(" / htools")
 	crumbTitle := "Home"
 	if m.current == PageTool && m.tool != nil {
 		crumbTitle = m.tool.tool.label
-	} else if m.current == PageSettings {
-		crumbTitle = "Settings"
 	}
 	crumb := m.styles.Crumb.Render(" › ") + lipgloss.NewStyle().Foreground(m.styles.P.Text).Bold(true).Render(crumbTitle)
 	version := m.styles.Sub.Render("  v" + buildVer())
@@ -552,15 +571,27 @@ func (m Model) View() string {
 		if m.tool != nil {
 			rightCol = m.tool.View()
 		}
-	case PageSettings:
-		rightCol = m.pages[PageSettings].View()
 	}
 	rightCol = lipgloss.NewStyle().Width(rightWidth).Render(rightCol)
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftCol, "  ", rightCol)
 	status := m.renderStatusBar()
 
-	frame := lipgloss.JoinVertical(lipgloss.Left, header, "", body, "", status)
+	// When the settings popover is open it slips between the header and the
+	// body — anchored top-left near the cog, indented by 2 cols to feel
+	// "floating" without true overlay rendering (which lipgloss can't do
+	// cleanly through ANSI styles).
+	parts := []string{header, ""}
+	if m.pop.IsOpen() {
+		popWidth := intMax(28, m.width/3)
+		if popWidth > 56 {
+			popWidth = 56
+		}
+		card := m.pop.View(m.styles, m.cfg, popWidth)
+		parts = append(parts, lipgloss.NewStyle().PaddingLeft(2).Render(card), "")
+	}
+	parts = append(parts, body, "", status)
+	frame := lipgloss.JoinVertical(lipgloss.Left, parts...)
 	if m.toast != "" && time.Now().Before(m.toastUntil) {
 		frame += "\n" + m.styles.Toast.Render(m.toast)
 	}
@@ -574,26 +605,28 @@ func (m Model) renderStatusBar() string {
 		return s.KbdChip.Render(k) + " " + s.Dim.Render(label)
 	}
 	parts := []string{}
-	switch m.current {
-	case PageHome:
+	if m.pop.IsOpen() {
 		parts = append(parts,
 			chip("↑↓", "move"),
-			chip("↵", "open"),
-			chip("1-5", "jump"),
-		)
-	case PageTool:
-		parts = append(parts,
-			chip("esc", "back"),
-			chip("↑↓", "focus"),
-			chip("space", "toggle"),
-			chip("r", "run"),
-		)
-	case PageSettings:
-		parts = append(parts,
-			chip("esc", "back"),
 			chip("↵", "cycle"),
-			chip("s", "save"),
+			chip("esc", "close"),
 		)
+	} else {
+		switch m.current {
+		case PageHome:
+			parts = append(parts,
+				chip("↑↓", "move"),
+				chip("↵", "open"),
+				chip("1-5", "jump"),
+			)
+		case PageTool:
+			parts = append(parts,
+				chip("esc", "back"),
+				chip("↑↓", "focus"),
+				chip("space", "toggle"),
+				chip("r", "run"),
+			)
+		}
 	}
 	parts = append(parts,
 		chip("tab", "theme"),

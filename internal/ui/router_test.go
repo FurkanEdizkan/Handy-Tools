@@ -95,6 +95,64 @@ func TestRunJobUpdatesState(t *testing.T) {
 	}
 }
 
+// TestSettingsPopoverTogglesAndCycles confirms the design's top-left
+// settings popover opens on ',', cycles the theme via enter, and closes on
+// esc — replacing the old PageSettings navigation flow.
+func TestSettingsPopoverTogglesAndCycles(t *testing.T) {
+	m := New(config.Defaults())
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 160, Height: 48})
+	m = updated.(Model)
+
+	// Closed by default — popover title shouldn't appear in the render.
+	if strings.Contains(m.View(), "SETTINGS") {
+		t.Fatal("popover should not render before ',' is pressed")
+	}
+
+	// Press ',' to open. The popover title and its rows should now be visible.
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{','}})
+	m = updated.(Model)
+	if !m.pop.IsOpen() {
+		t.Fatal("expected popover open after ','")
+	}
+	out := m.View()
+	mustContain(t, out, "SETTINGS")
+	mustContain(t, out, "Theme")
+	mustContain(t, out, "Scanlines")
+	mustContain(t, out, "Mascot")
+	mustContain(t, out, "htoolsd")
+
+	// Cursor is on the Theme row. Cycling forge → snow updates cfg + styles.
+	if got := m.cfg.Theme.Name; got != "forge" {
+		t.Fatalf("expected initial theme forge, got %q", got)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if got := m.cfg.Theme.Name; got != "snow" {
+		t.Fatalf("expected theme snow after enter, got %q", got)
+	}
+
+	// Move down to Mascot row and cycle — the character chip should flip.
+	for i := 0; i < 2; i++ {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		m = updated.(Model)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if got := m.cfg.Mascot.Style; got != "hopper" {
+		t.Fatalf("expected mascot hopper after cycle, got %q", got)
+	}
+	if got := m.mascot.Character(); got != "hopper" {
+		t.Fatalf("mascot did not sync to hopper, got %q", got)
+	}
+
+	// Esc closes.
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.pop.IsOpen() {
+		t.Fatal("expected popover closed after esc")
+	}
+}
+
 func mustContain(t *testing.T, haystack, needle string) {
 	t.Helper()
 	if !strings.Contains(haystack, needle) {
