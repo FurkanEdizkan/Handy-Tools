@@ -1,23 +1,32 @@
 # Architecture
 
-Handy Tools is split into three layers, each depending only on the layer above
-it:
+Handy Tools is one Go module that produces several binaries from one shared
+tool core. Every UI/transport is a thin adapter over `internal/tools/`.
 
 ```text
-                +----------------------------+
-                |   internal/tools/<x>       |   pure Go API per feature
-                |   (image, archive, pdf)    |   no UI, no network
-                +-------------+--------------+
+                       +----------------------------+
+                       |   internal/tools/<x>       |   pure Go API per feature
+                       |   (image, archive, pdf)    |   no UI, no network
+                       +-------------+--------------+
+                                     ^
+              +----------+-----------+-----------+-----------+
+              |          |                       |           |
+     +--------+------+ +-+-------------+  +------+--------+  +-------+--------+
+     | internal/ui   | | internal/api/ |  | internal/queue|  | internal/server |
+     | (Bubble Tea)  | | http (REST+SSE)|  | (planned ph3)|  | (gRPC handlers) |
+     +---------------+ +---------------+  +---------------+  +-----------------+
+              ^             ^   ^                   ^             ^
+              |             |   |                   |             |
+       cmd/htools       cmd/htoolsd            (consumed by    cmd/htoolsd
+       (TUI)            (HTTP+SSE)              every adapter)  (gRPC)
                               ^
-              +---------------+---------------+
-              |                               |
-     +--------+--------+              +-------+--------+
-     |  internal/ui    |              | internal/server |
-     |  (Bubble Tea)   |              | (gRPC handlers) |
-     +-----------------+              +-----------------+
-              ^                               ^
-              |                               |
-       cmd/htools (TUI)                  cmd/htoolsd (server)
+                              |  via embedded webview
+                              |
+                       cmd/htools-gui
+                       (Wails desktop, planned phase 4)
+
+       web/  Svelte + Vite + TS + Tailwind — built into web/dist/ and
+             embedded into htoolsd / htools-gui via go:embed
 ```
 
 ## Packages
@@ -26,17 +35,18 @@ it:
 
 Each feature is a plain Go package with:
 
-- A request/result struct that mirrors the proto.
-- A function that performs the work and returns a progress channel.
+- A request/result struct.
+- A function that performs the work and returns a `<-chan tools.Progress`.
 - An `Inspect()` function where preflight matters (e.g. detecting multi-part
   archives) so callers can confirm before destructive work.
 
 These packages are the **only** place that touches files, runs external
-binaries, or knows anything about formats.
+binaries, or knows anything about formats. They are deliberately UI- and
+transport-agnostic and are imported as-is by every adapter.
 
-### `internal/ui`
+### `internal/ui` (Bubble Tea TUI)
 
-Bubble Tea models, arranged as a two-pane layout:
+The TUI is a sibling adapter, not the primary surface. Layout:
 
 ```text
 +--------------------+----------------------------------+
@@ -48,52 +58,111 @@ Bubble Tea models, arranged as a two-pane layout:
 +--------------------+----------------------------------+
 ```
 
-- **Left column (fixed)**: `mascot.Model` (idle / thinking / working /
-  success / error states), the state block (current task + progress bar),
-  and the queue panel with expandable per-job stderr-style logs.
-- **Right column**: the **Home** tool catalog or a **Tool detail page**
-  (`toolpage.go`) with mode-specific UI for image conversion, archive
-  pack/extract, PDF utilities, and `htools doctor`.
+Pages don't reach into each other directly; the router (`router.go`) holds
+shared state and dispatches `tea.Msg` events.
 
-The router (`router.go`) owns the shared state (mascot, queue, progress,
-toast) and dispatches cross-page messages (`OpenTool`, `GoHome`, `RunJob`,
-`MascotMsg`). Pages don't reach into each other directly — every nav or
-state change is a `tea.Msg`.
+### `internal/server` (gRPC)
 
-### `internal/server`
+Thin gRPC handlers under `cmd/htoolsd`. Each one calls into
+`internal/tools/<x>` and maps the progress channel onto a streaming RPC
+response. Path safety lives here as `Options.CheckPath`, reused by every
+transport.
 
-Thin gRPC handlers. Each one calls into `internal/tools/<x>` and maps progress
-channels onto streaming RPC responses. Handlers contain no business logic.
+### `internal/api/http` (HTTP + Server-Sent Events)
+
+Sibling transport added in pivot Phase 1 (issue #55). Mirrors the gRPC
+services with JSON bodies; the streaming response is rendered as SSE so
+browsers consume it natively. Reuses the same
+`internal/server.{Image,Archive,PDF}Handler` types and `Options.CheckPath`
+as gRPC — there is no second copy of the path-safety logic. Endpoints:
+
+```text
+POST /v1/image/convert            → 202 {"job_id": "..."}
+POST /v1/archive/inspect          → 200 {Inspection}
+POST /v1/archive/extract          → 202 {"job_id": "..."}
+POST /v1/pdf/to-image             → 202 {"job_id": "..."}
+POST /v1/pdf/to-text              → 202 {"job_id": "..."}
+POST /v1/pdf/merge                → 202 {"job_id": "..."}
+GET  /v1/jobs/{id}/events         → text/event-stream of Progress
+GET  /v1/sysdep                   → 200 [SysdepResult, ...]
+```
+
+The Phase-1 job tracker is a minimal in-package store; Phase 3 replaces it
+with the shared `internal/queue/` package below.
+
+### `internal/queue` *(planned — pivot Phase 3, issue #57)*
+
+Owns the live `Job` list and per-job `tools.Progress` fan-out. Both the
+TUI and the HTTP transport subscribe to it, so a job enqueued via either
+surface shows up in both. Deletes the simulated `seedQueue()` /
+`stepRun()` in `internal/ui/router.go`.
 
 ### `internal/config`
 
-Loads and persists user settings from the XDG config directory
-(`$XDG_CONFIG_HOME/handy-tools/config.yaml` or `~/.config/handy-tools/config.yaml`,
-overridable via `$HANDY_TOOLS_CONFIG`).
+Loads and persists user settings from
+`$XDG_CONFIG_HOME/handy-tools/config.yaml` (overridable via
+`$HANDY_TOOLS_CONFIG`). Hand-rolled minimal YAML parser; replace with
+`gopkg.in/yaml.v3` if richer YAML becomes needed.
+
+## Front-end (`web/`) — planned, pivot Phase 2 (issue #56)
+
+A Svelte + Vite + TypeScript + Tailwind project. Built once into
+`web/dist/` and embedded into the `htoolsd` binary (and the Wails
+`htools-gui` binary) via `go:embed`. The same bundle runs in two hosts:
+
+- **Server mode**: `htoolsd` serves the static SPA on its HTTP port; the
+  frontend calls `/v1/*` endpoints on its origin.
+- **Desktop mode**: `cmd/htools-gui` (Wails, Phase 4 / issue #58) starts a
+  loopback HTTP server and opens a webview to it.
+
+The frontend never has a "Wails-only" branch — feature detection of
+`window.runtime` lets it use native file dialogs when present.
+
+## Binary entry points
+
+| Binary | Source | Purpose |
+| --- | --- | --- |
+| `htools` | `cmd/htools/` | Bubble Tea TUI (secondary surface) |
+| `htoolsd` | `cmd/htoolsd/` | gRPC + HTTP/SSE server; serves `web/dist/` when built |
+| `htools-gui` | `cmd/htools-gui/` *(planned)* | Wails desktop app; bundles `web/dist/` |
+| `snapshot` | `cmd/snapshot/` | Dev tool that regenerates README + brand mascot art; excluded from `.goreleaser.yaml` builds |
 
 ## API contract
 
-Protos in `api/proto/v1/` are the source of truth for both clients and the TUI.
-We generate Go bindings into `gen/` and check them in so contributors don't
-need `protoc` to build.
+Protos in `api/proto/v1/` are the source of truth for the gRPC services and
+are checked-in generated under `gen/`. The HTTP transport mirrors the same
+shapes in snake_case JSON, currently hand-mirrored in
+[`internal/api/http/types.go`](../internal/api/http/types.go); a
+`protoc-gen-ts` step that emits matching TypeScript bindings is a later
+optimization.
+
+## Path safety
+
+`htoolsd` refuses to start without `--allow-roots` (or `server.allow_roots`
+in the config). Every incoming path goes through `Options.CheckPath` before
+any tool is invoked. The check fails closed: an empty roots list rejects
+everything, not "serve CWD". This invariant is identical across the gRPC
+and HTTP transports because both reuse the same `server.Options`.
 
 ## System dependencies
 
-Handy Tools is a single Go binary, but some features call out to system tools
-when present:
+Handy Tools is a single Go binary, but some features call out to system
+tools when present:
 
 - `unrar` — RAR extraction (single & multi-part)
 - `7z` — 7z multi-part extraction
 - `pdftoppm`, `pdftotext` — PDF rasterization & text extraction
 - `magick` — HEIC decoding
+- *(planned)* `webkit2gtk-4.0` / `-4.1` on Linux — required by the Wails
+  desktop shell (Phase 4)
 
-`htools doctor` enumerates which are installed and which features they unlock.
-A missing tool disables the corresponding action with an inline hint, never a
-crash.
+`htools doctor` (and the HTTP `GET /v1/sysdep` endpoint) enumerate which
+are installed and which features they unlock. A missing tool disables the
+corresponding action with an inline hint, never a crash.
 
 ## Roadmap
 
-The eight initial phases are now landed on `main`:
+The eight initial phases landed on `main`:
 
 1. Repo scaffolding & governance — done
 2. CI/CD baseline — done
@@ -103,6 +172,18 @@ The eight initial phases are now landed on `main`:
 6. TUI shell with Bubble Tea — done
 7. gRPC server — done
 8. Release & docs polish — done
+
+### Current focus: Web GUI pivot
+
+The active multi-phase work is the **Web GUI pivot** — see
+[TODO.md → Web GUI pivot](../TODO.md#web-gui-pivot--wails-desktop--self-hosted-server-in-progress)
+for the staged phases. Issues #55–#59 track them:
+
+- Phase 1 — HTTP + SSE transport (#55, landed on `feat/http-api`)
+- Phase 2 — Svelte/Vite/TS/Tailwind frontend scaffold (#56)
+- Phase 3 — Shared `internal/queue/` package; wire all tools end-to-end (#57)
+- Phase 4 — Wails desktop shell `cmd/htools-gui` (#58)
+- Phase 5 — Image/PDF preview endpoints for web gallery (#59)
 
 ### Stretch / next up
 
@@ -114,7 +195,3 @@ The eight initial phases are now landed on `main`:
   `gopkg.in/yaml.v3` once we have other reasons to take that dep.
 - **`pdfcpu` library import**: pull merge/split into pure Go instead of
   shelling out to the CLI.
-- **Web UI**: a thin gRPC-Web or REST gateway over `htoolsd` for the
-  "deploy as a service" use case.
-- **Chrome extension**: a popup that calls into a local or hosted `htoolsd`
-  for quick file conversions from the browser.

@@ -1,8 +1,17 @@
-// Command htoolsd is the gRPC server. It exposes the same tool packages the
-// TUI uses (image, archive, pdf) over gRPC so Handy Tools can run as a service.
+// Command htoolsd is the Handy Tools server.
+//
+// It exposes the same tool packages the TUI uses (image, archive, pdf) over
+// two transports:
+//
+//   - gRPC on --listen (default :7777)
+//   - HTTP + Server-Sent Events on --http (default disabled)
+//
+// Both transports share the same Options.AllowRoots fail-closed sandbox, so
+// the path-safety story is identical regardless of how a caller arrives.
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -10,14 +19,17 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	httpapi "github.com/furkandedizkan/handy-tools/internal/api/http"
 	"github.com/furkandedizkan/handy-tools/internal/buildinfo"
 	"github.com/furkandedizkan/handy-tools/internal/config"
 	"github.com/furkandedizkan/handy-tools/internal/server"
 )
 
 func main() {
-	listen := flag.String("listen", "", "address to listen on (overrides config)")
+	listen := flag.String("listen", "", "gRPC address to listen on (overrides config)")
+	httpListen := flag.String("http", "", "HTTP+SSE address to listen on (overrides config; empty = disabled)")
 	allow := flag.String("allow-roots", "", "comma-separated allow-list of filesystem roots; overrides config")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
@@ -31,9 +43,13 @@ func main() {
 		fmt.Fprintln(os.Stderr, "config:", err)
 		os.Exit(1)
 	}
-	addr := cfg.Server.Listen
+	grpcAddr := cfg.Server.Listen
 	if *listen != "" {
-		addr = *listen
+		grpcAddr = *listen
+	}
+	httpAddr := cfg.Server.HTTPListen
+	if *httpListen != "" {
+		httpAddr = *httpListen
 	}
 	roots := cfg.Server.AllowRoots
 	if *allow != "" {
@@ -44,24 +60,56 @@ func main() {
 			"refusing to start: no allow_roots configured. Set --allow-roots or server.allow_roots in config.yaml.")
 		os.Exit(2)
 	}
-
-	lis, err := net.Listen("tcp", addr)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "listen:", err)
-		os.Exit(1)
+	if grpcAddr == "" && httpAddr == "" {
+		fmt.Fprintln(os.Stderr,
+			"refusing to start: both gRPC (--listen) and HTTP (--http) are disabled.")
+		os.Exit(2)
 	}
-	srv := server.New(server.Options{AllowRoots: roots})
+
+	opts := server.Options{AllowRoots: roots}
+	grpcSrv := server.New(opts)
+	httpSrv := httpapi.New(opts)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+	errCh := make(chan error, 2)
+
+	var grpcLis net.Listener
+	if grpcAddr != "" {
+		grpcLis, err = net.Listen("tcp", grpcAddr)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "grpc listen:", err)
+			os.Exit(1)
+		}
+		log.Printf("htoolsd gRPC listening on %s; roots=%v", grpcAddr, roots)
+		go func() { errCh <- grpcSrv.Serve(grpcLis) }()
+	}
+
+	var httpLis net.Listener
+	if httpAddr != "" {
+		httpLis, err = net.Listen("tcp", httpAddr)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "http listen:", err)
+			os.Exit(1)
+		}
+		log.Printf("htoolsd HTTP listening on %s; roots=%v", httpAddr, roots)
+		go func() { errCh <- httpSrv.Serve(httpLis) }()
+	}
+
 	go func() {
 		<-stop
 		log.Println("shutting down")
-		srv.Stop()
+		grpcSrv.Stop()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = httpSrv.Shutdown(shutdownCtx)
 	}()
 
-	log.Printf("htoolsd listening on %s; roots=%v", addr, roots)
-	if err := srv.Serve(lis); err != nil {
+	// Block on the first transport that returns an error (or nil on clean
+	// shutdown). On a graceful shutdown both transports return ErrServerClosed-
+	// style nil/wrapped errors that the .Serve methods translate to nil.
+	if err := <-errCh; err != nil {
 		log.Fatalf("serve: %v", err)
 	}
 }
