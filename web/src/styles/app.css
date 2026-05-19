@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: #0c0d10;
+  --color-surface: #141519;
+  --color-surface-2: #1a1c21;
+  --color-border: #26282f;
+  --color-text: #ecedef;
+  --color-text-dim: #9296a0;
+  --color-accent: #ff8c1a;
+  --color-accent-2: #ffa54a;
+}
