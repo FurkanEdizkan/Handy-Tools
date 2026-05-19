@@ -139,15 +139,19 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.check.outputs.present == 'true'
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Install + build
+      - name: Bump npm to match the lockfile generator
+        if: steps.check.outputs.present == 'true'
+        run: npm install -g npm@11
+      - name: Install + build + test
         if: steps.check.outputs.present == 'true'
         working-directory: web
         run: |
           npm ci
           npm run build
+          npm test
       - name: Upload dist artifact
         if: steps.check.outputs.present == 'true'
         uses: actions/upload-artifact@v4
