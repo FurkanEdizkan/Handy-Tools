@@ -1,10 +1,13 @@
 version: 2
 updates:
+  # Go module dependencies. Grouped so weekly updates produce a small number
+  # of related PRs (one for grpc/proto, one for charmbracelet, one for golang.org/x,
+  # etc.) instead of one PR per package.
   - package-ecosystem: gomod
     directory: "/"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 3
     target-branch: test
     commit-message:
       prefix: "chore(deps)"
@@ -12,12 +15,33 @@ updates:
     labels:
       - dependencies
       - go
+    groups:
+      grpc:
+        patterns:
+          - "google.golang.org/grpc*"
+          - "google.golang.org/protobuf*"
+          - "google.golang.org/genproto*"
+      bubbletea:
+        patterns:
+          - "github.com/charmbracelet/*"
+      goimage:
+        patterns:
+          - "golang.org/x/image*"
+          - "golang.org/x/text*"
+      goother:
+        patterns:
+          - "golang.org/x/*"
+        exclude-patterns:
+          - "golang.org/x/image*"
+          - "golang.org/x/text*"
 
+  # GitHub Actions used in our workflows. Grouped by publisher so action bumps
+  # land as a small handful of PRs instead of one-per-action.
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     target-branch: test
     commit-message:
       prefix: "ci(deps)"
@@ -25,3 +49,16 @@ updates:
     labels:
       - dependencies
       - github-actions
+    groups:
+      actions-core:
+        patterns:
+          - "actions/*"
+      buf:
+        patterns:
+          - "bufbuild/*"
+      golangci:
+        patterns:
+          - "golangci/*"
+      goreleaser:
+        patterns:
+          - "goreleaser/*"

@@ -1,10 +1,36 @@
 name: CI
 
+# Two-tier pipeline:
+#
+#   Fast tier  — always runs on push/PR. Linux-only runners; replaces the
+#                old 4-OS matrix on PR/test branches. Folds the 20s fuzz pass
+#                into test-quick to save a runner.
+#   Compat tier — runs only on push-to-main or on a PR carrying the `compat`
+#                 label. Restores the full ubuntu × macos matrix + the
+#                 Windows compile-only sanity check so COMPATIBILITY.md
+#                 only ever covers the version that's about to ship.
+#
+# Downstream workflows (auto-tag.yml, promote-to-main.yml) look for the
+# workflow named "CI" on a branch; both keep working unchanged as long as
+# the *overall* conclusion is success. A skipped job doesn't fail the run.
+
 on:
   push:
     branches: [main, test]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - "CODE_OF_CONDUCT.md"
+      - "CONTRIBUTING.md"
   pull_request:
     branches: [main, test]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - "CODE_OF_CONDUCT.md"
+      - "CONTRIBUTING.md"
 
 permissions:
   contents: read
@@ -14,6 +40,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # FAST TIER
+  # ---------------------------------------------------------------------------
+
   lint-go:
     name: Lint (Go)
     runs-on: ubuntu-latest
@@ -42,15 +72,92 @@ jobs:
       - uses: bufbuild/buf-setup-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-      - run: |
+      - name: Lint
+        run: |
           if [ -d api/proto ]; then
             buf lint
           else
             echo "No proto sources yet, skipping."
           fi
 
-  test:
+  test-quick:
+    name: Test + fuzz (fast lane, Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install optional system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            p7zip-full unrar-free poppler-utils imagemagick
+      - name: Generate proto bindings
+        run: buf generate
+      - name: Tidy check
+        run: |
+          go mod tidy
+          if ! git diff --exit-code -- go.mod go.sum 2>/dev/null; then
+            echo "go.mod / go.sum is not tidy. Run 'go mod tidy' and commit." >&2
+            exit 1
+          fi
+      - name: Test
+        run: go test -race -count=1 ./...
+      - name: Fuzz yaml_min parser (20s)
+        run: go test -run=^$ -fuzz=FuzzDecodeMinimalYAML -fuzztime=20s ./internal/config
+
+  web-build:
+    name: Web (Svelte / Vite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for web/
+        id: check
+        shell: bash
+        run: |
+          # The web/ directory is scaffolded by issue #66 (pivot Phase 2).
+          # Until then this job is a deliberate no-op so the workflow file
+          # can land first and the frontend PR doesn't have to touch CI.
+          if [ -f web/package.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "web/package.json not present yet — skipping."
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.present == 'true'
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install + build
+        if: steps.check.outputs.present == 'true'
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+      - name: Upload dist artifact
+        if: steps.check.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # COMPAT TIER — push-to-main, or PR carrying the `compat` label.
+  # ---------------------------------------------------------------------------
+
+  test-compat:
     name: Test (${{ matrix.os }})
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'compat'))
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -85,13 +192,6 @@ jobs:
           brew install p7zip poppler imagemagick || true
       - name: Generate proto bindings
         run: buf generate
-      - name: Tidy check
-        run: |
-          go mod tidy
-          if ! git diff --exit-code -- go.mod go.sum 2>/dev/null; then
-            echo "go.mod / go.sum is not tidy. Run 'go mod tidy' and commit." >&2
-            exit 1
-          fi
       - name: Test
         run: go test -race -count=1 ./...
       - name: Read Handy Tools version
@@ -133,7 +233,10 @@ jobs:
           retention-days: 30
 
   build-windows:
-    name: Build (windows-latest)
+    name: Build (windows-latest, sanity)
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'compat'))
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -153,26 +256,13 @@ jobs:
           go build -ldflags="-s -w" -o bin/htools.exe  ./cmd/htools
           go build -ldflags="-s -w" -o bin/htoolsd.exe ./cmd/htoolsd
 
-  fuzz:
-    name: Fuzz (yaml_min, short)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-          cache: true
-      - uses: bufbuild/buf-setup-action@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Generate proto bindings
-        run: buf generate
-      - name: Fuzz yaml_min parser (20s)
-        run: go test -run=^$ -fuzz=FuzzDecodeMinimalYAML -fuzztime=20s ./internal/config
+  # ---------------------------------------------------------------------------
+  # ASSEMBLY
+  # ---------------------------------------------------------------------------
 
   build:
     name: Build
-    needs: [lint-go, test]
+    needs: [lint-go, test-quick]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -191,9 +281,13 @@ jobs:
           go build -ldflags="-s -w" -o bin/htools  ./cmd/htools
           go build -ldflags="-s -w" -o bin/htoolsd ./cmd/htoolsd
 
+  # ---------------------------------------------------------------------------
+  # MAIN-ONLY POST-CI
+  # ---------------------------------------------------------------------------
+
   update-compatibility:
     name: Update COMPATIBILITY.md
-    needs: [test]
+    needs: [test-compat]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
