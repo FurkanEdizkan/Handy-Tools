@@ -37,7 +37,7 @@ jobs:
           # the calver value and the binary embeds the right ldflag.
           ref: ${{ inputs.tag }}
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.22"
 
