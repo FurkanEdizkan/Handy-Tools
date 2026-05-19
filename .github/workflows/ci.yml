@@ -139,12 +139,9 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.check.outputs.present == 'true'
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Bump npm to match the lockfile generator
-        if: steps.check.outputs.present == 'true'
-        run: npm install -g npm@11
       - name: Install + build + test
         if: steps.check.outputs.present == 'true'
         working-directory: web
