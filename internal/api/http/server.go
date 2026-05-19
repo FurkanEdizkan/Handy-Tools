@@ -45,6 +45,9 @@ func New(opts server.Options) *Server {
 		jobs:    newJobs(),
 	}
 	s.mux = s.routes()
+	if spa, err := newSPAHandler(); err == nil {
+		s.mux.Handle("GET /", spa)
+	}
 	return s
 }
 

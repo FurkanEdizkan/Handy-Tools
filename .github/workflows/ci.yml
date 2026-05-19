@@ -82,6 +82,7 @@ jobs:
 
   test-quick:
     name: Test + fuzz (fast lane, Linux)
+    needs: [web-build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -97,6 +98,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             p7zip-full unrar-free poppler-utils imagemagick
+      - name: Download web dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+        continue-on-error: true
       - name: Generate proto bindings
         run: buf generate
       - name: Tidy check
@@ -262,7 +269,7 @@ jobs:
 
   build:
     name: Build
-    needs: [lint-go, test-quick]
+    needs: [lint-go, test-quick, web-build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -273,6 +280,11 @@ jobs:
       - uses: bufbuild/buf-setup-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download web dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
       - name: Generate proto bindings
         run: buf generate
       - name: Build
