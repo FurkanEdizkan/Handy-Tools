@@ -56,7 +56,8 @@ type PDF struct {
 }
 
 type Server struct {
-	Listen     string   `yaml:"listen"      json:"listen"`      // ":7777"
+	Listen     string   `yaml:"listen"      json:"listen"`      // gRPC, ":7777"
+	HTTPListen string   `yaml:"http_listen" json:"http_listen"` // HTTP/SSE, e.g. ":8080"; empty -> disabled
 	AllowRoots []string `yaml:"allow_roots" json:"allow_roots"` // empty -> CWD only
 }
 
@@ -159,7 +160,8 @@ func writeYAML(w io.Writer, c Config) error {
 	fmt.Fprintf(out, "image:\n  default_jpeg_quality: %d\n  strip_metadata: %t\n",
 		c.Image.DefaultJPEGQuality, c.Image.StripMetadata)
 	fmt.Fprintf(out, "pdf:\n  default_dpi: %d\n", c.PDF.DefaultDPI)
-	fmt.Fprintf(out, "server:\n  listen: %s\n", yamlString(c.Server.Listen))
+	fmt.Fprintf(out, "server:\n  listen: %s\n  http_listen: %s\n",
+		yamlString(c.Server.Listen), yamlString(c.Server.HTTPListen))
 	if len(c.Server.AllowRoots) > 0 {
 		out.WriteString("  allow_roots:\n")
 		for _, r := range c.Server.AllowRoots {

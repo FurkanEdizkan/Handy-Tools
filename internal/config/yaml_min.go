@@ -132,6 +132,8 @@ func assign(cfg *Config, section, key, val string) error {
 		cfg.PDF.DefaultDPI = n
 	case "server.listen":
 		cfg.Server.Listen = val
+	case "server.http_listen":
+		cfg.Server.HTTPListen = val
 	default:
 		// silently ignore unknown keys to keep config forward-compatible
 	}
