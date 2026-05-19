@@ -127,6 +127,7 @@ type Model struct {
 	speech    string
 	styles    theme.Styles
 	width     int
+	maxHeight int
 }
 
 // New returns a mascot in the idle state for the default character (Wrenly).
@@ -157,6 +158,12 @@ func (m *Model) SetStyles(s theme.Styles) { m.styles = s }
 
 // SetWidth tells the mascot how much horizontal space it has.
 func (m *Model) SetWidth(w int) { m.width = w }
+
+// SetMaxHeight gives the mascot a hint about how many rows it may use
+// in the left column. 0 leaves the mascot uncapped (legacy behavior).
+// When the budget is smaller than the full sprite + chrome, View()
+// drops to a compact rendering: badge + greeting + one-line speech.
+func (m *Model) SetMaxHeight(h int) { m.maxHeight = h }
 
 // SetCharacter picks Wrenly or Hopper. Unknown values fall back to Wrenly.
 func (m *Model) SetCharacter(c string) {
@@ -426,16 +433,33 @@ func overlayLine(state State, frame int, styles theme.Styles) string {
 }
 
 // View renders the mascot inside a card with the badge + sprite + greeting.
+// When SetMaxHeight has been called with a budget too small for the full
+// 14-row sprite plus chrome, we drop to a compact form (badge, greeting,
+// speech) so the surrounding two-pane layout still fits the terminal
+// viewport on short windows.
 func (m Model) View() string {
 	badge := lipgloss.NewStyle().Foreground(m.styles.P.TextDim).Render(m.character+" · ") +
 		lipgloss.NewStyle().Foreground(m.styles.P.Accent).Bold(true).Render(m.StatusLabel())
-	body := m.art()
 	greet := lipgloss.NewStyle().Foreground(m.styles.P.Text).Bold(true).Render(m.greeting)
 
-	parts := []string{badge, "", body, "", greet}
-	if m.speech != "" {
-		parts = append(parts, lipgloss.NewStyle().Foreground(m.styles.P.TextDim).Render(m.speech))
+	// Full layout needs ~22 rows once the card border (2) and inter-card
+	// spacers are counted; if the budget is below that, render compactly.
+	compact := m.maxHeight > 0 && m.maxHeight < 22
+
+	var parts []string
+	if compact {
+		parts = []string{badge, "", greet}
+		if m.speech != "" {
+			parts = append(parts, lipgloss.NewStyle().Foreground(m.styles.P.TextDim).Render(m.speech))
+		}
+	} else {
+		body := m.art()
+		parts = []string{badge, "", body, "", greet}
+		if m.speech != "" {
+			parts = append(parts, lipgloss.NewStyle().Foreground(m.styles.P.TextDim).Render(m.speech))
+		}
 	}
+
 	content := lipgloss.JoinVertical(lipgloss.Left, parts...)
 	if m.width > 0 {
 		return m.styles.Card.Width(m.width).Render(content)

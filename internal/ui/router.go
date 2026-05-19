@@ -107,12 +107,51 @@ func New(cfg config.Config) Model {
 	m.mascot.SetCharacter(characterFromConfig(cfg.Mascot.Style))
 	m.pages[PageHome] = newHomePage(styles)
 	m.pop = newSettingsPopover()
-	m.mascot.Say("Welcome to Handy Tools.")
+	// Greeting mirrors the design's "Hi! I'm Wrenly." line; the
+	// character-specific name is swapped in via mascot.Say so the
+	// label changes when the user picks Hopper.
+	m.mascot.Say(greetingFor(cfg.Mascot.Style))
 	m.mascot.Whisper(speechFor("convert-image"))
 	// Honor the worried-baseline rule from the design: if the seeded queue
 	// already has a failed job, surface that concern on first paint.
 	m.applyIdleMood()
 	return m
+}
+
+// mascotHeightBudget translates the total terminal height into the
+// number of rows the mascot card may use without pushing the rest of
+// the left column past the viewport. The fixed overhead — header,
+// status bar, frame spacers, state card (~7), queue card (~12) — eats
+// roughly 26 rows. When the remainder is below the full 22-row sprite
+// layout, the mascot renders compactly (badge + greeting + speech)
+// instead.
+func mascotHeightBudget(termHeight int) int {
+	if termHeight <= 0 {
+		return 0
+	}
+	budget := termHeight - 26
+	if budget < 4 {
+		budget = 4
+	}
+	return budget
+}
+
+// leftColWidth returns the fixed-sidebar width for a given terminal
+// width. The 15-cell Wrenly sprite plus the mascot card's 2-cell border
+// and 2-cell padding needs at least 34 columns, otherwise lipgloss
+// soft-wraps each sprite row and the mascot reads as garbled dots. The
+// design's CSS pins the sidebar to 340px (about 42 monospace cells) so
+// we also cap at 42 to keep the right column from collapsing on
+// ultra-wide terminals.
+func leftColWidth(termWidth int) int {
+	w := termWidth / 4
+	if w < 34 {
+		w = 34
+	}
+	if w > 42 {
+		w = 42
+	}
+	return w
 }
 
 // characterFromConfig maps the on-disk cfg.Mascot.Style string onto the
@@ -127,8 +166,19 @@ func characterFromConfig(style string) string {
 	}
 }
 
+// greetingFor returns the mascot's name-stamped opening line — mirrors
+// the design's "Hi! I'm Wrenly." (or "Hopper.") title-cased greeting.
+func greetingFor(style string) string {
+	switch characterFromConfig(style) {
+	case mascot.CharacterHopper:
+		return "Hi! I'm Hopper."
+	default:
+		return "Hi! I'm Wrenly."
+	}
+}
+
 // seedQueue mirrors the JSX INITIAL_QUEUE so the queue panel reads as
-// populated (one running, one done, one failed-with-logs).
+// populated (two done, one failed-with-logs, two queued).
 func seedQueue() []Job {
 	return []Job{
 		{
@@ -140,6 +190,17 @@ func seedQueue() []Job {
 				{T: "14:02:01.214", Lvl: "INFO", Msg: "image.encode: jpeg quality=90 progressive=false"},
 				{T: "14:02:01.412", Lvl: "INFO", Msg: "image.write: ./out/invoice-2026-04.jpg · 412 KB (66% smaller)"},
 				{T: "14:02:01.413", Lvl: "DONE", Msg: "1 file processed in 401 ms"},
+			},
+		},
+		{
+			ID: "q2", Label: "docs.tar.gz → ./docs/", Kind: "archive",
+			Status: JobDone, Time: "14:05",
+			Logs: []LogLine{
+				{T: "14:05:02.001", Lvl: "INFO", Msg: "archive.extract: docs.tar.gz · gzip-compressed tar"},
+				{T: "14:05:02.014", Lvl: "DEBUG", Msg: "archive.inspect: 47 entries · 12.3 MB uncompressed"},
+				{T: "14:05:02.232", Lvl: "INFO", Msg: "extracting → ./docs/ (preserve perms, verify checksums)"},
+				{T: "14:05:02.901", Lvl: "INFO", Msg: "wrote 47 files · 0 skipped · 0 renamed"},
+				{T: "14:05:03.281", Lvl: "DONE", Msg: "extracted 47 entries in 1.28 s"},
 			},
 		},
 		{
@@ -181,11 +242,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		left := intMax(28, m.width/4)
-		if left > 42 {
-			left = 42
-		}
+		left := leftColWidth(m.width)
 		m.mascot.SetWidth(left - 2)
+		// Give the mascot a height hint so it can drop the 14-row sprite
+		// and render compact when the leftcol must share the viewport
+		// with the state + queue cards on short terminals.
+		m.mascot.SetMaxHeight(mascotHeightBudget(m.height))
 		if hp, ok := m.pages[PageHome].(*homePage); ok {
 			hp.SetWidth(m.width - left - 6)
 		}
@@ -237,10 +299,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.tool = newToolPage(m.styles, t)
-		left := intMax(28, m.width/4)
-		if left > 42 {
-			left = 42
-		}
+		left := leftColWidth(m.width)
 		m.tool.SetWidth(m.width - left - 6)
 		m.current = PageTool
 		m.mascot.Set(mascot.StateThinking)
@@ -555,11 +614,24 @@ func (m Model) View() string {
 		lipgloss.NewStyle().Width(intMax(2, m.width-lipgloss.Width(cog)-lipgloss.Width(brand)-lipgloss.Width(crumb)-12)).Render(""),
 		version, " ", conn)
 
-	// left column
+	// left column. Cap the expanded stderr panel so a tall job log can't
+	// push the rest of the UI past the terminal viewport on short windows.
+	// The fixed overhead (header + status + mascot card + state card +
+	// queue framing) is roughly 32 rows; whatever's left of m.height is
+	// the budget for log entries inside the expanded panel. Floored at 2
+	// so the title + omission marker stay visible, and skipped entirely
+	// (0) before WindowSizeMsg arrives so first paint renders uncapped.
+	logBudget := 0
+	if m.height > 0 {
+		logBudget = m.height - 32
+		if logBudget < 2 {
+			logBudget = 2
+		}
+	}
 	leftCol := lipgloss.JoinVertical(lipgloss.Left,
 		m.mascot.View(),
 		stateBlock(m.styles, m.mascot.State(), m.currentTask, m.progress, left),
-		queueView(m.styles, m.queue, left, -1),
+		queueView(m.styles, m.queue, left, -1, logBudget),
 	)
 
 	// right column

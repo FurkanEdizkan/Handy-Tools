@@ -39,8 +39,13 @@ the terminal. Two binaries, one core, one mascot named **Wrenly**
 
 - **`htools`** — an interactive TUI (built with [Bubble Tea]) that lets you
   pick files, choose an action, confirm, and watch progress live.
-- **`htoolsd`** — the same tools exposed over **gRPC**, so you can run Handy
-  Tools as a service and call its features from anywhere (web, CI, scripts).
+- **`htoolsd`** — the same tools exposed over **gRPC** (and soon HTTP + SSE),
+  so you can run Handy Tools as a service and call its features from anywhere
+  (web, CI, scripts).
+- **`htools-gui`** *(in progress)* — a Wails desktop app and matching
+  web frontend that share one Svelte + Tailwind bundle, served by
+  `htoolsd` in server mode and embedded by `htools-gui` in desktop
+  mode. See the [pivot phases](TODO.md#web-gui-pivot--wails-desktop--self-hosted-server-in-progress).
 
 Both share one core: every tool is a plain Go package, used identically by the
 TUI and the server. The architecture is on one page in
@@ -49,9 +54,14 @@ TUI and the server. The architecture is on one page in
 [Bubble Tea]: https://github.com/charmbracelet/bubbletea
 
 > **Status:** pre-alpha. The eight initial milestones (scaffolding through
-> release polish) have landed on `main`; the next chapters are a plugin
-> registry, a web/Chrome-extension surface over `htoolsd`, and a pure-Go PDF
-> path. See the roadmap in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap).
+> release polish) have landed on `main`. The current focus is a **web GUI
+> pivot**: a Svelte/Vite frontend served either by `htoolsd` (self-hosted)
+> or by a new Wails desktop app, with progress streamed over SSE. The
+> Bubble Tea TUI keeps working alongside it — both will share a new
+> `internal/queue/` package on top of the existing tool core. See
+> [TODO.md](TODO.md#web-gui-pivot--wails-desktop--self-hosted-server-in-progress)
+> for the staged phases and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap)
+> for the longer-horizon roadmap.
 
 ## Features
 
@@ -70,12 +80,23 @@ TUI and the server. The architecture is on one page in
 
 ### What's coming
 
-- **Plugin registry** — add a tool by dropping one proto + one Go package; no
-  TUI changes.
-- **Web UI / Chrome extension** — a thin gRPC-Web gateway over `htoolsd`.
-- **WebP encoding** — re-enabled once a pure-Go encoder is available (or CGO
-  is accepted).
-- **`pdfcpu` import** — replace shelled-out PDF ops with the pure-Go library.
+- **HTTP + SSE on `htoolsd`** — REST endpoints mirroring the gRPC
+  services, with `tools.Progress` streamed as Server-Sent Events.
+  Same `--allow-roots` fail-closed invariant as gRPC.
+- **Web frontend** (`web/`) — Svelte + Vite + TS + Tailwind, embedded
+  into the `htoolsd` binary via `go:embed`. Image thumbnails, PDF page
+  previews, real drag-and-drop — the visuals the TUI couldn't render.
+- **Shared queue** (`internal/queue/`) — one job/progress model that
+  the TUI, web UI, and gRPC clients all subscribe to. Replaces the
+  current TUI run-simulator.
+- **`htools-gui`** — a Wails desktop app that bundles the same web
+  frontend with a native window, file dialogs, and system menu.
+- **Plugin registry** — add a tool by dropping one proto + one Go
+  package; no UI changes.
+- **WebP encoding** — re-enabled once a pure-Go encoder is available
+  (or CGO is accepted).
+- **`pdfcpu` import** — replace shelled-out PDF ops with the pure-Go
+  library.
 
 ## Install
 
