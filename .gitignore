@@ -34,4 +34,10 @@ internal/ui/mascot/art/*.draft.txt
 
 # Web frontend
 web/node_modules/
-web/dist/
+# web/dist/ is the Svelte build output. Everything inside is ignored
+# except .gitkeep, which we commit so `//go:embed all:dist` in web/webfs.go
+# always finds a directory to embed (otherwise `go build ./...` would fail
+# before the first `make web`). The user-visible fallback page lives at
+# web/placeholder.html (sibling of dist/) and is embedded separately.
+web/dist/*
+!web/dist/.gitkeep
