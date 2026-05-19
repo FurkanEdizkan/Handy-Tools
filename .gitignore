@@ -31,3 +31,7 @@ coverage.html
 
 # Mascot work-in-progress assets
 internal/ui/mascot/art/*.draft.txt
+
+# Web frontend
+web/node_modules/
+web/dist/
