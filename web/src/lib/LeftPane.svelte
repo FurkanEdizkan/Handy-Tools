@@ -1,6 +1,7 @@
 <script lang="ts">
   import { navItems } from './routes';
   import { router } from 'svelte-spa-router';
+  import QueuePanel from './QueuePanel.svelte';
 </script>
 
 <aside class="left-pane flex flex-col gap-3 p-3 bg-surface border-r border-border min-h-0">
@@ -38,15 +39,9 @@
     {/each}
   </nav>
 
-  <section
-    class="mt-auto rounded-lg border border-border bg-bg p-3"
-    aria-label="Queue"
-  >
-    <div class="text-[10px] font-semibold uppercase tracking-wider text-text-dim mb-1">
-      Queue
-    </div>
-    <div class="text-xs text-text-dim font-mono">idle · 0 running</div>
-  </section>
+  <div class="mt-auto min-h-0 flex flex-col">
+    <QueuePanel />
+  </div>
 </aside>
 
 <style>
