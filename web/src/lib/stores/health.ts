@@ -1,4 +1,5 @@
 import { readable, type Readable } from 'svelte/store';
+import { api } from '../api';
 
 export type HealthLevel = 'online' | 'degraded' | 'offline' | 'unknown';
 
@@ -13,7 +14,6 @@ export interface HealthSnapshot {
 }
 
 const POLL_INTERVAL_MS = 5_000;
-const REQUEST_TIMEOUT_MS = 3_000;
 
 const initial: HealthSnapshot = {
   level: 'unknown',
@@ -21,12 +21,6 @@ const initial: HealthSnapshot = {
   uptimeSeconds: null,
   lastSuccessAt: null,
 };
-
-interface RawHealth {
-  status?: string;
-  version?: string;
-  uptime_seconds?: number;
-}
 
 function levelFromStatus(status: string | undefined): HealthLevel {
   switch (status) {
@@ -41,28 +35,19 @@ function levelFromStatus(status: string | undefined): HealthLevel {
 }
 
 async function probe(): Promise<HealthSnapshot> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const res = await fetch('/v1/health', {
-      headers: { accept: 'application/json' },
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      return { ...initial, level: 'offline' };
-    }
-    const body = (await res.json()) as RawHealth;
+    const body = await api.fetchHealth();
     return {
       level: levelFromStatus(body.status),
       version: typeof body.version === 'string' ? body.version : null,
       uptimeSeconds:
-        typeof body.uptime_seconds === 'number' ? body.uptime_seconds : null,
+        typeof body.uptimeSeconds === 'number' ? body.uptimeSeconds : null,
       lastSuccessAt: new Date(),
     };
   } catch {
+    // Network errors and ApiError both collapse to "offline" for the badge —
+    // the user only cares whether the backend is reachable.
     return { ...initial, level: 'offline' };
-  } finally {
-    clearTimeout(timer);
   }
 }
 
