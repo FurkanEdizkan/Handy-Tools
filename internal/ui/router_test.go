@@ -173,8 +173,8 @@ func TestViewFitsSmallTerminal(t *testing.T) {
 	mustContain(t, smallOut, "earlier")         // log expansion was capped
 
 	smallLines := strings.Count(smallOut, "\n")
-	if smallLines > 70 {
-		t.Fatalf("View at 124×30 produced %d lines; expected ≤ 70 (was ~90 pre-fix)", smallLines)
+	if smallLines > 32 {
+		t.Fatalf("View at 124×30 produced %d lines; expected ≤ 32 (was ~90 pre-fix, ~70 after stderr cap)", smallLines)
 	}
 
 	// At a tall terminal the cap should not engage — all 10 seeded log

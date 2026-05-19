@@ -118,6 +118,24 @@ func New(cfg config.Config) Model {
 	return m
 }
 
+// mascotHeightBudget translates the total terminal height into the
+// number of rows the mascot card may use without pushing the rest of
+// the left column past the viewport. The fixed overhead — header,
+// status bar, frame spacers, state card (~7), queue card (~12) — eats
+// roughly 26 rows. When the remainder is below the full 22-row sprite
+// layout, the mascot renders compactly (badge + greeting + speech)
+// instead.
+func mascotHeightBudget(termHeight int) int {
+	if termHeight <= 0 {
+		return 0
+	}
+	budget := termHeight - 26
+	if budget < 4 {
+		budget = 4
+	}
+	return budget
+}
+
 // leftColWidth returns the fixed-sidebar width for a given terminal
 // width. The 15-cell Wrenly sprite plus the mascot card's 2-cell border
 // and 2-cell padding needs at least 34 columns, otherwise lipgloss
@@ -226,6 +244,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		left := leftColWidth(m.width)
 		m.mascot.SetWidth(left - 2)
+		// Give the mascot a height hint so it can drop the 14-row sprite
+		// and render compact when the leftcol must share the viewport
+		// with the state + queue cards on short terminals.
+		m.mascot.SetMaxHeight(mascotHeightBudget(m.height))
 		if hp, ok := m.pages[PageHome].(*homePage); ok {
 			hp.SetWidth(m.width - left - 6)
 		}
