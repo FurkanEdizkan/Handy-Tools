@@ -176,10 +176,10 @@ The eight initial phases landed on `main`:
 ### Current focus: Web GUI pivot
 
 The active multi-phase work is the **Web GUI pivot** — see
-[TODO.md → Web GUI pivot](../TODO.md#web-gui-pivot--wails-desktop--self-hosted-server-in-progress)
-for the staged phases. Issues #55–#59 track them:
+[Project #14](https://github.com/users/FurkanEdizkan/projects/14) for live
+status and the staged phases. Issues #55–#59 track them:
 
-- Phase 1 — HTTP + SSE transport (#55, landed on `feat/http-api`)
+- Phase 1 — HTTP + SSE transport (#55, landed via #86)
 - Phase 2 — Svelte/Vite/TS/Tailwind frontend scaffold (#56)
 - Phase 3 — Shared `internal/queue/` package; wire all tools end-to-end (#57)
 - Phase 4 — Wails desktop shell `cmd/htools-gui` (#58)

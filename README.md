@@ -45,7 +45,7 @@ the terminal. Two binaries, one core, one mascot named **Wrenly**
 - **`htools-gui`** *(in progress)* — a Wails desktop app and matching
   web frontend that share one Svelte + Tailwind bundle, served by
   `htoolsd` in server mode and embedded by `htools-gui` in desktop
-  mode. See the [pivot phases](TODO.md#web-gui-pivot--wails-desktop--self-hosted-server-in-progress).
+  mode. See the [pivot phases on Project #14](https://github.com/users/FurkanEdizkan/projects/14/views/1?filterQuery=label%3Aarea%2Fapi+label%3Aarea%2Fweb+label%3Aarea%2Fgui+label%3Aarea%2Fqueue).
 
 Both share one core: every tool is a plain Go package, used identically by the
 TUI and the server. The architecture is on one page in
@@ -59,8 +59,8 @@ TUI and the server. The architecture is on one page in
 > or by a new Wails desktop app, with progress streamed over SSE. The
 > Bubble Tea TUI keeps working alongside it — both will share a new
 > `internal/queue/` package on top of the existing tool core. See
-> [TODO.md](TODO.md#web-gui-pivot--wails-desktop--self-hosted-server-in-progress)
-> for the staged phases and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap)
+> [Project #14](https://github.com/users/FurkanEdizkan/projects/14) for the
+> staged phases and live status, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap)
 > for the longer-horizon roadmap.
 
 ## Features
