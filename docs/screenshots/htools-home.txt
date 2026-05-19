@@ -42,33 +42,18 @@
 │   ✕ manual.pdf 14:08  FAIL  ▾          │                                                                                                                      
 │   → 32 pages                           │                                                                                                                      
 │   · pdf                                │                                                                                                                      
-│ ────────────────────────────────────── │                                                                                                                      
-│ ────────────────────────────────────── │                                                                                                                      
-│ ─────────────────                      │                                                                                                                      
+│ ────────────────────────────────────   │                                                                                                                      
 │  STDERR · q3  10 lines                 │                                                                                                                      
-│  [14:08:22.004] INFO  pdf.render:      │                                                                                                                      
-│ opening manual.pdf                     │                                                                                                                      
-│  [14:08:22.018] DEBUG pdf.inspect: 32  │                                                                                                                      
-│ pages · 8.4 MB · PDF 1.7               │                                                                                                                      
-│  [14:08:22.020] INFO  render plan: 32  │                                                                                                                      
-│ pages → PNG @ 150 dpi → ./out/manual/  │                                                                                                                      
-│  [14:08:22.022] DEBUG sysdep.find:     │                                                                                                                      
-│ looking for "pdftoppm" on $PATH        │                                                                                                                      
-│  [14:08:22.031] WARN  sysdep.find:     │                                                                                                                      
-│ tried /usr/local/bin, /usr/bin,        │                                                                                                                      
-│ /opt/homebrew/bin                      │                                                                                                                      
-│  [14:08:22.032] ERROR                  │                                                                                                                      
-│ sysdep.MISSING_BINARY: pdftoppm not    │                                                                                                                      
-│ present                                │                                                                                                                      
-│  [14:08:22.033] ERROR                  │                                                                                                                      
-│ tools/pdf.render: cannot render        │                                                                                                                      
-│ without pdftoppm (code MISSING_BINARY) │                                                                                                                      
-│  [14:08:22.034] HINT  brew install     │                                                                                                                      
-│ poppler  # macOS                       │                                                                                                                      
-│  [14:08:22.034] HINT  apt install      │                                                                                                                      
-│ poppler-utils  # Debian / Ubuntu       │                                                                                                                      
-│  [14:08:22.035] FAIL  job aborted      │                                                                                                                      
-│ after 318 ms · 0 pages rendered        │                                                                                                                      
+│  [14:08:22.004] INFO  pdf.render: …    │                                                                                                                      
+│  [14:08:22.018] DEBUG pdf.inspect:…    │                                                                                                                      
+│  [14:08:22.020] INFO  render plan:…    │                                                                                                                      
+│  [14:08:22.022] DEBUG sysdep.find:…    │                                                                                                                      
+│  [14:08:22.031] WARN  sysdep.find:…    │                                                                                                                      
+│  [14:08:22.032] ERROR sysdep.MISSI…    │                                                                                                                      
+│  [14:08:22.033] ERROR tools/pdf.re…    │                                                                                                                      
+│  [14:08:22.034] HINT  brew install…    │                                                                                                                      
+│  [14:08:22.034] HINT  apt install …    │                                                                                                                      
+│  [14:08:22.035] FAIL  job aborted …    │                                                                                                                      
 │   • photos.zip —  WAIT                 │                                                                                                                      
 │   →                                    │                                                                                                                      
 │   ./photos/                            │                                                                                                                      

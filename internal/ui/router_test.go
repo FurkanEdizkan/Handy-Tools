@@ -49,10 +49,9 @@ func TestViewRendersHomeAndToolPages(t *testing.T) {
 }
 
 // TestQueueRendersSeededJobs makes sure the design's pre-populated queue
-// (done + failed + queued) shows up in the left column. We check for tokens
-// that survive lipgloss soft-wrapping in the narrow queue column — labels
-// like "invoice-2026-04.png" get broken across lines so we look at the
-// expanded log content and status pills instead.
+// (done + failed + queued) shows up in the left column. Log message tails
+// are truncated to the narrow column width, so we look for sentinels that
+// survive truncation: the STDERR title and the per-line level labels.
 func TestQueueRendersSeededJobs(t *testing.T) {
 	m := New(config.Defaults())
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 160, Height: 48})
@@ -62,8 +61,8 @@ func TestQueueRendersSeededJobs(t *testing.T) {
 	mustContain(t, out, "DONE")
 	mustContain(t, out, "FAIL")
 	mustContain(t, out, "WAIT")
-	mustContain(t, out, "pdftoppm") // proves the failed-job log expansion rendered
-	mustContain(t, out, "MISSING_BINARY")
+	mustContain(t, out, "STDERR") // proves the failed-job log expansion rendered
+	mustContain(t, out, "HINT")   // level label survives message truncation
 }
 
 // TestRunJobUpdatesState confirms that dispatching a RunJob enqueues a
@@ -150,6 +149,42 @@ func TestSettingsPopoverTogglesAndCycles(t *testing.T) {
 	m = updated.(Model)
 	if m.pop.IsOpen() {
 		t.Fatal("expected popover closed after esc")
+	}
+}
+
+// TestViewFitsSmallTerminal regression-tests #53: the seeded failed
+// job's expanded stderr panel previously emitted ten unwrapped log
+// lines that soft-wrapped into 30+ visual rows in the narrow queue
+// column, pushing the header and home menu off the top of a 30-row
+// terminal. We assert that on a small terminal the expanded panel is
+// capped (carries the "earlier" elision marker), and on a large
+// terminal the cap does not engage. We also check the total line
+// count comes down relative to the unfixed baseline (~90+); the full
+// fit-in-30 goal still needs a compact mascot mode and is tracked
+// separately.
+func TestViewFitsSmallTerminal(t *testing.T) {
+	m := New(config.Defaults())
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 124, Height: 30})
+	m = updated.(Model)
+	smallOut := m.View()
+
+	mustContain(t, smallOut, "HANDY TOOLS")     // header still emitted
+	mustContain(t, smallOut, "AVAILABLE TOOLS") // home menu still emitted
+	mustContain(t, smallOut, "earlier")         // log expansion was capped
+
+	smallLines := strings.Count(smallOut, "\n")
+	if smallLines > 70 {
+		t.Fatalf("View at 124×30 produced %d lines; expected ≤ 70 (was ~90 pre-fix)", smallLines)
+	}
+
+	// At a tall terminal the cap should not engage — all 10 seeded log
+	// lines fit, so the "earlier" marker shouldn't appear.
+	big := New(config.Defaults())
+	updated, _ = big.Update(tea.WindowSizeMsg{Width: 160, Height: 60})
+	big = updated.(Model)
+	bigOut := big.View()
+	if strings.Contains(bigOut, "earlier") {
+		t.Fatal("View at 160×60 should fit all log lines without capping")
 	}
 }
 

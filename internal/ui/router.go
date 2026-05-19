@@ -555,11 +555,24 @@ func (m Model) View() string {
 		lipgloss.NewStyle().Width(intMax(2, m.width-lipgloss.Width(cog)-lipgloss.Width(brand)-lipgloss.Width(crumb)-12)).Render(""),
 		version, " ", conn)
 
-	// left column
+	// left column. Cap the expanded stderr panel so a tall job log can't
+	// push the rest of the UI past the terminal viewport on short windows.
+	// The fixed overhead (header + status + mascot card + state card +
+	// queue framing) is roughly 32 rows; whatever's left of m.height is
+	// the budget for log entries inside the expanded panel. Floored at 2
+	// so the title + omission marker stay visible, and skipped entirely
+	// (0) before WindowSizeMsg arrives so first paint renders uncapped.
+	logBudget := 0
+	if m.height > 0 {
+		logBudget = m.height - 32
+		if logBudget < 2 {
+			logBudget = 2
+		}
+	}
 	leftCol := lipgloss.JoinVertical(lipgloss.Left,
 		m.mascot.View(),
 		stateBlock(m.styles, m.mascot.State(), m.currentTask, m.progress, left),
-		queueView(m.styles, m.queue, left, -1),
+		queueView(m.styles, m.queue, left, -1, logBudget),
 	)
 
 	// right column
