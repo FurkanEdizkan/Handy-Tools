@@ -122,10 +122,13 @@ func queueView(s theme.Styles, jobs []Job, width int, focused int, maxLogRows in
 	if width < 24 {
 		width = 24
 	}
+	// Reserve room for "QUEUE  " (the title + gap) when budgeting the
+	// counts strip so the compact fallback engages at narrow widths
+	// instead of letting the strip wrap onto a second line.
 	header := lipgloss.JoinHorizontal(lipgloss.Top,
 		s.Accent.Bold(true).Render("QUEUE"),
 		"  ",
-		s.Dim.Render(jobCounts(jobs, s)),
+		jobCounts(jobs, s, width-4-len("QUEUE  ")),
 	)
 
 	rows := []string{header, ""}
@@ -142,7 +145,12 @@ func queueView(s theme.Styles, jobs []Job, width int, focused int, maxLogRows in
 	return s.Card.Width(width).Render(strings.Join(rows, "\n"))
 }
 
-func jobCounts(jobs []Job, s theme.Styles) string {
+// jobCounts emits the "0 run · 1 done · 1 failed · 2 queued" status
+// strip the queue header carries. budget is the available cell width;
+// when the design's long form ("1 failed", "2 queued") would wrap we
+// fall back to a single-letter form ("1F 2Q") so the header stays one
+// line. Pass 0 to disable the compact fallback.
+func jobCounts(jobs []Job, s theme.Styles, budget int) string {
 	var run, done, fail, queued int
 	for _, j := range jobs {
 		switch j.Status {
@@ -156,18 +164,27 @@ func jobCounts(jobs []Job, s theme.Styles) string {
 			queued++
 		}
 	}
-	return fmt.Sprintf("%s · %s · %s · %d queued",
+	full := fmt.Sprintf("%s · %s · %s · %d queued",
 		s.Accent.Render(fmt.Sprintf("%d run", run)),
 		s.OK.Render(fmt.Sprintf("%d done", done)),
 		s.Err.Render(fmt.Sprintf("%d failed", fail)),
 		queued,
+	)
+	if budget <= 0 || lipgloss.Width(full) <= budget {
+		return full
+	}
+	return fmt.Sprintf("%s %s %s %s",
+		s.Accent.Render(fmt.Sprintf("%dR", run)),
+		s.OK.Render(fmt.Sprintf("%dD", done)),
+		s.Err.Render(fmt.Sprintf("%dF", fail)),
+		s.Dim.Render(fmt.Sprintf("%dQ", queued)),
 	)
 }
 
 func renderJobRow(s theme.Styles, j Job, width int, focused bool) string {
 	ico, pill := jobIconAndPill(s, j)
 
-	caret := s.Dim.Render(" ")
+	caret := " "
 	if len(j.Logs) > 0 {
 		if j.Expanded {
 			caret = s.Accent.Render("▾")
@@ -176,20 +193,56 @@ func renderJobRow(s theme.Styles, j Job, width int, focused bool) string {
 		}
 	}
 
-	label := j.Label
-	if j.Kind != "" {
-		label += s.Dim.Render(" · " + j.Kind)
-	}
-	time := s.Dim.Render(j.Time)
+	timeText := j.Time
+	timeWidth := lipgloss.Width(timeText)
+	timePiece := s.Dim.Render(timeText)
 	if j.Status == JobRunning {
 		mini := miniBar(s, j.Progress, 8)
-		time = mini + " " + time
+		timePiece = mini + " " + timePiece
+		timeWidth += 8 + 1
 	}
+
+	// Reserve the fixed cells: icon(1) + space + space + time + space +
+	// pill + space + caret(1). Whatever's left is the label budget; the
+	// label is truncated to that budget with a "…" tail rather than
+	// being soft-wrapped by lipgloss (the design uses CSS
+	// text-overflow: ellipsis, so we match that).
+	overhead := 1 + 1 + 1 + timeWidth + 1 + lipgloss.Width(pill) + 1 + 1
+	labelBudget := width - overhead
+	if labelBudget < 6 {
+		labelBudget = 6
+	}
+
+	plain := j.Label
+	kindSuffix := ""
+	if j.Kind != "" {
+		kindSuffix = " · " + j.Kind
+	}
+	full := plain + kindSuffix
+	runes := []rune(full)
+	if len(runes) > labelBudget {
+		full = string(runes[:labelBudget-1]) + "…"
+		// Style the visible substring. If the truncation chopped into
+		// the kind suffix, just dim the trailing "·" separator we can
+		// still see; otherwise dim the whole " · kind" tail.
+		if idx := strings.Index(full, " · "); idx >= 0 {
+			plain = full[:idx]
+			kindSuffix = full[idx:]
+		} else {
+			plain = full
+			kindSuffix = ""
+		}
+	}
+	label := plain
+	if kindSuffix != "" {
+		label += s.Dim.Render(kindSuffix)
+	}
+	labelCell := lipgloss.NewStyle().Width(labelBudget).MaxHeight(1).Render(label)
 
 	line := lipgloss.JoinHorizontal(lipgloss.Top,
 		ico, " ",
-		lipgloss.NewStyle().Width(intMax(10, width-30)).Render(label),
-		" ", time,
+		labelCell,
+		" ", timePiece,
 		" ", pill,
 		" ", caret,
 	)

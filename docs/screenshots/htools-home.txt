@@ -19,7 +19,7 @@
 │     ● ● ○ ○ ○ ○ ○ ○ ○ ● ●            │    └────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘  
 │           ● ● ● ● ●                  │    ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐  
 │                                      │    │   ◊  Doctor — check optional system tools                                                                      │  
-│ Welcome to Handy Tools.              │    └────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘  
+│ Hi! I'm Wrenly.                      │    └────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘  
 │ Something in the queue failed. I'm   │                                                                                                                        
 │ keeping an eye on it.                │                                                                                                                        
 ╰──────────────────────────────────────╯                                                                                                                        
@@ -31,17 +31,11 @@
 │ waiting for input             0%       │                                                                                                                      
 ╰────────────────────────────────────────╯                                                                                                                      
 ╭────────────────────────────────────────╮                                                                                                                      
-│ QUEUE  0 run · 1 done · 1 failed · 2   │                                                                                                                      
-│ queued                                 │                                                                                                                      
+│ QUEUE  0R 2D 1F 2Q                     │                                                                                                                      
 │                                        │                                                                                                                      
-│   ✓ invoice-   14:02  DONE  ▸          │                                                                                                                      
-│   2026-                                │                                                                                                                      
-│   04.png →                             │                                                                                                                      
-│   JPEG ·                               │                                                                                                                      
-│   image                                │                                                                                                                      
-│   ✕ manual.pdf 14:08  FAIL  ▾          │                                                                                                                      
-│   → 32 pages                           │                                                                                                                      
-│   · pdf                                │                                                                                                                      
+│   ✓ invoice-2026-04.pn… 14:02  DONE  ▸ │                                                                                                                      
+│   ✓ docs.tar.gz → ./do… 14:05  DONE  ▸ │                                                                                                                      
+│   ✕ manual.pdf → 32 pa… 14:08  FAIL  ▾ │                                                                                                                      
 │ ────────────────────────────────────   │                                                                                                                      
 │  STDERR · q3  10 lines                 │                                                                                                                      
 │  [14:08:22.004] INFO  pdf.render: …    │                                                                                                                      
@@ -54,14 +48,8 @@
 │  [14:08:22.034] HINT  brew install…    │                                                                                                                      
 │  [14:08:22.034] HINT  apt install …    │                                                                                                                      
 │  [14:08:22.035] FAIL  job aborted …    │                                                                                                                      
-│   • photos.zip —  WAIT                 │                                                                                                                      
-│   →                                    │                                                                                                                      
-│   ./photos/                            │                                                                                                                      
-│   · archive                            │                                                                                                                      
-│   • big-batch  —  WAIT                 │                                                                                                                      
-│   (24 PNGs)                            │                                                                                                                      
-│   → WebP ·                             │                                                                                                                      
-│   image                                │                                                                                                                      
+│   • photos.zip → ./photos/… —  WAIT    │                                                                                                                      
+│   • big-batch (24 PNGs) → … —  WAIT    │                                                                                                                      
 ╰────────────────────────────────────────╯                                                                                                                      
                                                                                                                                                                 
  ↑↓  move    ↵  open    1-5  jump    tab  theme    ,  settings    q  quit                                                                idle · htoolsd offline 
