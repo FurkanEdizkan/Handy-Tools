@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package handytools.v1;
+
+option go_package = "github.com/furkandedizkan/handy-tools/gen/handytools/v1;handytoolsv1";
+
+// HealthService lets clients probe whether htoolsd is up and ready to serve.
+// The TUI, the web frontend's connection-status badge, and external
+// monitoring all use it.
+service HealthService {
+  // Check reports the server's current serving status, build version, and
+  // uptime. It is cheap and side-effect free — safe to poll.
+  rpc Check(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// ServingStatus describes whether the server can currently handle tool calls.
+enum ServingStatus {
+  SERVING_STATUS_UNSPECIFIED = 0;
+  SERVING_STATUS_SERVING = 1;      // up and ready
+  SERVING_STATUS_DEGRADED = 2;     // up, but an optional capability is unavailable
+  SERVING_STATUS_NOT_SERVING = 3;  // not ready to serve
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  ServingStatus status = 1;
+  string version = 2;          // server build version (buildinfo.Version)
+  int64 uptime_seconds = 3;    // seconds since the process started
+}
