@@ -85,6 +85,8 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /v1/pdf/merge", s.handlePDFMerge)
 	mux.HandleFunc("GET /v1/jobs/{id}/events", s.handleJobEvents)
 	mux.HandleFunc("GET /v1/sysdep", s.handleSysdep)
+	mux.HandleFunc("GET /v1/config", s.handleConfigGet)
+	mux.HandleFunc("PATCH /v1/config", s.handleConfigPatch)
 	return mux
 }
 
