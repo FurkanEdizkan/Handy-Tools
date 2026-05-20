@@ -113,6 +113,15 @@ type pdfMergeRequest struct {
 	Output  outputRef `json:"output"`
 }
 
+// pdfSplitRequest is the body of POST /v1/pdf/split. page_ranges and every_n
+// are mutually exclusive — exactly one mode must be set.
+type pdfSplitRequest struct {
+	Source     fileRef     `json:"source"`
+	PageRanges []pageRange `json:"page_ranges"`
+	EveryN     int         `json:"every_n"`
+	Output     outputRef   `json:"output"` // Directory is where the split files land
+}
+
 // jobResponse is the body of 202 from any async POST endpoint.
 type jobResponse struct {
 	JobID string `json:"job_id"`

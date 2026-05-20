@@ -412,3 +412,96 @@ func TestArchiveCompressRejectsUnknownFormat(t *testing.T) {
 		t.Fatalf("code: got %q want %q", env.Error.Code, tools.CodeBadRequest)
 	}
 }
+
+// postPDFSplit POSTs body to /v1/pdf/split and returns the response.
+func postPDFSplit(t *testing.T, ts *httptest.Server, req pdfSplitRequest) *http.Response {
+	t.Helper()
+	body, _ := json.Marshal(req)
+	resp, err := http.Post(ts.URL+"/v1/pdf/split", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	return resp
+}
+
+// assertSplitAccepted checks the 202 + job_id envelope and that the job's SSE
+// stream reaches a terminal Completed event. It does NOT assert success: the
+// CI runner has no pdfcpu binary, so pdf.Split terminates with a MISSING_BINARY
+// error there — either way the transport must deliver a Completed event.
+func assertSplitAccepted(t *testing.T, ts *httptest.Server, resp *http.Response) {
+	t.Helper()
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status: got %d want 202; body=%s", resp.StatusCode, raw)
+	}
+	var jr jobResponse
+	if err := json.NewDecoder(resp.Body).Decode(&jr); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if jr.JobID == "" {
+		t.Fatal("empty job_id")
+	}
+	events := readSSE(t, ts.URL+"/v1/jobs/"+jr.JobID+"/events", 5*time.Second)
+	done := false
+	for _, e := range events {
+		if e.Completed {
+			done = true
+		}
+	}
+	if !done {
+		t.Fatalf("did not observe a terminal Completed event: %+v", events)
+	}
+}
+
+func TestPDFSplitPageRangesAccepted(t *testing.T) {
+	dir := t.TempDir()
+	ts := newTestServer(t, dir)
+	src := writeTextFile(t, dir, "in.pdf", "%PDF-1.4 placeholder")
+	resp := postPDFSplit(t, ts, pdfSplitRequest{
+		Source:     fileRef{Path: src},
+		PageRanges: []pageRange{{From: 1, To: 3}, {From: 5, To: 7}},
+		Output:     outputRef{Directory: dir},
+	})
+	assertSplitAccepted(t, ts, resp)
+}
+
+func TestPDFSplitEveryNAccepted(t *testing.T) {
+	dir := t.TempDir()
+	ts := newTestServer(t, dir)
+	src := writeTextFile(t, dir, "in.pdf", "%PDF-1.4 placeholder")
+	resp := postPDFSplit(t, ts, pdfSplitRequest{
+		Source: fileRef{Path: src},
+		EveryN: 2,
+		Output: outputRef{Directory: dir},
+	})
+	assertSplitAccepted(t, ts, resp)
+}
+
+func TestPDFSplitRejectsInvalidRange(t *testing.T) {
+	dir := t.TempDir()
+	ts := newTestServer(t, dir)
+	resp := postPDFSplit(t, ts, pdfSplitRequest{
+		Source:     fileRef{Path: filepath.Join(dir, "in.pdf")},
+		PageRanges: []pageRange{{From: 5, To: 2}}, // to < from
+		Output:     outputRef{Directory: dir},
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status: got %d want 400", resp.StatusCode)
+	}
+}
+
+func TestPDFSplitRejectsAmbiguousMode(t *testing.T) {
+	dir := t.TempDir()
+	ts := newTestServer(t, dir)
+	// Neither page_ranges nor every_n set — the mode is ambiguous.
+	resp := postPDFSplit(t, ts, pdfSplitRequest{
+		Source: fileRef{Path: filepath.Join(dir, "in.pdf")},
+		Output: outputRef{Directory: dir},
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status: got %d want 400", resp.StatusCode)
+	}
+}
