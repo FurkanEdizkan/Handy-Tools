@@ -29,7 +29,7 @@ type CompressRequest struct {
 	Format           Format   // target format; FormatUnknown -> inferred from Output extension
 	Output           string   // path of the archive to create
 	Password         string   // optional; rejected here (the pure-Go formats have no encryption)
-	CompressionLevel int       // 0 = format default; 1 = fastest .. 9 = smallest
+	CompressionLevel int      // 0 = format default; 1 = fastest .. 9 = smallest
 }
 
 // Compress packs Sources into a single archive at req.Output. zip, tar,
