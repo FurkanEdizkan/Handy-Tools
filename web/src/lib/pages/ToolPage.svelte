@@ -2,6 +2,8 @@
   import { toolById } from '../tools';
   import ToolImage from './ToolImage.svelte';
   import ToolPdf from './ToolPdf.svelte';
+  import ToolArchivePack from './ToolArchivePack.svelte';
+  import ToolArchiveExtract from './ToolArchiveExtract.svelte';
 
   interface Props {
     params?: { id?: string };
@@ -26,11 +28,15 @@
       <ToolImage />
     {:else if tool.id === 'pdf'}
       <ToolPdf />
+    {:else if tool.id === 'zip-pack'}
+      <ToolArchivePack />
+    {:else if tool.id === 'archive-extract'}
+      <ToolArchiveExtract />
     {:else}
       <p class="text-sm text-text-dim">{tool.desc}</p>
       <p class="mt-4 text-sm text-text-dim">
         The tool form for <code class="text-accent">{tool.id}</code> arrives in
-        #131–#132.
+        #132.
       </p>
     {/if}
   {:else}

@@ -4,6 +4,10 @@ import {
   imageFormReady,
   pdfFormReady,
   pdfSummary,
+  archivePackReady,
+  archivePackSummary,
+  archiveExtractReady,
+  archiveExtractSummary,
   type ImageFile,
 } from './toolform';
 
@@ -55,5 +59,34 @@ describe('pdfSummary', () => {
   it('summarises a ready form', () => {
     expect(pdfSummary('merge', 3)).toBe('ready: merge · 3 documents');
     expect(pdfSummary('text', 1)).toBe('ready: extract text · 1 document');
+  });
+});
+
+describe('archivePack', () => {
+  it('needs at least one file and a non-blank output name', () => {
+    expect(archivePackReady(0, 'out.zip')).toBe(false);
+    expect(archivePackReady(2, '   ')).toBe(false);
+    expect(archivePackReady(2, 'out.zip')).toBe(true);
+  });
+
+  it('summarises the disabled and ready states', () => {
+    expect(archivePackSummary(0, 'zip', 'out.zip')).toBe('add files to pack');
+    expect(archivePackSummary(2, 'zip', '')).toBe('name the output archive');
+    expect(archivePackSummary(1, 'tar.gz', 'a.tgz')).toBe('ready: 1 item → a.tgz (tar.gz)');
+    expect(archivePackSummary(3, 'zip', 'a.zip')).toBe('ready: 3 items → a.zip (zip)');
+  });
+});
+
+describe('archiveExtract', () => {
+  it('needs both a source and a destination', () => {
+    expect(archiveExtractReady('', '/out')).toBe(false);
+    expect(archiveExtractReady('a.zip', '  ')).toBe(false);
+    expect(archiveExtractReady('a.zip', '/out')).toBe(true);
+  });
+
+  it('summarises the disabled and ready states', () => {
+    expect(archiveExtractSummary('', '/out')).toBe('choose an archive to extract');
+    expect(archiveExtractSummary('a.zip', '')).toBe('choose a destination folder');
+    expect(archiveExtractSummary('a.zip', '/out')).toBe('ready: extract a.zip → /out');
   });
 });
