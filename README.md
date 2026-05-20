@@ -148,8 +148,8 @@ binaries are installed and what each unlocks.
 | PDF → text             | `pdftotext`          | `apt install poppler-utils`  | `brew install poppler`     |
 | HEIC images            | `magick`             | `apt install imagemagick`    | `brew install imagemagick` |
 
-Tested matrix is recorded in [COMPATIBILITY.md](COMPATIBILITY.md), rewritten
-on every push to `main` from CI artifacts.
+CI exercises these tools on Linux, and each published release is smoke-tested
+on Ubuntu 22.04/24.04 and macOS before it goes out.
 
 ## Quick tour
 

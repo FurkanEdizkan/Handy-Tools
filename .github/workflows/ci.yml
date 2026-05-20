@@ -1,36 +1,24 @@
 name: CI
 
-# Two-tier pipeline:
+# Linux-only CI for the pre-1.0 phase: lint, tests, a 20s fuzz pass, and a
+# build assembly check on every push/PR to `main` and `test`.
 #
-#   Fast tier  — always runs on push/PR. Linux-only runners; replaces the
-#                old 4-OS matrix on PR/test branches. Folds the 20s fuzz pass
-#                into test-quick to save a runner.
-#   Compat tier — runs only on push-to-main or on a PR carrying the `compat`
-#                 label. Restores the full ubuntu × macos matrix + the
-#                 Windows compile-only sanity check so COMPATIBILITY.md
-#                 only ever covers the version that's about to ship.
+# The earlier multi-OS "compat tier" (ubuntu × macos matrix + a Windows
+# compile check + COMPATIBILITY.md generation) was removed while the project
+# is small; restoring an OS matrix is tracked for ~v1.0.0 (issue #29).
+# Release-time OS coverage still exists via verify-install.yml.
 #
-# Downstream workflows (auto-tag.yml, promote-to-main.yml) look for the
-# workflow named "CI" on a branch; both keep working unchanged as long as
-# the *overall* conclusion is success. A skipped job doesn't fail the run.
+# This workflow runs on every push/PR with no path filter — required status
+# checks must report on docs-only PRs too, or those PRs can't merge (#93).
+#
+# Downstream workflows (auto-tag.yml, promote-to-main.yml) key off the
+# workflow named "CI" and gate only on its *overall* conclusion.
 
 on:
   push:
     branches: [main, test]
-    paths-ignore:
-      - "**.md"
-      - "docs/**"
-      - "LICENSE"
-      - "CODE_OF_CONDUCT.md"
-      - "CONTRIBUTING.md"
   pull_request:
     branches: [main, test]
-    paths-ignore:
-      - "**.md"
-      - "docs/**"
-      - "LICENSE"
-      - "CODE_OF_CONDUCT.md"
-      - "CONTRIBUTING.md"
 
 permissions:
   contents: read
@@ -40,10 +28,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # FAST TIER
-  # ---------------------------------------------------------------------------
-
   lint-go:
     name: Lint (Go)
     runs-on: ubuntu-latest
@@ -158,113 +142,6 @@ jobs:
           retention-days: 7
 
   # ---------------------------------------------------------------------------
-  # COMPAT TIER — push-to-main, or PR carrying the `compat` label.
-  # ---------------------------------------------------------------------------
-
-  test-compat:
-    name: Test (${{ matrix.os }})
-    if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'compat'))
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-22.04
-          - ubuntu-24.04
-          # macos-13 (Intel x86_64) is being phased out by GitHub and frequently
-          # gets stuck "waiting for a runner". macos-14/15 are Apple Silicon
-          # and have capacity. GoReleaser still builds darwin/amd64; we just
-          # don't have CI coverage for it.
-          - macos-14
-          - macos-15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-          cache: true
-      - uses: bufbuild/buf-setup-action@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install optional system deps (Linux)
-        if: startsWith(matrix.os, 'ubuntu-')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            p7zip-full unrar-free poppler-utils imagemagick
-      - name: Install optional system deps (macOS)
-        if: startsWith(matrix.os, 'macos-')
-        run: |
-          brew install p7zip poppler imagemagick || true
-      - name: Generate proto bindings
-        run: buf generate
-      - name: Test
-        run: go test -race -count=1 ./...
-      - name: Read Handy Tools version
-        id: hv
-        shell: bash
-        run: |
-          v=$(tr -d '[:space:]' < internal/buildinfo/version.txt)
-          echo "version=$v" >> "$GITHUB_OUTPUT"
-      - name: Record compatibility result
-        if: always()
-        shell: bash
-        env:
-          STATUS: ${{ job.status }}
-          OS_LABEL: ${{ matrix.os }}
-          RUNNER_OS_NAME: ${{ runner.os }}
-          RUNNER_ARCH_NAME: ${{ runner.arch }}
-          HANDY_TOOLS_VERSION: ${{ steps.hv.outputs.version }}
-        run: |
-          mkdir -p compat-artifacts
-          cat > "compat-artifacts/${OS_LABEL}.json" <<EOF
-          {
-            "os": "${OS_LABEL}",
-            "runner_os": "${RUNNER_OS_NAME}",
-            "runner_arch": "${RUNNER_ARCH_NAME}",
-            "version": "${HANDY_TOOLS_VERSION:-unknown}",
-            "go_version": "1.22",
-            "status": "${STATUS}",
-            "sha": "${GITHUB_SHA}",
-            "ref": "${GITHUB_REF}",
-            "run_id": "${GITHUB_RUN_ID}"
-          }
-          EOF
-      - name: Upload compatibility artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: compat-${{ matrix.os }}
-          path: compat-artifacts/*.json
-          retention-days: 30
-
-  build-windows:
-    name: Build (windows-latest, sanity)
-    if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'compat'))
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-          cache: true
-      - uses: bufbuild/buf-setup-action@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Generate proto bindings
-        run: buf generate
-      - name: Build
-        shell: bash
-        run: |
-          mkdir -p bin
-          go build -ldflags="-s -w" -o bin/htools.exe  ./cmd/htools
-          go build -ldflags="-s -w" -o bin/htoolsd.exe ./cmd/htoolsd
-
-  # ---------------------------------------------------------------------------
   # ASSEMBLY
   # ---------------------------------------------------------------------------
 
@@ -293,94 +170,3 @@ jobs:
           mkdir -p bin
           go build -ldflags="-s -w" -o bin/htools  ./cmd/htools
           go build -ldflags="-s -w" -o bin/htoolsd ./cmd/htoolsd
-
-  # ---------------------------------------------------------------------------
-  # MAIN-ONLY POST-CI
-  # ---------------------------------------------------------------------------
-
-  update-compatibility:
-    name: Update COMPATIBILITY.md
-    needs: [test-compat]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download all compat artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: compat-*
-          path: compat-in
-          merge-multiple: true
-
-      - name: Regenerate COMPATIBILITY.md
-        shell: bash
-        run: |
-          set -euo pipefail
-          version=$(tr -d '[:space:]' < internal/buildinfo/version.txt)
-          today=$(date -u +%Y-%m-%d)
-
-          if ! ls compat-in/*.json >/dev/null 2>&1; then
-            echo "No compat artifacts to process; nothing to update."
-            exit 0
-          fi
-
-          new_rows=$(
-            for f in compat-in/*.json; do
-              hv=$(jq -r .version "$f")
-              [ "$hv" = "$version" ] || continue
-              os=$(jq -r .os "$f")
-              ros=$(jq -r .runner_os "$f")
-              rarch=$(jq -r .runner_arch "$f")
-              status=$(jq -r .status "$f")
-              icon='[FAIL]'
-              [ "$status" = "success" ] && icon='[PASS]'
-              printf '| v%s | %s | %s/%s | %s | %s |\n' \
-                "$version" "$os" "$ros" "$rarch" "$icon" "$today"
-            done | LC_ALL=C sort
-          )
-
-          if [ -z "$new_rows" ]; then
-            echo "No matching artifacts for v$version; nothing to update."
-            exit 0
-          fi
-
-          if [ -f COMPATIBILITY.md ]; then
-            other_rows=$(grep -E '^\| v' COMPATIBILITY.md | grep -v "^| v${version} |" || true)
-          else
-            other_rows=""
-          fi
-
-          {
-            cat <<'HEADER'
-          # Compatibility
-
-          Auto-generated from CI matrix runs on `main`. Each row records that the listed Handy Tools version's test suite passed on that OS/arch combination on the date shown. Older versions are preserved; the row for the current version is overwritten on every push.
-
-          | Version | Runner image | OS / Arch | Status | Recorded |
-          | --- | --- | --- | --- | --- |
-          HEADER
-            printf '%s\n' "$new_rows"
-            if [ -n "$other_rows" ]; then printf '%s\n' "$other_rows"; fi
-          } > COMPATIBILITY.md
-
-          rm -rf compat-in
-
-      - name: Commit if changed
-        shell: bash
-        run: |
-          if git diff --quiet -- COMPATIBILITY.md; then
-            echo "COMPATIBILITY.md unchanged."
-            exit 0
-          fi
-          git config user.name  'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add COMPATIBILITY.md
-          git commit -m "chore(compat): record CI matrix results for v$(tr -d '[:space:]' < internal/buildinfo/version.txt) [skip ci]"
-          git push origin main
