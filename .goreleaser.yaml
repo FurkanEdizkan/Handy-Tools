@@ -58,10 +58,11 @@ snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
 changelog:
-  # Parse commit messages between the previous tag and this one. With the
-  # calver tagging scheme each push to main becomes its own release, so a
-  # release typically contains a single commit — but multi-commit pushes
-  # are still grouped correctly under Changes / Fixes / Other.
+  # Parse commit messages between the previous tag and this one. PRs merge
+  # as merge commits (no squash), so a test -> main promotion brings every
+  # feature commit onto main; they are grouped under Changes / Fixes / Other.
+  # The merge commits themselves ("Merge pull request …" / "Merge branch …")
+  # are filtered out so only the real commits show.
   use: git
   sort: asc
   filters:
@@ -70,6 +71,7 @@ changelog:
       - "^test:"
       - "^chore"
       - "^ci"
+      - "^Merge "
   groups:
     - title: Changes
       regexp: "^.*feat(\\(.+\\))?!?:"

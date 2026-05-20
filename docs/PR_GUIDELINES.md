@@ -54,8 +54,9 @@ will use it during review.
 
 ## After merge
 
-- Maintainers squash-merge into `test`. The squash commit message is the PR
-  title (so the title must be a valid Conventional Commit).
+- Maintainers merge with a merge commit (not squash). The PR title becomes
+  the merge commit message (so it must be a valid Conventional Commit), and
+  every commit on the branch is preserved on `test`.
 - The automated `test -> main` PR will pick the change up on the next green run.
 
 ## Branch protection (maintainer setup)
@@ -73,7 +74,9 @@ checked in to the repo without admin-scoped API tokens):
   - `Test + fuzz (fast lane, Linux)`
   - `Build`
   - `Validate PR title` (from the commitlint workflow)
-- [ ] **Require linear history** (matches the squash-merge convention).
+- [ ] **Allowed merge methods: Merge commit only** — disable Squash and
+  Rebase, so every PR lands as a merge commit and history stays fully traceable.
+- [ ] **Do not require linear history** — the workflow relies on merge commits.
 - [ ] **Restrict who can push to matching branches.** Allow only
   `github-actions[bot]` so the `test -> main` promotion automation can push;
   everyone else is PR-only.
