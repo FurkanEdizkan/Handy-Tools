@@ -1,15 +1,16 @@
 <script lang="ts">
   import { toolById } from '../tools';
+  import ToolImage from './ToolImage.svelte';
+  import ToolPdf from './ToolPdf.svelte';
 
   interface Props {
     params?: { id?: string };
   }
   let { params }: Props = $props();
 
-  // Dispatch on the :id route param. The per-tool form components
-  // (ToolImage / ToolArchivePack / ToolArchiveExtract / ToolPdf / Doctor)
-  // land in #130–#132; until then a known id renders this header + a
-  // placeholder, which is enough to prove the routing dispatch works.
+  // Dispatch on the :id route param. ToolImage + ToolPdf land here (#130);
+  // the archive forms (#131) and Doctor (#132) still fall through to the
+  // placeholder until those sub-issues land.
   let tool = $derived(toolById(params?.id ?? ''));
 </script>
 
@@ -20,11 +21,18 @@
       <h1 class="text-xl font-semibold tracking-tight">{tool.label}</h1>
       <code class="text-xs text-accent font-mono">/{tool.id}</code>
     </header>
-    <p class="text-sm text-text-dim">{tool.desc}</p>
-    <p class="mt-4 text-sm text-text-dim">
-      The tool form for <code class="text-accent">{tool.id}</code> arrives in
-      #130–#132.
-    </p>
+
+    {#if tool.id === 'convert-image'}
+      <ToolImage />
+    {:else if tool.id === 'pdf'}
+      <ToolPdf />
+    {:else}
+      <p class="text-sm text-text-dim">{tool.desc}</p>
+      <p class="mt-4 text-sm text-text-dim">
+        The tool form for <code class="text-accent">{tool.id}</code> arrives in
+        #131–#132.
+      </p>
+    {/if}
   {:else}
     <header class="mb-6">
       <h1 class="text-xl font-semibold tracking-tight">Unknown tool</h1>
