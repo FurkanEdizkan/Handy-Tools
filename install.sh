@@ -54,10 +54,20 @@ banner() {
   [ "$USE_COLOR" = "1" ] || { printf 'Handy Tools installer\n\n'; return; }
   cat <<EOF
 
-$(orange '   /\___/\')      $(bold "$(orange 'Handy Tools')")  $(dim 'one-line installer')
-$(orange '  ( ')$(amber 'o')$(orange '.')$(amber 'o')$(orange '.')$(amber 'o')$(orange ' )')    $(dim "$REPO")
-$(orange '   \  ')$(amber 'v')$(orange '  /')
-$(orange "    '---'")
+$(orange '  ●                       ●  ')   $(bold "$(orange 'Handy Tools')")  $(dim 'one-line installer')
+$(orange '● ● ●                   ● ● ●')   $(dim "$REPO")
+$(orange '● ○ ○ ●               ● ○ ○ ●')
+$(orange '● ● ● ● ● ● ● ● ● ● ● ● ● ● ●')
+$(orange '● ● ● ● ● ● ● ● ● ● ● ● ● ● ●')
+$(orange '● ○ ○ ● ● ● ● ● ● ● ● ● ○ ○ ●')
+$(orange '● ○ ○ ● ')$(amber '•')$(orange ' ● ○ ● ○ ● ')$(amber '•')$(orange ' ● ○ ○ ●')
+$(orange '● ○ ● ○ ○ ○ ○ ● ○ ○ ○ ○ ● ○ ●')
+$(orange '● ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ●')
+$(orange '● ○ ○ ○ ○ ○ ')$(amber '● ● ●')$(orange ' ○ ○ ○ ○ ○ ●')
+$(orange '● ○ ○ ○ ○ ○ ● ')$(amber '▪')$(orange ' ● ○ ○ ○ ○ ○ ●')
+$(orange '  ● ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ●  ')
+$(orange '    ● ● ○ ○ ○ ○ ○ ○ ○ ● ●    ')
+$(orange '          ● ● ● ● ●          ')
 
 EOF
 }

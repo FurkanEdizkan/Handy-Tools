@@ -87,6 +87,41 @@ func TestBackCompatStateAliases(t *testing.T) {
 	}
 }
 
+// TestSpriteRendersDesignGlyphs locks the plain-text Sprite() output that
+// brand assets (docs/brand/wrenly.txt, README hero, install.sh banner) are
+// generated from. It guards against accidental glyph drift: every character
+// must render ● fur, ○ cream, and ▪ mouth, and the eye row gets the simple
+// • placeholder (the TUI overlays a richer eye via lipgloss).
+func TestSpriteRendersDesignGlyphs(t *testing.T) {
+	for _, c := range []string{CharacterWrenly, CharacterHopper} {
+		out := Sprite(c)
+		for _, glyph := range []string{"●", "○", "▪"} {
+			if !strings.Contains(out, glyph) {
+				t.Errorf("character %q sprite missing glyph %q:\n%s", c, glyph, out)
+			}
+		}
+	}
+	// Only Wrenly has the cheek-stripe + eye row that emits •; Hopper's eye
+	// row uses a different sprite pattern.
+	if !strings.Contains(Sprite(CharacterWrenly), "•") {
+		t.Errorf("Wrenly sprite should render • eye placeholder")
+	}
+	// Unknown character falls back to Wrenly.
+	if Sprite("garbage") != Sprite(CharacterWrenly) {
+		t.Errorf("unknown character should fall back to Wrenly")
+	}
+}
+
+// TestSpritePlainNoANSI confirms the brand-asset path never leaks lipgloss
+// escape sequences. Surfaces that embed Sprite() output literally (the
+// installer banner wraps it with its own shell-color helpers) would render
+// raw ESC bytes if this regressed.
+func TestSpritePlainNoANSI(t *testing.T) {
+	if strings.Contains(Sprite(CharacterWrenly), "\x1b") {
+		t.Fatal("Sprite() emitted ANSI escape sequences; should be plain glyphs only")
+	}
+}
+
 func TestSetCharacterAndView(t *testing.T) {
 	m := New(theme.Build(theme.Forge))
 	m.SetWidth(36)

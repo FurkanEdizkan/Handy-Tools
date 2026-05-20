@@ -66,16 +66,17 @@ are blocked. These settings must be configured in the GitHub UI under
 checked in to the repo without admin-scoped API tokens):
 
 - [ ] **Require a pull request before merging.**
-- [ ] **Require status checks to pass before merging.** Add as required checks:
-  - `lint-go`, `lint-proto`
-  - every `test` matrix entry (`test (ubuntu-22.04)`, `test (ubuntu-24.04)`,
-    `test (macos-13)`, `test (macos-14)`, `test (macos-15)`)
-  - `build`, `build-windows`, `fuzz`
-  - `commitlint` (from the commitlint workflow)
+- [ ] **Require status checks to pass before merging.** Add as required checks
+  (use the check *display names*, not the job ids):
+  - `Lint (Go)`, `Lint (proto)`
+  - `Web (Svelte / Vite)`
+  - `Test + fuzz (fast lane, Linux)`
+  - `Build`
+  - `Validate PR title` (from the commitlint workflow)
 - [ ] **Require linear history** (matches the squash-merge convention).
 - [ ] **Restrict who can push to matching branches.** Allow only
-  `github-actions[bot]` so the `update-compatibility` job's `[skip ci]` commit
-  still lands; everyone else is PR-only.
+  `github-actions[bot]` so the `test -> main` promotion automation can push;
+  everyone else is PR-only.
 - [ ] **Do not** require approvals from a separate reviewer while the project
   has a single maintainer — that would block your own promotion PRs.
 

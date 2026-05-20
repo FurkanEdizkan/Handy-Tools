@@ -18,7 +18,7 @@ help: ## Show this help
 		| awk 'BEGIN {FS = ":.*?## "} {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: build
-build: $(TUI_BIN) $(SERVER_BIN) ## Build both binaries
+build: web $(TUI_BIN) $(SERVER_BIN) ## Build web assets + both binaries
 
 $(TUI_BIN):
 	@mkdir -p $(BIN_DIR)
@@ -27,6 +27,17 @@ $(TUI_BIN):
 $(SERVER_BIN):
 	@mkdir -p $(BIN_DIR)
 	$(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(SERVER_BIN) ./cmd/htoolsd
+
+.PHONY: web
+web: ## Build the Svelte frontend into web/dist (embedded by htoolsd)
+	cd web && npm ci && npm run build
+	@# vite build empties dist/ — re-create the marker so the directory
+	@# remains tracked in git for downstream `go build` without Node.
+	@touch web/dist/.gitkeep
+
+.PHONY: web-dev
+web-dev: ## Run Vite dev server with HMR (point it at a running htoolsd)
+	cd web && npm run dev
 
 .PHONY: tui
 tui: ## Run the TUI
@@ -65,3 +76,5 @@ tidy: ## go mod tidy
 .PHONY: clean
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR) dist coverage.out coverage.html
+	rm -rf web/dist/assets web/dist/index.html
+	@# Keep web/dist/.gitkeep (committed) and web/placeholder.html.

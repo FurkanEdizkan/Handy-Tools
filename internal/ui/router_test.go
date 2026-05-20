@@ -49,10 +49,9 @@ func TestViewRendersHomeAndToolPages(t *testing.T) {
 }
 
 // TestQueueRendersSeededJobs makes sure the design's pre-populated queue
-// (done + failed + queued) shows up in the left column. We check for tokens
-// that survive lipgloss soft-wrapping in the narrow queue column — labels
-// like "invoice-2026-04.png" get broken across lines so we look at the
-// expanded log content and status pills instead.
+// (done + failed + queued) shows up in the left column. Log message tails
+// are truncated to the narrow column width, so we look for sentinels that
+// survive truncation: the STDERR title and the per-line level labels.
 func TestQueueRendersSeededJobs(t *testing.T) {
 	m := New(config.Defaults())
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 160, Height: 48})
@@ -62,8 +61,8 @@ func TestQueueRendersSeededJobs(t *testing.T) {
 	mustContain(t, out, "DONE")
 	mustContain(t, out, "FAIL")
 	mustContain(t, out, "WAIT")
-	mustContain(t, out, "pdftoppm") // proves the failed-job log expansion rendered
-	mustContain(t, out, "MISSING_BINARY")
+	mustContain(t, out, "STDERR") // proves the failed-job log expansion rendered
+	mustContain(t, out, "HINT")   // level label survives message truncation
 }
 
 // TestRunJobUpdatesState confirms that dispatching a RunJob enqueues a
@@ -92,6 +91,100 @@ func TestRunJobUpdatesState(t *testing.T) {
 	}
 	if len(m.queue) == 0 || m.queue[0].Status != JobRunning {
 		t.Fatalf("expected first queue entry to be running, got %+v", m.queue)
+	}
+}
+
+// TestSettingsPopoverTogglesAndCycles confirms the design's top-left
+// settings popover opens on ',', cycles the theme via enter, and closes on
+// esc — replacing the old PageSettings navigation flow.
+func TestSettingsPopoverTogglesAndCycles(t *testing.T) {
+	m := New(config.Defaults())
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 160, Height: 48})
+	m = updated.(Model)
+
+	// Closed by default — popover title shouldn't appear in the render.
+	if strings.Contains(m.View(), "SETTINGS") {
+		t.Fatal("popover should not render before ',' is pressed")
+	}
+
+	// Press ',' to open. The popover title and its rows should now be visible.
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{','}})
+	m = updated.(Model)
+	if !m.pop.IsOpen() {
+		t.Fatal("expected popover open after ','")
+	}
+	out := m.View()
+	mustContain(t, out, "SETTINGS")
+	mustContain(t, out, "Theme")
+	mustContain(t, out, "Scanlines")
+	mustContain(t, out, "Mascot")
+	mustContain(t, out, "htoolsd")
+
+	// Cursor is on the Theme row. Cycling forge → snow updates cfg + styles.
+	if got := m.cfg.Theme.Name; got != "forge" {
+		t.Fatalf("expected initial theme forge, got %q", got)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if got := m.cfg.Theme.Name; got != "snow" {
+		t.Fatalf("expected theme snow after enter, got %q", got)
+	}
+
+	// Move down to Mascot row and cycle — the character chip should flip.
+	for i := 0; i < 2; i++ {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		m = updated.(Model)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if got := m.cfg.Mascot.Style; got != "hopper" {
+		t.Fatalf("expected mascot hopper after cycle, got %q", got)
+	}
+	if got := m.mascot.Character(); got != "hopper" {
+		t.Fatalf("mascot did not sync to hopper, got %q", got)
+	}
+
+	// Esc closes.
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.pop.IsOpen() {
+		t.Fatal("expected popover closed after esc")
+	}
+}
+
+// TestViewFitsSmallTerminal regression-tests #53: the seeded failed
+// job's expanded stderr panel previously emitted ten unwrapped log
+// lines that soft-wrapped into 30+ visual rows in the narrow queue
+// column, pushing the header and home menu off the top of a 30-row
+// terminal. We assert that on a small terminal the expanded panel is
+// capped (carries the "earlier" elision marker), and on a large
+// terminal the cap does not engage. We also check the total line
+// count comes down relative to the unfixed baseline (~90+); the full
+// fit-in-30 goal still needs a compact mascot mode and is tracked
+// separately.
+func TestViewFitsSmallTerminal(t *testing.T) {
+	m := New(config.Defaults())
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 124, Height: 30})
+	m = updated.(Model)
+	smallOut := m.View()
+
+	mustContain(t, smallOut, "HANDY TOOLS")     // header still emitted
+	mustContain(t, smallOut, "AVAILABLE TOOLS") // home menu still emitted
+	mustContain(t, smallOut, "earlier")         // log expansion was capped
+
+	smallLines := strings.Count(smallOut, "\n")
+	if smallLines > 32 {
+		t.Fatalf("View at 124×30 produced %d lines; expected ≤ 32 (was ~90 pre-fix, ~70 after stderr cap)", smallLines)
+	}
+
+	// At a tall terminal the cap should not engage — all 10 seeded log
+	// lines fit, so the "earlier" marker shouldn't appear.
+	big := New(config.Defaults())
+	updated, _ = big.Update(tea.WindowSizeMsg{Width: 160, Height: 60})
+	big = updated.(Model)
+	bigOut := big.View()
+	if strings.Contains(bigOut, "earlier") {
+		t.Fatal("View at 160×60 should fit all log lines without capping")
 	}
 }
 

@@ -1,0 +1,52 @@
+/*
+ * Theme palettes ported from internal/ui/theme/theme.go.
+ * Keep these values in sync with the Go palettes — the names ("forge",
+ * "snow", "ember") and hex values are the single source of truth shared
+ * between TUI and web.
+ */
+
+:root,
+[data-theme="forge"] {
+  --color-bg: #0a0807;
+  --color-surface: #141110;
+  --color-border: #3a2a1f;
+  --color-accent: #ff8c1a;
+  --color-accent-soft: #a35a14;
+  --color-text: #f5ece2;
+  --color-text-dim: #9a877a;
+  --color-success: #9bdc8a;
+  --color-warning: #f0c674;
+  --color-error: #e57373;
+  --color-mascot-fur: #ff8c1a;
+  --color-mascot-eye: #1a0f08;
+}
+
+[data-theme="snow"] {
+  --color-bg: #0b0f14;
+  --color-surface: #11161d;
+  --color-border: #1f2630;
+  --color-accent: #7ad7f0;
+  --color-accent-soft: #3a6f7e;
+  --color-text: #e6ecf2;
+  --color-text-dim: #8a94a3;
+  --color-success: #9bdc8a;
+  --color-warning: #f0c674;
+  --color-error: #e57373;
+  --color-mascot-fur: #f1f5fa;
+  --color-mascot-eye: #7ad7f0;
+}
+
+[data-theme="ember"] {
+  --color-bg: #140d0a;
+  --color-surface: #1d1410;
+  --color-border: #3a2a22;
+  --color-accent: #f0a05a;
+  --color-accent-soft: #7e4a30;
+  --color-text: #f4ece4;
+  --color-text-dim: #a39084;
+  --color-success: #9bdc8a;
+  --color-warning: #f0c674;
+  --color-error: #e57373;
+  --color-mascot-fur: #f4ece4;
+  --color-mascot-eye: #f0a05a;
+}

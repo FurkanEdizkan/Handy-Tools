@@ -114,22 +114,29 @@ func progressBar(s theme.Styles, pct, width int) string {
 }
 
 // queueView renders the left-column "Queue" card with all jobs + an
-// expanded-log view for whichever job has Expanded=true.
-func queueView(s theme.Styles, jobs []Job, width int, focused int) string {
+// expanded-log view for whichever job has Expanded=true. The expanded
+// stderr block is capped at maxLogRows visual rows so the left column
+// stays inside the terminal viewport on short windows. Pass 0 for an
+// uncapped panel (used when height isn't known yet).
+func queueView(s theme.Styles, jobs []Job, width int, focused int, maxLogRows int) string {
 	if width < 24 {
 		width = 24
 	}
+	// Reserve room for "QUEUE  " (the title + gap) when budgeting the
+	// counts strip so the compact fallback engages at narrow widths
+	// instead of letting the strip wrap onto a second line.
 	header := lipgloss.JoinHorizontal(lipgloss.Top,
 		s.Accent.Bold(true).Render("QUEUE"),
 		"  ",
-		s.Dim.Render(jobCounts(jobs, s)),
+		jobCounts(jobs, s, width-4-len("QUEUE  ")),
 	)
 
 	rows := []string{header, ""}
+	contentWidth := width - 4
 	for i, j := range jobs {
-		rows = append(rows, renderJobRow(s, j, width-4, i == focused))
+		rows = append(rows, renderJobRow(s, j, contentWidth, i == focused))
 		if j.Expanded && len(j.Logs) > 0 {
-			rows = append(rows, renderJobLogs(s, j))
+			rows = append(rows, renderJobLogs(s, j, contentWidth, maxLogRows))
 		}
 		if j.Err != "" && !j.Expanded {
 			rows = append(rows, s.Err.Render("  × "+j.Err))
@@ -138,7 +145,12 @@ func queueView(s theme.Styles, jobs []Job, width int, focused int) string {
 	return s.Card.Width(width).Render(strings.Join(rows, "\n"))
 }
 
-func jobCounts(jobs []Job, s theme.Styles) string {
+// jobCounts emits the "0 run · 1 done · 1 failed · 2 queued" status
+// strip the queue header carries. budget is the available cell width;
+// when the design's long form ("1 failed", "2 queued") would wrap we
+// fall back to a single-letter form ("1F 2Q") so the header stays one
+// line. Pass 0 to disable the compact fallback.
+func jobCounts(jobs []Job, s theme.Styles, budget int) string {
 	var run, done, fail, queued int
 	for _, j := range jobs {
 		switch j.Status {
@@ -152,18 +164,27 @@ func jobCounts(jobs []Job, s theme.Styles) string {
 			queued++
 		}
 	}
-	return fmt.Sprintf("%s · %s · %s · %d queued",
+	full := fmt.Sprintf("%s · %s · %s · %d queued",
 		s.Accent.Render(fmt.Sprintf("%d run", run)),
 		s.OK.Render(fmt.Sprintf("%d done", done)),
 		s.Err.Render(fmt.Sprintf("%d failed", fail)),
 		queued,
+	)
+	if budget <= 0 || lipgloss.Width(full) <= budget {
+		return full
+	}
+	return fmt.Sprintf("%s %s %s %s",
+		s.Accent.Render(fmt.Sprintf("%dR", run)),
+		s.OK.Render(fmt.Sprintf("%dD", done)),
+		s.Err.Render(fmt.Sprintf("%dF", fail)),
+		s.Dim.Render(fmt.Sprintf("%dQ", queued)),
 	)
 }
 
 func renderJobRow(s theme.Styles, j Job, width int, focused bool) string {
 	ico, pill := jobIconAndPill(s, j)
 
-	caret := s.Dim.Render(" ")
+	caret := " "
 	if len(j.Logs) > 0 {
 		if j.Expanded {
 			caret = s.Accent.Render("▾")
@@ -172,20 +193,56 @@ func renderJobRow(s theme.Styles, j Job, width int, focused bool) string {
 		}
 	}
 
-	label := j.Label
-	if j.Kind != "" {
-		label += s.Dim.Render(" · " + j.Kind)
-	}
-	time := s.Dim.Render(j.Time)
+	timeText := j.Time
+	timeWidth := lipgloss.Width(timeText)
+	timePiece := s.Dim.Render(timeText)
 	if j.Status == JobRunning {
 		mini := miniBar(s, j.Progress, 8)
-		time = mini + " " + time
+		timePiece = mini + " " + timePiece
+		timeWidth += 8 + 1
 	}
+
+	// Reserve the fixed cells: icon(1) + space + space + time + space +
+	// pill + space + caret(1). Whatever's left is the label budget; the
+	// label is truncated to that budget with a "…" tail rather than
+	// being soft-wrapped by lipgloss (the design uses CSS
+	// text-overflow: ellipsis, so we match that).
+	overhead := 1 + 1 + 1 + timeWidth + 1 + lipgloss.Width(pill) + 1 + 1
+	labelBudget := width - overhead
+	if labelBudget < 6 {
+		labelBudget = 6
+	}
+
+	plain := j.Label
+	kindSuffix := ""
+	if j.Kind != "" {
+		kindSuffix = " · " + j.Kind
+	}
+	full := plain + kindSuffix
+	runes := []rune(full)
+	if len(runes) > labelBudget {
+		full = string(runes[:labelBudget-1]) + "…"
+		// Style the visible substring. If the truncation chopped into
+		// the kind suffix, just dim the trailing "·" separator we can
+		// still see; otherwise dim the whole " · kind" tail.
+		if idx := strings.Index(full, " · "); idx >= 0 {
+			plain = full[:idx]
+			kindSuffix = full[idx:]
+		} else {
+			plain = full
+			kindSuffix = ""
+		}
+	}
+	label := plain
+	if kindSuffix != "" {
+		label += s.Dim.Render(kindSuffix)
+	}
+	labelCell := lipgloss.NewStyle().Width(labelBudget).MaxHeight(1).Render(label)
 
 	line := lipgloss.JoinHorizontal(lipgloss.Top,
 		ico, " ",
-		lipgloss.NewStyle().Width(intMax(10, width-30)).Render(label),
-		" ", time,
+		labelCell,
+		" ", timePiece,
 		" ", pill,
 		" ", caret,
 	)
@@ -227,15 +284,52 @@ func miniBar(s theme.Styles, pct, width int) string {
 		s.BarTrack.Render(strings.Repeat("▱", width-fill))
 }
 
-func renderJobLogs(s theme.Styles, j Job) string {
+// renderJobLogs renders the expanded stderr panel for a single job.
+// contentWidth is the inner width of the queue card (caller subtracts
+// the card border + padding). maxLogRows caps how many log entries we
+// emit; 0 means no cap. When entries are dropped, we keep the most
+// recent ones and prepend a "… +N earlier" marker so the failure tail
+// (where the actionable HINT/FAIL lines live) stays visible.
+func renderJobLogs(s theme.Styles, j Job, contentWidth, maxLogRows int) string {
+	logs := j.Logs
+	omitted := 0
+	// renderJobLogs's box has Padding(0, 1) → 2 cells of horizontal
+	// padding, so each log line gets contentWidth-2 cells.
+	innerWidth := contentWidth - 2
+	if innerWidth < 12 {
+		innerWidth = 12
+	}
+
 	title := lipgloss.JoinHorizontal(lipgloss.Top,
 		s.Accent.Bold(true).Render("STDERR · "+j.ID),
 		"  ",
 		s.Dim.Render(fmt.Sprintf("%d lines", len(j.Logs))),
 	)
+
+	// Reserve rows for the title and (when running) the streaming marker
+	// so the cap counts the user-facing entries, not framing.
+	overhead := 1
+	if j.Status == JobRunning {
+		overhead++
+	}
+	if maxLogRows > 0 && len(logs)+overhead > maxLogRows {
+		// keep at least one log line, leave one row for the omission notice
+		keep := maxLogRows - overhead - 1
+		if keep < 1 {
+			keep = 1
+		}
+		if keep < len(logs) {
+			omitted = len(logs) - keep
+			logs = logs[omitted:]
+		}
+	}
+
 	body := []string{title}
-	for _, l := range j.Logs {
-		body = append(body, renderLogLine(s, l))
+	if omitted > 0 {
+		body = append(body, s.Dim.Render(fmt.Sprintf("  … +%d earlier", omitted)))
+	}
+	for _, l := range logs {
+		body = append(body, renderLogLine(s, l, innerWidth))
 	}
 	if j.Status == JobRunning {
 		body = append(body, s.Dim.Render("[…] …   streaming…"))
@@ -249,7 +343,12 @@ func renderJobLogs(s theme.Styles, j Job) string {
 	return box
 }
 
-func renderLogLine(s theme.Styles, l LogLine) string {
+// renderLogLine renders one stderr entry. maxWidth is the available
+// display width inside the expanded-log box; the timestamp prefix is
+// dropped first when room is tight, and the message tail is ellipsized
+// before the line ever has to soft-wrap. Pass 0 for the legacy
+// uncapped layout.
+func renderLogLine(s theme.Styles, l LogLine, maxWidth int) string {
 	lvlStyle := s.Dim
 	msgStyle := lipgloss.NewStyle().Foreground(s.P.Text)
 	switch l.Lvl {
@@ -266,10 +365,40 @@ func renderLogLine(s theme.Styles, l LogLine) string {
 	case "INFO":
 		lvlStyle = lipgloss.NewStyle().Foreground(s.P.Text).Bold(true)
 	}
-	ts := s.Dim.Render("[" + l.T + "]")
-	lvl := lvlStyle.Render(padRight(l.Lvl, 5))
-	msg := msgStyle.Render(l.Msg)
-	return lipgloss.JoinHorizontal(lipgloss.Top, ts, " ", lvl, " ", msg)
+	tsPlain := "[" + l.T + "]"
+	lvlPlain := padRight(l.Lvl, 5)
+	tsWidth := lipgloss.Width(tsPlain) + 1 // trailing space after [ts]
+	lvlWidth := lipgloss.Width(lvlPlain) + 1
+	showTs := true
+	msg := l.Msg
+	if maxWidth > 0 {
+		budget := maxWidth - tsWidth - lvlWidth
+		// Narrow column — drop the timestamp to give the message room.
+		if budget < 12 && maxWidth-lvlWidth >= 12 {
+			showTs = false
+			budget = maxWidth - lvlWidth
+		}
+		if budget < 4 {
+			budget = 4
+		}
+		runes := []rune(msg)
+		if len(runes) > budget {
+			if budget > 1 {
+				msg = string(runes[:budget-1]) + "…"
+			} else {
+				msg = "…"
+			}
+		}
+	}
+	parts := []string{}
+	if showTs {
+		parts = append(parts, s.Dim.Render(tsPlain), " ")
+	}
+	parts = append(parts,
+		lvlStyle.Render(lvlPlain), " ",
+		msgStyle.Render(msg),
+	)
+	return lipgloss.JoinHorizontal(lipgloss.Top, parts...)
 }
 
 func padRight(s string, n int) string {
