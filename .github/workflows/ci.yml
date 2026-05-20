@@ -99,8 +99,8 @@ jobs:
           fi
       - name: Test
         run: go test -race -count=1 ./...
-      - name: Fuzz yaml_min parser (20s)
-        run: go test -run=^$ -fuzz=FuzzDecodeMinimalYAML -fuzztime=20s ./internal/config
+      - name: Fuzz config YAML decoder (20s)
+        run: go test -run=^$ -fuzz=FuzzDecodeYAML -fuzztime=20s ./internal/config
 
   web-build:
     name: Web (Svelte / Vite)
