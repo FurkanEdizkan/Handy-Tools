@@ -9,11 +9,13 @@
 package ui
 
 import (
+	"runtime"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/furkandedizkan/handy-tools/internal/tools/sysdep"
 	"github.com/furkandedizkan/handy-tools/internal/ui/theme"
 )
 
@@ -179,6 +181,17 @@ func (p *toolPage) sampleFiles() []fileItem {
 func (p *toolPage) Update(msg tea.Msg) (*toolPage, tea.Cmd) {
 	k, ok := msg.(tea.KeyMsg)
 	if !ok {
+		return p, nil
+	}
+	// The Doctor page is read-only: it has no focusable rows, no Run job.
+	// Only Back (esc) and a PATH re-scan (r) apply.
+	if p.tool.mode == modeDoctor {
+		switch k.String() {
+		case "esc":
+			return p, func() tea.Msg { return GoHome{} }
+		case "r":
+			sysdep.Reset() // bust the cache so the next render re-probes PATH
+		}
 		return p, nil
 	}
 	switch k.String() {
@@ -885,21 +898,16 @@ func (p *toolPage) renderRunRow() string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, summary, "    ", btn, hint)
 }
 
+// renderDoctor shows live system-dependency state. It reads sysdep.All() on
+// every render, so a press of `r` (which calls sysdep.Reset()) re-probes PATH
+// without restarting the TUI. The same sysdep.All() data drives the
+// `htools doctor` subcommand, so both surfaces always agree.
 func (p *toolPage) renderDoctor() string {
 	s := p.styles
-	deps := []struct {
-		name, feature string
-		ok            bool
-	}{
-		{"unrar", "RAR (incl. multi-part)", true},
-		{"7z", "7z multi-part", true},
-		{"pdftoppm", "PDF → image", true},
-		{"pdftotext", "PDF → text", true},
-		{"magick", "HEIC images", false},
-	}
+	results := sysdep.All()
 	found := 0
-	for _, d := range deps {
-		if d.ok {
+	for _, r := range results {
+		if r.Found {
 			found++
 		}
 	}
@@ -909,28 +917,36 @@ func (p *toolPage) renderDoctor() string {
 		lipgloss.JoinHorizontal(lipgloss.Top,
 			s.Section.Render("SYSTEM DEPENDENCIES"),
 			"  ",
-			s.Dim.Render(itoa(found)+" / "+itoa(len(deps))+" found"),
+			s.Dim.Render(itoa(found)+" / "+itoa(len(results))+" found"),
 		),
+		"",
 	}
-	for _, d := range deps {
-		icon := s.OK.Render("●")
+	name := lipgloss.NewStyle().Width(12).Foreground(s.P.Text).Bold(true)
+	for _, r := range results {
+		// Main row stays short (glyph · name · state) so it fits the
+		// right column at minimum width; detail lines wrap below.
+		icon := s.OK.Render("✓")
 		state := s.OK.Render("FOUND")
-		if !d.ok {
-			icon = s.Warn.Render("○")
+		if !r.Found {
+			icon = s.Warn.Render("✗")
 			state = s.Warn.Render("MISSING")
 		}
 		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top,
-			"  ", icon, "  ",
-			lipgloss.NewStyle().Width(12).Foreground(s.P.Text).Bold(true).Render(d.name),
-			s.Dim.Render(d.feature),
-			"   ", state,
+			"  ", icon, "  ", name.Render(r.Tool.Name), "   ", state,
 		))
+		rows = append(rows, s.Dim.Render("       "+r.Tool.Description))
+		for _, feat := range r.Tool.Features {
+			rows = append(rows, s.Dim.Render("       · "+feat))
+		}
+		if !r.Found {
+			if hint := r.Tool.InstallHint[runtime.GOOS]; hint != "" {
+				rows = append(rows, s.Dim.Render("       install: ")+
+					lipgloss.NewStyle().Foreground(s.P.Text).Render(hint))
+			}
+		}
 	}
 	rows = append(rows, "",
-		s.Section.Render("INSTALL HINTS"),
-		s.Dim.Render("  macOS:  ")+lipgloss.NewStyle().Foreground(s.P.Text).Render("brew install imagemagick"),
-		s.Dim.Render("  Debian: ")+lipgloss.NewStyle().Foreground(s.P.Text).Render("apt install imagemagick"),
-		s.Dim.Render("  Arch:   ")+lipgloss.NewStyle().Foreground(s.P.Text).Render("pacman -S imagemagick"),
+		s.Dim.Render("  press ")+s.KbdChip.Render("r")+s.Dim.Render(" to re-scan PATH"),
 	)
 	return strings.Join(rows, "\n")
 }
