@@ -120,7 +120,11 @@ go run ./cmd/snapshot
 - **Never open PRs against `main`.** All contributor PRs target `test`. A scheduled workflow promotes `test` → `main` automatically when CI is green.
 - Branch prefixes: `feat/`, `fix/`, `docs/`, `refactor/`, `chore/`, `ci/`, `test/`.
 - PR titles **must** be Conventional Commits (validated by the commitlint workflow). Common scopes: `image`, `archive`, `pdf`, `ui`, `server`, `api`, `config`, `mascot`, `ci`, `release`.
-- Squash-merge is the default; the PR title becomes the commit message.
+- PRs are merged with **merge commits** — never squash — so every commit is
+  preserved on `test` and `main` and the branch graph stays intact. The PR
+  title (a Conventional Commit) becomes the merge commit message; keep the
+  individual commits on your branch clean and Conventional too, since they
+  land in history and feed the release changelog.
 
 Full checklist in [docs/PR_GUIDELINES.md](docs/PR_GUIDELINES.md).
 
