@@ -15,6 +15,8 @@
 //	POST /v1/pdf/merge                → 202 {"job_id": "..."}
 //	GET  /v1/jobs/{id}/events         → text/event-stream of Progress
 //	GET  /v1/sysdep                   → 200 [SysdepResult, ...]
+//	GET  /v1/config                   → 200 {Config}
+//	PATCH /v1/config                  → 200 {Config} (partial body, deep-merged)
 package http
 
 // fileRef mirrors handytools.v1.FileRef.
