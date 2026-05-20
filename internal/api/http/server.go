@@ -80,6 +80,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /v1/image/convert", s.handleImageConvert)
 	mux.HandleFunc("POST /v1/archive/inspect", s.handleArchiveInspect)
 	mux.HandleFunc("POST /v1/archive/extract", s.handleArchiveExtract)
+	mux.HandleFunc("POST /v1/archive/compress", s.handleArchiveCompress)
 	mux.HandleFunc("POST /v1/pdf/to-image", s.handlePDFToImage)
 	mux.HandleFunc("POST /v1/pdf/to-text", s.handlePDFToText)
 	mux.HandleFunc("POST /v1/pdf/merge", s.handlePDFMerge)

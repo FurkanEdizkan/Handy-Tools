@@ -280,3 +280,135 @@ func TestEndpointMethodMismatch(t *testing.T) {
 		t.Fatalf("status: got %d want 405", resp.StatusCode)
 	}
 }
+
+// writeTextFile drops a small file under dir and returns its path.
+func writeTextFile(t *testing.T, dir, name, content string) string {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+	return p
+}
+
+func TestArchiveCompressEndToEnd(t *testing.T) {
+	dir := t.TempDir()
+	srcA := writeTextFile(t, dir, "a.txt", "alpha")
+	srcB := writeTextFile(t, dir, "b.txt", "bravo")
+	out := filepath.Join(dir, "out.zip")
+
+	ts := newTestServer(t, dir)
+	body, _ := json.Marshal(compressRequest{
+		Sources:     []fileRef{{Path: srcA}, {Path: srcB}},
+		Destination: outputRef{File: out},
+		Format:      "ZIP",
+	})
+	resp, err := http.Post(ts.URL+"/v1/archive/compress", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status: got %d want 202; body=%s", resp.StatusCode, raw)
+	}
+	var jr jobResponse
+	if err := json.NewDecoder(resp.Body).Decode(&jr); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if jr.JobID == "" {
+		t.Fatal("empty job_id")
+	}
+
+	events := readSSE(t, ts.URL+"/v1/jobs/"+jr.JobID+"/events", 5*time.Second)
+	var done bool
+	var sawError *errorEnvelope
+	for _, e := range events {
+		if e.Error != nil {
+			sawError = e.Error
+		}
+		if e.Completed {
+			done = true
+		}
+	}
+	if sawError != nil {
+		t.Fatalf("unexpected SSE error: %+v", sawError)
+	}
+	if !done {
+		t.Fatalf("did not observe Completed: events=%+v", events)
+	}
+	if _, err := os.Stat(out); err != nil {
+		t.Fatalf("archive missing: %v", err)
+	}
+}
+
+func TestArchiveCompressOutsideAllowRoots(t *testing.T) {
+	dir := t.TempDir()
+	allow := t.TempDir() // a sibling dir — the source below won't be permitted
+	src := writeTextFile(t, dir, "a.txt", "x")
+
+	s := New(server.Options{AllowRoots: []string{allow}})
+	ts := httptest.NewServer(s.Handler())
+	t.Cleanup(ts.Close)
+
+	body, _ := json.Marshal(compressRequest{
+		Sources:     []fileRef{{Path: src}},
+		Destination: outputRef{File: filepath.Join(allow, "out.zip")},
+		Format:      "ZIP",
+	})
+	resp, err := http.Post(ts.URL+"/v1/archive/compress", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer resp.Body.Close()
+	// Path-check failure happens inside the work goroutine; the POST still
+	// returns 202 and the SSE stream surfaces the failure (same convention
+	// as TestImageConvertOutsideAllowRoots).
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("status: got %d want 202", resp.StatusCode)
+	}
+	var jr jobResponse
+	if err := json.NewDecoder(resp.Body).Decode(&jr); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	events := readSSE(t, ts.URL+"/v1/jobs/"+jr.JobID+"/events", 5*time.Second)
+	var failure *errorEnvelope
+	for _, e := range events {
+		if e.Error != nil {
+			failure = e.Error
+		}
+	}
+	if failure == nil {
+		t.Fatalf("expected terminal error event, got %+v", events)
+	}
+	if !strings.Contains(strings.ToLower(failure.Message), "allowed root") {
+		t.Fatalf("unexpected failure message: %q", failure.Message)
+	}
+}
+
+func TestArchiveCompressRejectsUnknownFormat(t *testing.T) {
+	dir := t.TempDir()
+	ts := newTestServer(t, dir)
+	body, _ := json.Marshal(compressRequest{
+		Sources:     []fileRef{{Path: filepath.Join(dir, "a.txt")}},
+		Destination: outputRef{File: filepath.Join(dir, "out.zip")},
+		Format:      "BOGUS",
+	})
+	resp, err := http.Post(ts.URL+"/v1/archive/compress", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status: got %d want 400", resp.StatusCode)
+	}
+	var env struct {
+		Error errorEnvelope `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if env.Error.Code != tools.CodeBadRequest {
+		t.Fatalf("code: got %q want %q", env.Error.Code, tools.CodeBadRequest)
+	}
+}
