@@ -81,6 +81,15 @@ type extractRequest struct {
 	AutoAcceptMultiPart bool      `json:"auto_accept_multi_part"`
 }
 
+// compressRequest is the body of POST /v1/archive/compress.
+type compressRequest struct {
+	Sources          []fileRef `json:"sources"`
+	Destination      outputRef `json:"destination"`        // File is the archive path
+	Format           string    `json:"format"`             // ZIP|TAR|TAR_GZ|TAR_BZ2|TAR_ZST|SEVENZ; "" = infer from extension
+	CompressionLevel int       `json:"compression_level"`  // 0 = format default, 1..9
+	Password         string    `json:"password,omitempty"` // optional; pure-Go formats reject it
+}
+
 // pdfToImageRequest is the body of POST /v1/pdf/to-image.
 type pdfToImageRequest struct {
 	Source       fileRef   `json:"source"`
