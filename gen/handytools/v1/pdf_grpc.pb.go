@@ -23,6 +23,7 @@ const (
 	PdfService_ToText_FullMethodName  = "/handytools.v1.PdfService/ToText"
 	PdfService_Merge_FullMethodName   = "/handytools.v1.PdfService/Merge"
 	PdfService_Split_FullMethodName   = "/handytools.v1.PdfService/Split"
+	PdfService_Preview_FullMethodName = "/handytools.v1.PdfService/Preview"
 )
 
 // PdfServiceClient is the client API for PdfService service.
@@ -33,6 +34,11 @@ type PdfServiceClient interface {
 	ToText(ctx context.Context, in *PdfToTextRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Progress], error)
 	Merge(ctx context.Context, in *PdfMergeRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Progress], error)
 	Split(ctx context.Context, in *PdfSplitRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Progress], error)
+	// Preview renders page thumbnails for the web gallery. It streams one
+	// PdfPreviewResponse per page so a large document yields thumbnails
+	// incrementally rather than buffering them all. (Phase 5 / #59 —
+	// handlers land later.)
+	Preview(ctx context.Context, in *PdfPreviewRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[PdfPreviewResponse], error)
 }
 
 type pdfServiceClient struct {
@@ -119,6 +125,25 @@ func (c *pdfServiceClient) Split(ctx context.Context, in *PdfSplitRequest, opts 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type PdfService_SplitClient = grpc.ServerStreamingClient[Progress]
 
+func (c *pdfServiceClient) Preview(ctx context.Context, in *PdfPreviewRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[PdfPreviewResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &PdfService_ServiceDesc.Streams[4], PdfService_Preview_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[PdfPreviewRequest, PdfPreviewResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type PdfService_PreviewClient = grpc.ServerStreamingClient[PdfPreviewResponse]
+
 // PdfServiceServer is the server API for PdfService service.
 // All implementations must embed UnimplementedPdfServiceServer
 // for forward compatibility.
@@ -127,6 +152,11 @@ type PdfServiceServer interface {
 	ToText(*PdfToTextRequest, grpc.ServerStreamingServer[Progress]) error
 	Merge(*PdfMergeRequest, grpc.ServerStreamingServer[Progress]) error
 	Split(*PdfSplitRequest, grpc.ServerStreamingServer[Progress]) error
+	// Preview renders page thumbnails for the web gallery. It streams one
+	// PdfPreviewResponse per page so a large document yields thumbnails
+	// incrementally rather than buffering them all. (Phase 5 / #59 —
+	// handlers land later.)
+	Preview(*PdfPreviewRequest, grpc.ServerStreamingServer[PdfPreviewResponse]) error
 	mustEmbedUnimplementedPdfServiceServer()
 }
 
@@ -148,6 +178,9 @@ func (UnimplementedPdfServiceServer) Merge(*PdfMergeRequest, grpc.ServerStreamin
 }
 func (UnimplementedPdfServiceServer) Split(*PdfSplitRequest, grpc.ServerStreamingServer[Progress]) error {
 	return status.Errorf(codes.Unimplemented, "method Split not implemented")
+}
+func (UnimplementedPdfServiceServer) Preview(*PdfPreviewRequest, grpc.ServerStreamingServer[PdfPreviewResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method Preview not implemented")
 }
 func (UnimplementedPdfServiceServer) mustEmbedUnimplementedPdfServiceServer() {}
 func (UnimplementedPdfServiceServer) testEmbeddedByValue()                    {}
@@ -214,6 +247,17 @@ func _PdfService_Split_Handler(srv interface{}, stream grpc.ServerStream) error 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type PdfService_SplitServer = grpc.ServerStreamingServer[Progress]
 
+func _PdfService_Preview_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(PdfPreviewRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(PdfServiceServer).Preview(m, &grpc.GenericServerStream[PdfPreviewRequest, PdfPreviewResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type PdfService_PreviewServer = grpc.ServerStreamingServer[PdfPreviewResponse]
+
 // PdfService_ServiceDesc is the grpc.ServiceDesc for PdfService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -240,6 +284,11 @@ var PdfService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Split",
 			Handler:       _PdfService_Split_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "Preview",
+			Handler:       _PdfService_Preview_Handler,
 			ServerStreams: true,
 		},
 	},
