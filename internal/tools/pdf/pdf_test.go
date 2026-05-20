@@ -59,6 +59,51 @@ func TestMergeRejectsTooFewSources(t *testing.T) {
 	}
 }
 
+func TestSplitRejectsAmbiguousMode(t *testing.T) {
+	// Neither mode set.
+	last := collect(Split(context.Background(), SplitRequest{
+		Source: "/a.pdf", OutputDir: "/out",
+	}))
+	if l := last[len(last)-1]; l.Err == nil || l.Err.Code != tools.CodeBadRequest {
+		t.Fatalf("no mode: expected BAD_REQUEST, got %+v", l)
+	}
+	// Both modes set.
+	last = collect(Split(context.Background(), SplitRequest{
+		Source: "/a.pdf", OutputDir: "/out",
+		EveryN: 2, PageRanges: []Range{{From: 1, To: 3}},
+	}))
+	if l := last[len(last)-1]; l.Err == nil || l.Err.Code != tools.CodeBadRequest {
+		t.Fatalf("both modes: expected BAD_REQUEST, got %+v", l)
+	}
+}
+
+func TestSplitReportsMissingBinary(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+
+	last := collect(Split(context.Background(), SplitRequest{
+		Source: "/nonexistent.pdf", OutputDir: t.TempDir(), EveryN: 1,
+	}))
+	if l := last[len(last)-1]; l.Err == nil || l.Err.Code != tools.CodeMissingBinary {
+		t.Fatalf("expected MISSING_BINARY, got %+v", l)
+	}
+}
+
+func TestRangeSelector(t *testing.T) {
+	cases := []struct {
+		in   Range
+		want string
+	}{
+		{Range{From: 2, To: 5}, "2-5"},
+		{Range{From: 3, To: 0}, "3-"},
+		{Range{From: 4, To: 4}, "4"},
+	}
+	for _, c := range cases {
+		if got := rangeSelector(c.in); got != c.want {
+			t.Errorf("rangeSelector(%+v) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
 // guards against accidental change that swallows the cleanup
 func TestProgressChannelCloses(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
