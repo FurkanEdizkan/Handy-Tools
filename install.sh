@@ -133,6 +133,38 @@ else
   die "neither curl nor wget is installed"
 fi
 
+# api_get URL — fetch a GitHub API URL and print its body to stdout. Unlike a
+# bare `curl -f`, it inspects the HTTP status so the failure message names what
+# actually went wrong: 404 (no release published, or the repo slug is wrong)
+# versus 403 (API rate limited). Requires $tmp to exist. Dies on any non-2xx.
+api_get() {
+  _url=$1
+  _body="$tmp/api_body"
+  if [ "${DL%% *}" = "curl" ]; then
+    # -f is deliberately omitted here: with -f, curl exits 22 on a 4xx and
+    # discards both the body and the status code — that is the exact ambiguity
+    # this function exists to remove. -w prints the numeric status instead.
+    _code=$(curl -sSL -o "$_body" -w '%{http_code}' "$_url" 2>/dev/null) || _code=000
+  else
+    # wget -S writes the status line(s) to stderr; keep the last one so a
+    # redirect chain reports the final code.
+    if wget -S -O "$_body" "$_url" 2>"$tmp/api_hdr"; then
+      _code=200
+    else
+      _code=$(sed -n 's#^[[:space:]]*HTTP/[0-9.]*[[:space:]]*\([0-9][0-9][0-9]\).*#\1#p' \
+                "$tmp/api_hdr" | tail -n1)
+      [ -n "$_code" ] || _code=000
+    fi
+  fi
+  case "$_code" in
+    2??) cat "$_body" ;;
+    403) die "GitHub API returned 403 (rate limited). Wait a few minutes, or set HANDY_TOOLS_VERSION to install a specific version without the API lookup." ;;
+    404) die "GitHub API returned 404 — no release found for $REPO. The repository may have no published release yet, or the repo slug is wrong. Set HANDY_TOOLS_VERSION to pin a version." ;;
+    000) die "could not reach the GitHub API ($_url) — check your network connection." ;;
+    *)   die "GitHub API request to $_url failed with HTTP $_code." ;;
+  esac
+}
+
 # ---- detect OS / arch ------------------------------------------------------
 uname_s=$(uname -s)
 uname_m=$(uname -m)
@@ -149,6 +181,9 @@ case "$uname_m" in
   *) die "unsupported arch: $uname_m" ;;
 esac
 
+tmp=$(mktemp -d 2>/dev/null || mktemp -d -t handy-tools-install)
+trap 'rm -rf "$tmp"' EXIT INT TERM
+
 # ---- resolve version -------------------------------------------------------
 if [ -z "$VERSION" ]; then
   log "looking up latest release of $REPO"
@@ -161,7 +196,10 @@ if [ -z "$VERSION" ]; then
   # GitHub's JSON emits "tag_name" before "draft" for each release entry.
   # Buffer the most recent tag_name and print it when the following
   # "draft": false is seen. POSIX-compatible, no jq.
-  tag=$($DL "$api" \
+  # api_get distinguishes 403/404/etc and dies with a specific message; here
+  # we only have to handle a 2xx body that simply contained no usable tag.
+  releases_json=$(api_get "$api")
+  tag=$(printf '%s\n' "$releases_json" \
     | grep -E '"(tag_name|draft)"' \
     | awk '
         /"tag_name":/ { tag=$0; next }
@@ -170,7 +208,7 @@ if [ -z "$VERSION" ]; then
           tag=""
         }' \
     | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' || true)
-  [ -n "$tag" ] || die "could not determine latest release (rate limited? set HANDY_TOOLS_VERSION explicitly)"
+  [ -n "$tag" ] || die "GitHub API returned a release list with no published (non-draft) release for $REPO. Set HANDY_TOOLS_VERSION explicitly."
   VERSION="${tag#v}"
 fi
 
@@ -185,9 +223,6 @@ asset="${PROJECT_NAME}_${VERSION}_${OS}_${ARCH}.tar.gz"
 base="https://github.com/${REPO}/releases/download/v${VERSION}"
 asset_url="${base}/${asset}"
 sums_url="${base}/checksums.txt"
-
-tmp=$(mktemp -d 2>/dev/null || mktemp -d -t handy-tools-install)
-trap 'rm -rf "$tmp"' EXIT INT TERM
 
 log "downloading $asset"
 $DLO "$tmp/$asset" "$asset_url" || die "download failed: $asset_url"
