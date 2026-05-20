@@ -63,3 +63,35 @@ export function pdfSummary(op: PdfOp, fileCount: number): string {
   const noun = fileCount === 1 ? 'document' : 'documents';
   return `ready: ${label.toLowerCase()} · ${fileCount} ${noun}`;
 }
+
+export const ARCHIVE_FORMATS = ['zip', 'tar.gz', 'tar.bz2', 'tar.zst', '7z'] as const;
+export type ArchiveFormat = (typeof ARCHIVE_FORMATS)[number];
+
+/** archivePackReady enables ToolArchivePack's Run: needs files and a name. */
+export function archivePackReady(fileCount: number, output: string): boolean {
+  return fileCount > 0 && output.trim() !== '';
+}
+
+/** archivePackSummary is ToolArchivePack's summary line. */
+export function archivePackSummary(
+  fileCount: number,
+  format: ArchiveFormat,
+  output: string,
+): string {
+  if (fileCount === 0) return 'add files to pack';
+  if (output.trim() === '') return 'name the output archive';
+  const noun = fileCount === 1 ? 'item' : 'items';
+  return `ready: ${fileCount} ${noun} → ${output.trim()} (${format})`;
+}
+
+/** archiveExtractReady enables ToolArchiveExtract's Run. */
+export function archiveExtractReady(source: string, destination: string): boolean {
+  return source.trim() !== '' && destination.trim() !== '';
+}
+
+/** archiveExtractSummary is ToolArchiveExtract's summary line. */
+export function archiveExtractSummary(source: string, destination: string): string {
+  if (source.trim() === '') return 'choose an archive to extract';
+  if (destination.trim() === '') return 'choose a destination folder';
+  return `ready: extract ${source.trim()} → ${destination.trim()}`;
+}
