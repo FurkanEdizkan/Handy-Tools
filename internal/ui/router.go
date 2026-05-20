@@ -280,6 +280,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cfg.Theme.Name = next
 				m.rebuildStyles()
 				m.showToast("theme · " + next)
+				// Persist so the choice survives the next launch. A
+				// failed save overrides the toast but never aborts.
+				m.persistConfig()
 				return m, nil
 			}
 		case ",":
@@ -371,6 +374,16 @@ func (m Model) updatePopoverKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, nil
+}
+
+// persistConfig writes the current config to disk so settings such as the
+// Tab-cycled theme survive a restart. A failure (e.g. a read-only config
+// file) is surfaced as a toast — the in-memory choice still applies for the
+// rest of this session, and the TUI never aborts over it.
+func (m *Model) persistConfig() {
+	if _, err := config.Save(m.cfg); err != nil {
+		m.showToast("couldn't save settings: " + err.Error())
+	}
 }
 
 // rebuildStyles refreshes the cached lipgloss styles after a theme change

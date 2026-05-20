@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -9,6 +10,27 @@ import (
 	"github.com/furkandedizkan/handy-tools/internal/config"
 	"github.com/furkandedizkan/handy-tools/internal/ui/mascot"
 )
+
+// TestTabCyclePersistsTheme verifies the #90 fix: cycling the theme with Tab
+// on the home page writes the choice to disk so it survives the next launch.
+func TestTabCyclePersistsTheme(t *testing.T) {
+	t.Setenv("HANDY_TOOLS_CONFIG", filepath.Join(t.TempDir(), "config.yaml"))
+
+	m := New(config.Defaults()) // theme defaults to "forge"
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+
+	if m.cfg.Theme.Name != "snow" {
+		t.Fatalf("in-memory theme after Tab = %q, want snow", m.cfg.Theme.Name)
+	}
+	reloaded, _, err := config.Load()
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	if reloaded.Theme.Name != "snow" {
+		t.Fatalf("persisted theme = %q, want snow (Tab choice did not survive a reload)", reloaded.Theme.Name)
+	}
+}
 
 // TestViewRendersHomeAndToolPages exercises the design's home → tool → home
 // flow without a real terminal. It catches layout regressions (missing
