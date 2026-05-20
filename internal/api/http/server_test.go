@@ -428,9 +428,9 @@ func postPDFSplit(t *testing.T, ts *httptest.Server, req pdfSplitRequest) *http.
 // stream reaches a terminal Completed event. It does NOT assert success: the
 // CI runner has no pdfcpu binary, so pdf.Split terminates with a MISSING_BINARY
 // error there — either way the transport must deliver a Completed event.
+// The caller owns resp.Body — it must defer-close it (keeps bodyclose happy).
 func assertSplitAccepted(t *testing.T, ts *httptest.Server, resp *http.Response) {
 	t.Helper()
-	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusAccepted {
 		raw, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status: got %d want 202; body=%s", resp.StatusCode, raw)
@@ -463,6 +463,7 @@ func TestPDFSplitPageRangesAccepted(t *testing.T) {
 		PageRanges: []pageRange{{From: 1, To: 3}, {From: 5, To: 7}},
 		Output:     outputRef{Directory: dir},
 	})
+	defer resp.Body.Close()
 	assertSplitAccepted(t, ts, resp)
 }
 
@@ -475,6 +476,7 @@ func TestPDFSplitEveryNAccepted(t *testing.T) {
 		EveryN: 2,
 		Output: outputRef{Directory: dir},
 	})
+	defer resp.Body.Close()
 	assertSplitAccepted(t, ts, resp)
 }
 
