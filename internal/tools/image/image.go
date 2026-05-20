@@ -142,6 +142,117 @@ func Convert(ctx context.Context, req ConvertRequest) <-chan tools.Progress {
 	return ch
 }
 
+// BatchConvertRequest describes a multi-file conversion. Every source is
+// converted to TargetFormat and written into OutputDir under its own name.
+type BatchConvertRequest struct {
+	Sources      []string
+	TargetFormat Format
+	Opts         Options
+	OutputDir    string
+	Overwrite    bool
+}
+
+// BatchConvert converts each source in turn, emitting one tools.Progress per
+// file plus a terminal summary. A single file's failure is reported as a
+// per-file error event and the batch continues; the terminal event carries an
+// error only when every file failed.
+func BatchConvert(ctx context.Context, req BatchConvertRequest) <-chan tools.Progress {
+	ch := make(chan tools.Progress, 8)
+	go func() {
+		defer close(ch)
+		started := time.Now()
+		emit := func(p tools.Progress) {
+			p.Tool = "image"
+			p.Action = "batch-convert"
+			p.StartedAt = started
+			select {
+			case <-ctx.Done():
+			case ch <- p:
+			}
+		}
+
+		if len(req.Sources) == 0 {
+			emit(tools.Progress{Completed: true, Err: &tools.Error{
+				Code: tools.CodeBadRequest, Message: "batch convert needs at least one source",
+			}})
+			return
+		}
+
+		total := len(req.Sources)
+		failed := 0
+		for i, src := range req.Sources {
+			if err := ctx.Err(); err != nil {
+				emit(tools.Progress{Completed: true, Err: &tools.Error{
+					Code: tools.CodeAborted, Message: "batch convert canceled",
+				}})
+				return
+			}
+			name := filepath.Base(src)
+			outPath, terr := convertOne(ConvertRequest{
+				Source:       src,
+				TargetFormat: req.TargetFormat,
+				Opts:         req.Opts,
+				Output:       req.OutputDir,
+				Overwrite:    req.Overwrite,
+			})
+			if terr != nil {
+				failed++
+				emit(tools.Progress{
+					Level:       tools.SeverityError,
+					CurrentItem: name,
+					Fraction:    float64(i+1) / float64(total),
+					Message:     fmt.Sprintf("[%d/%d] %s: %s", i+1, total, name, terr.Message),
+				})
+				continue
+			}
+			emit(tools.Progress{
+				Level:       tools.SeverityInfo,
+				CurrentItem: name,
+				Fraction:    float64(i+1) / float64(total),
+				Message:     fmt.Sprintf("[%d/%d] wrote %s", i+1, total, filepath.Base(outPath)),
+			})
+		}
+
+		if failed == total {
+			emit(tools.Progress{Completed: true, Err: &tools.Error{
+				Code: tools.CodeIO, Message: fmt.Sprintf("all %d conversion(s) failed", total),
+			}})
+			return
+		}
+		emit(tools.Progress{
+			Completed: true, Fraction: 1, Level: tools.SeverityInfo,
+			Message: fmt.Sprintf("converted %d/%d image(s)", total-failed, total),
+		})
+	}()
+	return ch
+}
+
+// convertOne runs the decode → resize → encode pipeline for one file and
+// returns the written path. It does no progress reporting, so both Convert
+// and BatchConvert can drive it.
+func convertOne(req ConvertRequest) (outPath string, terr *tools.Error) {
+	img, err := decode(req.Source)
+	if err != nil {
+		return "", &tools.Error{Code: tools.CodeIO, Message: "decode failed", Detail: err.Error()}
+	}
+	if req.Opts.MaxWidth > 0 || req.Opts.MaxHeight > 0 {
+		img = resize(img, req.Opts.MaxWidth, req.Opts.MaxHeight)
+	}
+	outPath, err = resolveOutputPath(req)
+	if err != nil {
+		return "", &tools.Error{Code: tools.CodeBadRequest, Message: err.Error()}
+	}
+	if !req.Overwrite {
+		if _, statErr := os.Stat(outPath); statErr == nil {
+			return "", &tools.Error{Code: tools.CodeBadRequest, Message: "output exists", Detail: outPath}
+		}
+	}
+	if err := encode(outPath, img, req.TargetFormat, req.Opts); err != nil {
+		return "", &tools.Error{Code: tools.CodeIO, Message: "encode failed", Detail: err.Error()}
+	}
+	return outPath, nil
+}
+
 func decode(path string) (image.Image, error) {
 	ext := strings.ToLower(filepath.Ext(path))
 	if ext == ".heic" || ext == ".heif" {
