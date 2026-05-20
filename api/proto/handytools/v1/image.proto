@@ -30,6 +30,11 @@ message ImageOptions {
 service ImageService {
   rpc Convert(ConvertRequest) returns (stream Progress);
   rpc BatchConvert(BatchConvertRequest) returns (stream Progress);
+  // Preview renders a single downscaled thumbnail of an image. Unlike
+  // Convert it writes nothing to disk and returns the encoded bytes inline,
+  // so the web gallery can show a thumbnail without a round trip through
+  // the filesystem. (Phase 5 / #59 — handlers land later.)
+  rpc Preview(ImagePreviewRequest) returns (ImagePreviewResponse);
 }
 
 message ConvertRequest {
@@ -44,4 +49,22 @@ message BatchConvertRequest {
   ImageFormat target_format = 2;
   ImageOptions options = 3;
   OutputLocation output = 4;
+}
+
+message ImagePreviewRequest {
+  FileRef source = 1;
+  // Bounding box for the thumbnail. 0 means "unconstrained on this axis";
+  // the image is scaled down to fit, never up.
+  int32 max_width = 2;
+  int32 max_height = 3;
+  // Encoding for the returned bytes. IMAGE_FORMAT_UNSPECIFIED lets the
+  // server pick a sensible default (currently PNG).
+  ImageFormat format = 4;
+}
+
+message ImagePreviewResponse {
+  bytes image = 1;          // encoded thumbnail bytes
+  int32 width = 2;          // actual width of the returned thumbnail
+  int32 height = 3;         // actual height of the returned thumbnail
+  ImageFormat format = 4;   // encoding actually used for `image`
 }

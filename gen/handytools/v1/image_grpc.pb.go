@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	ImageService_Convert_FullMethodName      = "/handytools.v1.ImageService/Convert"
 	ImageService_BatchConvert_FullMethodName = "/handytools.v1.ImageService/BatchConvert"
+	ImageService_Preview_FullMethodName      = "/handytools.v1.ImageService/Preview"
 )
 
 // ImageServiceClient is the client API for ImageService service.
@@ -29,6 +30,11 @@ const (
 type ImageServiceClient interface {
 	Convert(ctx context.Context, in *ConvertRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Progress], error)
 	BatchConvert(ctx context.Context, in *BatchConvertRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Progress], error)
+	// Preview renders a single downscaled thumbnail of an image. Unlike
+	// Convert it writes nothing to disk and returns the encoded bytes inline,
+	// so the web gallery can show a thumbnail without a round trip through
+	// the filesystem. (Phase 5 / #59 — handlers land later.)
+	Preview(ctx context.Context, in *ImagePreviewRequest, opts ...grpc.CallOption) (*ImagePreviewResponse, error)
 }
 
 type imageServiceClient struct {
@@ -77,12 +83,27 @@ func (c *imageServiceClient) BatchConvert(ctx context.Context, in *BatchConvertR
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ImageService_BatchConvertClient = grpc.ServerStreamingClient[Progress]
 
+func (c *imageServiceClient) Preview(ctx context.Context, in *ImagePreviewRequest, opts ...grpc.CallOption) (*ImagePreviewResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ImagePreviewResponse)
+	err := c.cc.Invoke(ctx, ImageService_Preview_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ImageServiceServer is the server API for ImageService service.
 // All implementations must embed UnimplementedImageServiceServer
 // for forward compatibility.
 type ImageServiceServer interface {
 	Convert(*ConvertRequest, grpc.ServerStreamingServer[Progress]) error
 	BatchConvert(*BatchConvertRequest, grpc.ServerStreamingServer[Progress]) error
+	// Preview renders a single downscaled thumbnail of an image. Unlike
+	// Convert it writes nothing to disk and returns the encoded bytes inline,
+	// so the web gallery can show a thumbnail without a round trip through
+	// the filesystem. (Phase 5 / #59 — handlers land later.)
+	Preview(context.Context, *ImagePreviewRequest) (*ImagePreviewResponse, error)
 	mustEmbedUnimplementedImageServiceServer()
 }
 
@@ -98,6 +119,9 @@ func (UnimplementedImageServiceServer) Convert(*ConvertRequest, grpc.ServerStrea
 }
 func (UnimplementedImageServiceServer) BatchConvert(*BatchConvertRequest, grpc.ServerStreamingServer[Progress]) error {
 	return status.Errorf(codes.Unimplemented, "method BatchConvert not implemented")
+}
+func (UnimplementedImageServiceServer) Preview(context.Context, *ImagePreviewRequest) (*ImagePreviewResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Preview not implemented")
 }
 func (UnimplementedImageServiceServer) mustEmbedUnimplementedImageServiceServer() {}
 func (UnimplementedImageServiceServer) testEmbeddedByValue()                      {}
@@ -142,13 +166,36 @@ func _ImageService_BatchConvert_Handler(srv interface{}, stream grpc.ServerStrea
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ImageService_BatchConvertServer = grpc.ServerStreamingServer[Progress]
 
+func _ImageService_Preview_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ImagePreviewRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ImageServiceServer).Preview(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ImageService_Preview_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ImageServiceServer).Preview(ctx, req.(*ImagePreviewRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ImageService_ServiceDesc is the grpc.ServiceDesc for ImageService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var ImageService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "handytools.v1.ImageService",
 	HandlerType: (*ImageServiceServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Preview",
+			Handler:    _ImageService_Preview_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "Convert",

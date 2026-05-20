@@ -12,6 +12,11 @@ service PdfService {
   rpc ToText(PdfToTextRequest) returns (stream Progress);
   rpc Merge(PdfMergeRequest) returns (stream Progress);
   rpc Split(PdfSplitRequest) returns (stream Progress);
+  // Preview renders page thumbnails for the web gallery. It streams one
+  // PdfPreviewResponse per page so a large document yields thumbnails
+  // incrementally rather than buffering them all. (Phase 5 / #59 —
+  // handlers land later.)
+  rpc Preview(PdfPreviewRequest) returns (stream PdfPreviewResponse);
 }
 
 message PageRange {
@@ -45,4 +50,17 @@ message PdfSplitRequest {
   repeated PageRange page_ranges = 2;
   int32 every_n = 3;
   OutputLocation output = 4;
+}
+
+message PdfPreviewRequest {
+  FileRef source = 1;
+  PageRange pages = 2;   // empty = all pages
+  int32 dpi = 3;         // render resolution; 0 = server default (150)
+}
+
+message PdfPreviewResponse {
+  int32 page = 1;        // 1-based page number this thumbnail is for
+  bytes image = 2;       // encoded page thumbnail (PNG)
+  int32 width = 3;       // thumbnail width in pixels
+  int32 height = 4;      // thumbnail height in pixels
 }
