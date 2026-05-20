@@ -19,9 +19,14 @@ on:
     branches: [test]
   workflow_dispatch:
 
+# GITHUB_TOKEN only does the read-only checkout / fetch below; every PR
+# operation runs through PROMOTE_TOKEN (a fine-grained PAT). A PAT is
+# required because GITHUB_TOKEN cannot create PRs when the repo's "Allow
+# GitHub Actions to create and approve pull requests" setting is off — and,
+# unlike GITHUB_TOKEN, a PAT-created PR triggers CI + commitlint so the
+# required checks report and the promotion PR is mergeable.
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: promote-to-main
@@ -58,7 +63,7 @@ jobs:
         id: existing
         if: steps.ahead.outputs.ahead != '0'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PROMOTE_TOKEN }}
         run: |
           NUM=$(gh pr list --base main --head test --state open --json number --jq '.[0].number // empty')
           echo "number=$NUM" >> "$GITHUB_OUTPUT"
@@ -66,7 +71,7 @@ jobs:
       - name: Open promotion PR
         if: steps.ahead.outputs.ahead != '0' && steps.existing.outputs.number == ''
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PROMOTE_TOKEN }}
         run: |
           gh pr create \
             --base main \
@@ -80,7 +85,7 @@ jobs:
       - name: Update existing promotion PR description
         if: steps.ahead.outputs.ahead != '0' && steps.existing.outputs.number != ''
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PROMOTE_TOKEN }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           gh pr comment "${{ steps.existing.outputs.number }}" \
