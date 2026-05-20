@@ -25,7 +25,7 @@ export type NavItem = {
 
 export const navItems: NavItem[] = [
   { href: '#/', label: 'Home', glyph: '◇', matches: (p) => p === '/' || p === '' },
-  { href: '#/tool/convert', label: 'Convert', glyph: '⇄', matches: (p) => p.startsWith('/tool/') },
+  { href: '#/tool/convert-image', label: 'Convert', glyph: '⇄', matches: (p) => p.startsWith('/tool/') },
   { href: '#/doctor', label: 'Doctor', glyph: '✚', matches: (p) => p === '/doctor' },
   { href: '#/settings', label: 'Settings', glyph: '⚙', matches: (p) => p === '/settings' },
 ];
