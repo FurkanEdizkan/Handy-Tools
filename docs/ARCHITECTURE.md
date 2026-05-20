@@ -191,7 +191,5 @@ status and the staged phases. Issues #55–#59 track them:
   adding one package + one proto file, no UI changes.
 - **WebP encoder**: currently disabled (no pure-Go encoder); add via
   `chai2010/webp` once we accept its CGO requirement.
-- **Real YAML lib**: swap the hand-rolled config parser for
-  `gopkg.in/yaml.v3` once we have other reasons to take that dep.
 - **`pdfcpu` library import**: pull merge/split into pure Go instead of
   shelling out to the CLI.

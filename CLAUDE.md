@@ -19,7 +19,7 @@ A third entry point, `cmd/snapshot`, is a developer-only helper that renders the
 make proto      # regenerate Go bindings into gen/ from api/proto (run once after clone)
 make build      # bin/htools + bin/htoolsd
 make test       # go test -race -count=1 ./...
-make fuzz       # short fuzz over the YAML mini-parser
+make fuzz       # short fuzz over the config YAML decoder
 make lint       # golangci-lint + buf lint
 make cover      # coverage.out + coverage.html
 ```
@@ -50,7 +50,7 @@ Optional system binaries (`unrar`, `7z`, `pdftoppm`, `pdftotext`, `magick`) are 
 
 ## Config
 
-Settings live at `$HANDY_TOOLS_CONFIG` → `$XDG_CONFIG_HOME/handy-tools/config.yaml` → `~/.config/handy-tools/config.yaml` (in that order). The on-disk YAML is parsed by a tiny hand-rolled reader in [internal/config/yaml_min.go](internal/config/yaml_min.go) — only flat scalars + the `recent`/`allow_roots` lists are supported. If you need richer YAML, swap to `gopkg.in/yaml.v3` rather than extending the hand-rolled parser. `Defaults()` must always return a complete `Config` so partial files round-trip safely.
+Settings live at `$HANDY_TOOLS_CONFIG` → `$XDG_CONFIG_HOME/handy-tools/config.yaml` → `~/.config/handy-tools/config.yaml` (in that order). The on-disk YAML is decoded with `gopkg.in/yaml.v3` via the thin `decode`/`writeYAML` helpers in [internal/config/config.go](internal/config/config.go); every `Config` field carries a `yaml:` struct tag. `loadFile` unmarshals over a `Defaults()` value, so `Defaults()` must always return a complete `Config` for partial files to round-trip safely.
 
 ## Installer script
 
@@ -89,7 +89,7 @@ CI ([ci.yml](.github/workflows/ci.yml)) is Linux-only and runs on every push/PR 
 - `lint-go` — golangci-lint v1.59, runs `buf generate` first so generated code is in scope.
 - `lint-proto` — `buf lint` against `api/proto/`.
 - `web-build` — installs/builds/tests the Svelte frontend, uploads the `web-dist` artifact.
-- `test-quick` — `go test -race` plus a 20-second fuzz pass over the YAML mini-parser (`FuzzDecodeMinimalYAML`); consumes `web-dist`.
+- `test-quick` — `go test -race` plus a 20-second fuzz pass over the config YAML decoder (`FuzzDecodeYAML`); consumes `web-dist`.
 - `build` — final assembly check for the Linux binaries.
 
 There is no OS matrix while the project is pre-1.0; non-Linux coverage is release-time only, via [verify-install.yml](.github/workflows/verify-install.yml). Restoring an ubuntu × macos (+ Windows compile) matrix is tracked for ~v1.0.0.

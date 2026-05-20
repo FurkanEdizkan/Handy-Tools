@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestDecodeMinimalYAMLBasic(t *testing.T) {
+func TestDecodeYAMLBasic(t *testing.T) {
 	body := strings.Join([]string{
 		"theme:",
 		"  name: snow",
@@ -25,11 +25,11 @@ func TestDecodeMinimalYAMLBasic(t *testing.T) {
 		"",
 	}, "\n")
 	c := Defaults()
-	if err := decodeMinimalYAML([]byte(body), &c); err != nil {
+	if err := decode([]byte(body), &c); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if c.Theme.Name != "snow" {
-		t.Errorf("theme: %q", c.Theme.Name)
+	if c.Theme.Name != "snow" || c.Theme.Background != "#000000" {
+		t.Errorf("theme: %+v", c.Theme)
 	}
 	if c.Image.DefaultJPEGQuality != 70 {
 		t.Errorf("jpeg quality: %d", c.Image.DefaultJPEGQuality)
@@ -42,10 +42,10 @@ func TestDecodeMinimalYAMLBasic(t *testing.T) {
 	}
 }
 
-func TestDecodeMinimalYAMLIgnoresUnknown(t *testing.T) {
+func TestDecodeYAMLIgnoresUnknown(t *testing.T) {
 	body := "theme:\n  name: snow\nfuture_key:\n  something: 42\n"
 	c := Defaults()
-	if err := decodeMinimalYAML([]byte(body), &c); err != nil {
+	if err := decode([]byte(body), &c); err != nil {
 		t.Fatalf("unknown key should be ignored, got: %v", err)
 	}
 	if c.Theme.Name != "snow" {
@@ -53,10 +53,33 @@ func TestDecodeMinimalYAMLIgnoresUnknown(t *testing.T) {
 	}
 }
 
-func TestDecodeMinimalYAMLEmptyListLiteral(t *testing.T) {
-	body := "server:\n  allow_roots: []\nrecent: []\n"
+// TestDecodeYAMLPartialKeepsDefaults is the round-trip safety contract: a file
+// that mentions only one key must leave every other field at its Defaults()
+// value.
+func TestDecodeYAMLPartialKeepsDefaults(t *testing.T) {
 	c := Defaults()
-	if err := decodeMinimalYAML([]byte(body), &c); err != nil {
+	if err := decode([]byte("theme:\n  name: ember\n"), &c); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if c.Theme.Name != "ember" {
+		t.Errorf("theme name not applied: %q", c.Theme.Name)
+	}
+	if c.Mascot.Style != "wrenly" || !c.Mascot.Enabled {
+		t.Errorf("mascot defaults lost: %+v", c.Mascot)
+	}
+	if c.Image.DefaultJPEGQuality != 90 || c.PDF.DefaultDPI != 150 {
+		t.Errorf("numeric defaults lost: image=%d pdf=%d", c.Image.DefaultJPEGQuality, c.PDF.DefaultDPI)
+	}
+	if c.Server.Listen != ":7777" {
+		t.Errorf("server default lost: %q", c.Server.Listen)
+	}
+}
+
+func TestDecodeYAMLEmptyListLiteral(t *testing.T) {
+	c := Defaults()
+	c.Server.AllowRoots = []string{"/preexisting"}
+	c.Recent = []string{"/preexisting"}
+	if err := decode([]byte("server:\n  allow_roots: []\nrecent: []\n"), &c); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if len(c.Server.AllowRoots) != 0 || len(c.Recent) != 0 {
@@ -64,11 +87,10 @@ func TestDecodeMinimalYAMLEmptyListLiteral(t *testing.T) {
 	}
 }
 
-// FuzzDecodeMinimalYAML feeds random byte sequences into the hand-rolled
-// parser. The contract is "never panic, return either nil or a structured
-// error". This catches index-out-of-range bugs introduced when extending the
-// grammar.
-func FuzzDecodeMinimalYAML(f *testing.F) {
+// FuzzDecodeYAML feeds random byte sequences into the config decoder. The
+// contract is "never panic, return either nil or an error" — it guards the
+// thin wrapper around gopkg.in/yaml.v3, which has its own upstream fuzzing.
+func FuzzDecodeYAML(f *testing.F) {
 	seeds := []string{
 		"",
 		"theme:\n  name: forge\n",
@@ -88,6 +110,6 @@ func FuzzDecodeMinimalYAML(f *testing.F) {
 	f.Fuzz(func(t *testing.T, body []byte) {
 		c := Defaults()
 		// Any error is acceptable; a panic is not.
-		_ = decodeMinimalYAML(body, &c)
+		_ = decode(body, &c)
 	})
 }
