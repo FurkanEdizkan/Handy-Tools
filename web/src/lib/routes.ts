@@ -3,6 +3,7 @@ import Home from './pages/Home.svelte';
 import ToolPage from './pages/ToolPage.svelte';
 import Doctor from './pages/Doctor.svelte';
 import Settings from './pages/Settings.svelte';
+import DevComponents from './pages/DevComponents.svelte';
 import NotFound from './pages/NotFound.svelte';
 
 export const routes: Record<string, Component> = {
@@ -10,6 +11,8 @@ export const routes: Record<string, Component> = {
   '/tool/:id': ToolPage,
   '/doctor': Doctor,
   '/settings': Settings,
+  // Dev-only component gallery (issue #70) — intentionally not in `navItems`.
+  '/dev/components': DevComponents,
   '*': NotFound,
 };
 
