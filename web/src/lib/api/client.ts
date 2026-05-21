@@ -15,12 +15,14 @@ import type {
   ErrorEnvelope,
   ExtractRequest,
   HealthResponse,
+  CompressRequest,
   InspectRequest,
   InspectResponse,
   JobResponse,
   JobsResponse,
   JobSummary,
   PdfMergeRequest,
+  PdfSplitRequest,
   PdfToImageRequest,
   PdfToTextRequest,
   ProgressEvent,
@@ -71,6 +73,10 @@ export class ApiClient {
     return this.postJSON('/v1/archive/extract', req);
   }
 
+  archiveCompress(req: CompressRequest): Promise<JobResponse> {
+    return this.postJSON('/v1/archive/compress', req);
+  }
+
   // ---- PDF ------------------------------------------------------------------
 
   pdfToImage(req: PdfToImageRequest): Promise<JobResponse> {
@@ -83,6 +89,10 @@ export class ApiClient {
 
   pdfMerge(req: PdfMergeRequest): Promise<JobResponse> {
     return this.postJSON('/v1/pdf/merge', req);
+  }
+
+  pdfSplit(req: PdfSplitRequest): Promise<JobResponse> {
+    return this.postJSON('/v1/pdf/split', req);
   }
 
   // ---- Jobs -----------------------------------------------------------------

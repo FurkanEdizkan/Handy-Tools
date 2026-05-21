@@ -1,12 +1,19 @@
 <script lang="ts">
   import { Dropzone, OptionRow, Toast } from '../components';
   import { archiveExtractReady, archiveExtractSummary } from './toolform';
+  import { api } from '../api';
+  import { isDesktop } from '../native';
+  import { runJob } from './run';
 
   let source = $state('');
   let destination = $state('');
   let overwrite = $state(false);
   let autoMultiPart = $state(false);
   let toastVisible = $state(false);
+  let toastMsg = $state('');
+  let toastTone = $state<'info' | 'error'>('info');
+
+  const desktop = isDesktop();
 
   let summary = $derived(archiveExtractSummary(source, destination));
   let ready = $derived(archiveExtractReady(source, destination));
@@ -17,9 +24,20 @@
     source = typeof first === 'string' ? first : first.name;
   }
 
-  function run(): void {
-    if (!ready) return;
-    // Track C wires this to the real queue.
+  async function run(): Promise<void> {
+    if (!ready || !desktop) return;
+    const outcome = await runJob(() =>
+      api.archiveExtract({
+        source: { path: source },
+        parts: [],
+        destinationDir: destination,
+        password: '',
+        overwrite,
+        autoAcceptMultiPart: autoMultiPart,
+      }),
+    );
+    toastMsg = outcome.message;
+    toastTone = outcome.ok ? 'info' : 'error';
     toastVisible = true;
   }
 </script>
@@ -64,14 +82,16 @@
   </section>
 
   <div class="flex items-center justify-between border-t border-border pt-4">
-    <span class="text-xs text-text-dim">{summary}</span>
+    <span class="text-xs text-text-dim">
+      {summary}{#if !desktop} · running needs the desktop app{/if}
+    </span>
     <button
       type="button"
       class="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-bg disabled:opacity-40 disabled:cursor-not-allowed"
-      disabled={!ready}
+      disabled={!ready || !desktop}
       onclick={run}
     >Run</button>
   </div>
 </div>
 
-<Toast message="queue not wired yet" tone="info" bind:visible={toastVisible} duration={2600} />
+<Toast message={toastMsg} tone={toastTone} bind:visible={toastVisible} duration={2600} />

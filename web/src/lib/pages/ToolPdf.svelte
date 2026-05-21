@@ -1,12 +1,19 @@
 <script lang="ts">
   import { Dropzone, OptionRow, Toast, type RadioOption } from '../components';
   import { PDF_OPS, pdfFormReady, pdfSummary, type PdfOp } from './toolform';
+  import { api } from '../api';
+  import { isDesktop } from '../native';
+  import { runJob, dirOf, stemOf } from './run';
 
   // `op` is a plain string so it binds cleanly to OptionRow's value prop;
   // it only ever holds a PdfOp (the radio options are the PdfOp values).
   let op = $state('merge');
   let files = $state<string[]>([]);
   let toastVisible = $state(false);
+  let toastMsg = $state('');
+  let toastTone = $state<'info' | 'error'>('info');
+
+  const desktop = isDesktop();
 
   // Per-operation options.
   let splitEvery = $state(10); // Split: start a new file every N pages.
@@ -32,9 +39,45 @@
     files = files.filter((_, i) => i !== index);
   }
 
-  function run(): void {
-    if (!ready) return;
-    // Track C wires this to the real queue.
+  // The chosen PDF operation maps to one job; output lands alongside the
+  // first input document.
+  async function run(): Promise<void> {
+    if (!ready || !desktop) return;
+    const first = files[0];
+    const dir = dirOf(first);
+    const outcome = await runJob(() => {
+      switch (op as PdfOp) {
+        case 'split':
+          return api.pdfSplit({
+            source: { path: first },
+            pageRanges: [],
+            everyN: splitEvery,
+            output: { directory: dir },
+          });
+        case 'render':
+          return api.pdfToImage({
+            source: { path: first },
+            pages: { from: 0, to: 0 },
+            dpi,
+            targetFormat: renderFormat as 'PNG' | 'JPEG',
+            output: { directory: dir },
+          });
+        case 'text':
+          return api.pdfToText({
+            source: { path: first },
+            pages: { from: 0, to: 0 },
+            layout: keepLayout,
+            output: { file: `${dir}/${stemOf(first)}.txt` },
+          });
+        default: // merge
+          return api.pdfMerge({
+            sources: files.map((p) => ({ path: p })),
+            output: { file: `${dir}/merged.pdf` },
+          });
+      }
+    });
+    toastMsg = outcome.message;
+    toastTone = outcome.ok ? 'info' : 'error';
     toastVisible = true;
   }
 </script>
@@ -91,14 +134,16 @@
   </section>
 
   <div class="flex items-center justify-between border-t border-border pt-4">
-    <span class="text-xs text-text-dim">{summary}</span>
+    <span class="text-xs text-text-dim">
+      {summary}{#if !desktop} · running needs the desktop app{/if}
+    </span>
     <button
       type="button"
       class="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-bg disabled:opacity-40 disabled:cursor-not-allowed"
-      disabled={!ready}
+      disabled={!ready || !desktop}
       onclick={run}
     >Run</button>
   </div>
 </div>
 
-<Toast message="queue not wired yet" tone="info" bind:visible={toastVisible} duration={2600} />
+<Toast message={toastMsg} tone={toastTone} bind:visible={toastVisible} duration={2600} />
