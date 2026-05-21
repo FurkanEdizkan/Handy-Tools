@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { api, type SysdepResult } from '../api';
   import { sysdepSummary } from './doctor';
+  import { health, formatUptime } from '../stores/health';
 
   let results = $state<SysdepResult[]>([]);
   let loading = $state(true);
@@ -29,12 +30,20 @@
 </script>
 
 <section>
-  <header class="mb-6 flex items-baseline gap-3">
+  <header class="mb-2 flex items-baseline gap-3">
     <h1 class="text-xl font-semibold tracking-tight">Doctor</h1>
     {#if !loading && !error}
       <span class="text-sm text-text-dim">{sysdepSummary(results)}</span>
     {/if}
   </header>
+
+  <p class="mb-6 text-xs text-text-dim">
+    Backend
+    <span class="font-mono" class:text-success={$health.level === 'online'} class:text-error={$health.level === 'offline'}
+      >{$health.level}</span>
+    · version <code class="font-mono text-accent">{$health.version ?? '—'}</code>
+    · uptime {formatUptime($health.uptimeSeconds)}
+  </p>
 
   {#if loading}
     <p class="text-sm text-text-dim">Checking optional system tools…</p>
