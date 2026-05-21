@@ -28,9 +28,10 @@ type Server struct {
 	Archive *server.ArchiveHandler
 	PDF     *server.PDFHandler
 
-	jobs *jobs
-	mux  *http.ServeMux
-	http *http.Server
+	jobs      *jobs
+	mux       *http.ServeMux
+	http      *http.Server
+	startedAt time.Time // captured in New(), reported by GET /v1/health
 }
 
 // New builds a Server with handlers wired against the same options the gRPC
@@ -38,11 +39,12 @@ type Server struct {
 // path safety stays centralised in one place.
 func New(opts server.Options) *Server {
 	s := &Server{
-		Opts:    opts,
-		Image:   &server.ImageHandler{Opts: opts},
-		Archive: &server.ArchiveHandler{Opts: opts},
-		PDF:     &server.PDFHandler{Opts: opts},
-		jobs:    newJobs(),
+		Opts:      opts,
+		Image:     &server.ImageHandler{Opts: opts},
+		Archive:   &server.ArchiveHandler{Opts: opts},
+		PDF:       &server.PDFHandler{Opts: opts},
+		jobs:      newJobs(),
+		startedAt: time.Now(),
 	}
 	s.mux = s.routes()
 	if spa, err := newSPAHandler(); err == nil {
@@ -88,6 +90,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /v1/pdf/split", s.handlePDFSplit)
 	mux.HandleFunc("GET /v1/jobs/{id}/events", s.handleJobEvents)
 	mux.HandleFunc("GET /v1/sysdep", s.handleSysdep)
+	mux.HandleFunc("GET /v1/health", s.handleHealth)
 	mux.HandleFunc("GET /v1/config", s.handleConfigGet)
 	mux.HandleFunc("PATCH /v1/config", s.handleConfigPatch)
 	return mux
