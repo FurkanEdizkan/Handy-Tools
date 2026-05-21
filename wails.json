@@ -1,0 +1,12 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "htools-gui",
+  "outputfilename": "htools-gui",
+  "frontend:dir": "web",
+  "frontend:install": "npm ci",
+  "frontend:build": "npm run build",
+  "info": {
+    "productName": "Handy Tools",
+    "comments": "Friendly desktop toolbox for image, archive and PDF tasks."
+  }
+}
