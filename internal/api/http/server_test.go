@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/furkandedizkan/handy-tools/internal/buildinfo"
+	"github.com/furkandedizkan/handy-tools/internal/queue"
 	"github.com/furkandedizkan/handy-tools/internal/server"
 	"github.com/furkandedizkan/handy-tools/internal/tools"
 )
@@ -50,7 +51,7 @@ func writeTinyPNG(t *testing.T, dir string) string {
 // the test's t.Cleanup hook.
 func newTestServer(t *testing.T, dir string) *httptest.Server {
 	t.Helper()
-	s := New(server.Options{AllowRoots: []string{dir}})
+	s := New(server.Options{AllowRoots: []string{dir}}, queue.New())
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)
 	return ts
@@ -169,7 +170,7 @@ func TestImageConvertOutsideAllowRoots(t *testing.T) {
 	allow := t.TempDir()
 	src := writeTinyPNG(t, dir)
 
-	s := New(server.Options{AllowRoots: []string{allow}})
+	s := New(server.Options{AllowRoots: []string{allow}}, queue.New())
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)
 
@@ -370,7 +371,7 @@ func TestArchiveCompressOutsideAllowRoots(t *testing.T) {
 	allow := t.TempDir() // a sibling dir — the source below won't be permitted
 	src := writeTextFile(t, dir, "a.txt", "x")
 
-	s := New(server.Options{AllowRoots: []string{allow}})
+	s := New(server.Options{AllowRoots: []string{allow}}, queue.New())
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)
 

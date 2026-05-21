@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc/reflection"
 
 	handytoolsv1 "github.com/furkandedizkan/handy-tools/gen/handytools/v1"
+	"github.com/furkandedizkan/handy-tools/internal/queue"
 	"github.com/furkandedizkan/handy-tools/internal/tools"
 	"github.com/furkandedizkan/handy-tools/internal/tools/archive"
 	"github.com/furkandedizkan/handy-tools/internal/tools/image"
@@ -33,16 +34,66 @@ type Server struct {
 	Archive *ArchiveHandler
 	PDF     *PDFHandler
 
+	// Queue is the shared job registry. Pass the same *queue.Queue the HTTP
+	// server uses so a job started on either transport is visible to both.
+	Queue *queue.Queue
+
 	grpc *grpc.Server
 }
 
-// New constructs a server with all handlers wired in.
-func New(opts Options) *Server {
+// New constructs a server with all handlers wired in. q is the shared queue
+// (see Server.Queue).
+func New(opts Options, q *queue.Queue) *Server {
 	return &Server{
 		Opts:    opts,
 		Image:   &ImageHandler{Opts: opts},
 		Archive: &ArchiveHandler{Opts: opts},
 		PDF:     &PDFHandler{Opts: opts},
+		Queue:   q,
+	}
+}
+
+// streamViaQueue enqueues a tool job on the shared queue and forwards its
+// progress events onto a gRPC stream. run drives the tool; a non-nil error
+// from it becomes a terminal failure Progress event, so the stream completes
+// normally rather than returning a gRPC-level error. Because the queue runs
+// the job under its own context, the job outlives a disconnected client.
+func streamViaQueue(
+	ctx context.Context,
+	q *queue.Queue,
+	tool, action string,
+	send func(tools.Progress) error,
+	run func(ctx context.Context, emit func(tools.Progress)) error,
+) error {
+	id := q.Enqueue(tool, action, func(jobCtx context.Context, emit func(tools.Progress)) {
+		if err := run(jobCtx, emit); err != nil {
+			emit(grpcFailureProgress(tool, action, err))
+		}
+	})
+	ch, err := q.Subscribe(ctx, id)
+	if err != nil {
+		return err
+	}
+	for p := range ch {
+		if err := send(p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// grpcFailureProgress wraps a non-tool error into a terminal Progress event.
+func grpcFailureProgress(tool, action string, err error) tools.Progress {
+	te, ok := err.(*tools.Error)
+	if !ok {
+		te = &tools.Error{Code: tools.CodeIO, Message: err.Error()}
+	}
+	return tools.Progress{
+		Tool:      tool,
+		Action:    action,
+		Level:     tools.SeverityError,
+		Completed: true,
+		Err:       te,
 	}
 }
 
@@ -50,9 +101,9 @@ func New(opts Options) *Server {
 // given listener. Call Stop() from another goroutine to shut down.
 func (s *Server) Serve(lis net.Listener) error {
 	s.grpc = grpc.NewServer()
-	handytoolsv1.RegisterImageServiceServer(s.grpc, &grpcImageServer{h: s.Image})
-	handytoolsv1.RegisterArchiveServiceServer(s.grpc, &grpcArchiveServer{h: s.Archive})
-	handytoolsv1.RegisterPdfServiceServer(s.grpc, &grpcPDFServer{h: s.PDF})
+	handytoolsv1.RegisterImageServiceServer(s.grpc, &grpcImageServer{h: s.Image, q: s.Queue})
+	handytoolsv1.RegisterArchiveServiceServer(s.grpc, &grpcArchiveServer{h: s.Archive, q: s.Queue})
+	handytoolsv1.RegisterPdfServiceServer(s.grpc, &grpcPDFServer{h: s.PDF, q: s.Queue})
 	reflection.Register(s.grpc)
 	return s.grpc.Serve(lis)
 }
@@ -69,6 +120,7 @@ func (s *Server) Stop() {
 type grpcImageServer struct {
 	handytoolsv1.UnimplementedImageServiceServer
 	h *ImageHandler
+	q *queue.Queue
 }
 
 func (g *grpcImageServer) Convert(req *handytoolsv1.ConvertRequest, stream handytoolsv1.ImageService_ConvertServer) error {
@@ -90,14 +142,20 @@ func (g *grpcImageServer) Convert(req *handytoolsv1.ConvertRequest, stream handy
 		OutputFile:   out,
 		Overwrite:    req.GetOutput().GetOverwrite(),
 	}
-	return g.h.Convert(stream.Context(), params, func(p tools.Progress) error {
-		return stream.Send(progressToProto(p))
-	})
+	return streamViaQueue(stream.Context(), g.q, "image", "convert",
+		func(p tools.Progress) error { return stream.Send(progressToProto(p)) },
+		func(ctx context.Context, emit func(tools.Progress)) error {
+			return g.h.Convert(ctx, params, func(p tools.Progress) error {
+				emit(p)
+				return nil
+			})
+		})
 }
 
 type grpcArchiveServer struct {
 	handytoolsv1.UnimplementedArchiveServiceServer
 	h *ArchiveHandler
+	q *queue.Queue
 }
 
 func (g *grpcArchiveServer) Inspect(ctx context.Context, req *handytoolsv1.InspectRequest) (*handytoolsv1.InspectResponse, error) {
@@ -135,14 +193,20 @@ func (g *grpcArchiveServer) Extract(req *handytoolsv1.ExtractRequest, stream han
 		Overwrite:     req.GetOverwrite(),
 		AutoMultiPart: req.GetAutoAcceptMultiPart(),
 	}
-	return g.h.Extract(stream.Context(), params, func(p tools.Progress) error {
-		return stream.Send(progressToProto(p))
-	})
+	return streamViaQueue(stream.Context(), g.q, "archive", "extract",
+		func(p tools.Progress) error { return stream.Send(progressToProto(p)) },
+		func(ctx context.Context, emit func(tools.Progress)) error {
+			return g.h.Extract(ctx, params, func(p tools.Progress) error {
+				emit(p)
+				return nil
+			})
+		})
 }
 
 type grpcPDFServer struct {
 	handytoolsv1.UnimplementedPdfServiceServer
 	h *PDFHandler
+	q *queue.Queue
 }
 
 func (g *grpcPDFServer) ToImage(req *handytoolsv1.PdfToImageRequest, stream handytoolsv1.PdfService_ToImageServer) error {
@@ -154,9 +218,14 @@ func (g *grpcPDFServer) ToImage(req *handytoolsv1.PdfToImageRequest, stream hand
 		OutputDir: req.GetOutput().GetDirectory(),
 		JPEG:      req.GetTargetFormat() == handytoolsv1.ImageFormat_IMAGE_FORMAT_JPEG,
 	}
-	return g.h.ToImage(stream.Context(), params, func(p tools.Progress) error {
-		return stream.Send(progressToProto(p))
-	})
+	return streamViaQueue(stream.Context(), g.q, "pdf", "to-image",
+		func(p tools.Progress) error { return stream.Send(progressToProto(p)) },
+		func(ctx context.Context, emit func(tools.Progress)) error {
+			return g.h.ToImage(ctx, params, func(p tools.Progress) error {
+				emit(p)
+				return nil
+			})
+		})
 }
 
 func (g *grpcPDFServer) ToText(req *handytoolsv1.PdfToTextRequest, stream handytoolsv1.PdfService_ToTextServer) error {
@@ -167,9 +236,14 @@ func (g *grpcPDFServer) ToText(req *handytoolsv1.PdfToTextRequest, stream handyt
 		Layout:     req.GetLayout(),
 		OutputFile: req.GetOutput().GetFile(),
 	}
-	return g.h.ToText(stream.Context(), params, func(p tools.Progress) error {
-		return stream.Send(progressToProto(p))
-	})
+	return streamViaQueue(stream.Context(), g.q, "pdf", "to-text",
+		func(p tools.Progress) error { return stream.Send(progressToProto(p)) },
+		func(ctx context.Context, emit func(tools.Progress)) error {
+			return g.h.ToText(ctx, params, func(p tools.Progress) error {
+				emit(p)
+				return nil
+			})
+		})
 }
 
 func (g *grpcPDFServer) Merge(req *handytoolsv1.PdfMergeRequest, stream handytoolsv1.PdfService_MergeServer) error {
@@ -178,9 +252,14 @@ func (g *grpcPDFServer) Merge(req *handytoolsv1.PdfMergeRequest, stream handytoo
 		srcs = append(srcs, s.GetPath())
 	}
 	params := PDFMergeParams{Sources: srcs, OutputFile: req.GetOutput().GetFile()}
-	return g.h.Merge(stream.Context(), params, func(p tools.Progress) error {
-		return stream.Send(progressToProto(p))
-	})
+	return streamViaQueue(stream.Context(), g.q, "pdf", "merge",
+		func(p tools.Progress) error { return stream.Send(progressToProto(p)) },
+		func(ctx context.Context, emit func(tools.Progress)) error {
+			return g.h.Merge(ctx, params, func(p tools.Progress) error {
+				emit(p)
+				return nil
+			})
+		})
 }
 
 // ---- proto <-> domain ------------------------------------------------------
