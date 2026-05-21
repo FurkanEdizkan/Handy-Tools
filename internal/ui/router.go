@@ -409,8 +409,7 @@ func (m *Model) startRun(j RunJob) {
 	if m.jobQueue == nil || m.running {
 		return
 	}
-	files := append([]fileItem(nil), j.Files...)
-	id := m.jobQueue.Enqueue(j.Tool.id, "run", simulatedRunner(files))
+	id := m.jobQueue.Enqueue(j.Tool.id, runAction(j), realRunner(j))
 	now := time.Now()
 	hh, mn, _ := now.Clock()
 	m.queue = append([]Job{{
@@ -422,45 +421,10 @@ func (m *Model) startRun(j RunJob) {
 	}}, m.queue...)
 	m.running = true
 	m.runJobID = id
-	m.currentTask = fmt.Sprintf("%s · 0/%d", j.Tool.label, len(files))
+	m.currentTask = fmt.Sprintf("%s · 0/%d", j.Tool.label, len(j.Files))
 	m.progress = 0
 	m.mascot.Set(mascot.StateThinking)
 	m.mascot.Whisper(speechForState(mascot.StateThinking, j.Tool.id, j.Tool.label, 0))
-}
-
-// simulatedRunner is the #77a placeholder Runner — it emits one progress event
-// per input file, then returns so the queue marks the job complete. It proves
-// the queue↔Bubble Tea plumbing end to end; #77b swaps it for real tool
-// execution through the shared internal/server handlers.
-func simulatedRunner(files []fileItem) jobqueue.Runner {
-	n := len(files)
-	if n == 0 {
-		n = 1
-	}
-	return func(ctx context.Context, emit func(tools.Progress)) {
-		for i := 1; i <= n; i++ {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(220 * time.Millisecond):
-			}
-			name := fmt.Sprintf("item-%d", i)
-			if i-1 < len(files) {
-				name = files[i-1].Name
-			}
-			emit(tools.Progress{
-				Level:       tools.SeverityInfo,
-				Fraction:    float64(i) / float64(n),
-				CurrentItem: name,
-				Message:     "processed " + name,
-			})
-		}
-		emit(tools.Progress{
-			Level:    tools.SeverityInfo,
-			Fraction: 1,
-			Message:  fmt.Sprintf("%d item(s) processed", n),
-		})
-	}
 }
 
 // applyQueueEvent folds one queue snapshot into the display queue. When the
