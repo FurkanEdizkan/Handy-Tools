@@ -41,14 +41,15 @@ type Server struct {
 
 // New builds a Server with handlers wired against the same options the gRPC
 // transport uses. The caller passes a server.Options containing AllowRoots so
-// path safety stays centralised in one place.
-func New(opts server.Options) *Server {
+// path safety stays centralised in one place, and the shared *queue.Queue so
+// jobs are visible across both the HTTP and gRPC transports.
+func New(opts server.Options, q *queue.Queue) *Server {
 	s := &Server{
 		Opts:      opts,
 		Image:     &server.ImageHandler{Opts: opts},
 		Archive:   &server.ArchiveHandler{Opts: opts},
 		PDF:       &server.PDFHandler{Opts: opts},
-		Queue:     queue.New(),
+		Queue:     q,
 		startedAt: time.Now(),
 	}
 	s.mux = s.routes()
