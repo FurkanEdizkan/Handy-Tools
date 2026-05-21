@@ -129,13 +129,15 @@ export interface ErrorEnvelope {
 }
 
 /**
- * /v1/health response. Not yet on the wire (#64); the field set is the agreed
- * shape so the client and Header badge can both compile against it now.
+ * GET /v1/health response (#64). The endpoint has no status field — a
+ * successful HTTP response *is* the liveness signal; reachability decides the
+ * badge level.
  */
 export interface HealthResponse {
-  status: 'ok' | 'serving' | 'degraded' | 'offline';
   version: string;
   uptimeSeconds: number;
+  transports: string[];
+  toolsAvailable: string[];
 }
 
 /**
