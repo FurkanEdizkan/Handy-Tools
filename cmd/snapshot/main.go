@@ -75,9 +75,10 @@ func main() {
 }
 
 // renderView builds the model, dispatches an optional initial message, and
-// returns the rendered View() string.
+// returns the rendered View() string. The queue is nil — the snapshot renders
+// the static Home and Tool views, which don't depend on a live job queue.
 func renderView(width, height int, msg tea.Msg) string {
-	m := ui.New(config.Defaults())
+	m := ui.New(config.Defaults(), nil)
 	u, _ := m.Update(tea.WindowSizeMsg{Width: width, Height: height})
 	mm := u.(ui.Model)
 	if msg != nil {

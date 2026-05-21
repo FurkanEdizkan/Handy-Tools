@@ -9,6 +9,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -16,6 +17,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/furkandedizkan/handy-tools/internal/config"
+	jobqueue "github.com/furkandedizkan/handy-tools/internal/queue"
+	"github.com/furkandedizkan/handy-tools/internal/tools"
 	"github.com/furkandedizkan/handy-tools/internal/ui/mascot"
 	"github.com/furkandedizkan/handy-tools/internal/ui/theme"
 )
@@ -46,7 +49,8 @@ type OpenTool struct{ ID string }
 type GoHome struct{}
 
 // RunJob is emitted by the tool page when the user hits Run. The router
-// enqueues a simulated job into the queue panel and steps it forward.
+// enqueues a job onto the shared internal/queue; progress flows back as
+// queueEventMsg via the SubscribeAll bridge.
 type RunJob struct {
 	Tool        tool
 	Files       []fileItem
@@ -65,8 +69,9 @@ type MascotMsg struct {
 	Speech   string
 }
 
-// runStepMsg advances the active simulated job by one tick.
-type runStepMsg struct{ jobID string }
+// queueEventMsg carries one job-state snapshot drained from the shared
+// queue's SubscribeAll stream into the Bubble Tea event loop.
+type queueEventMsg struct{ job jobqueue.Job }
 
 // Model is the top-level Bubble Tea program.
 type Model struct {
@@ -80,7 +85,12 @@ type Model struct {
 
 	pop settingsPopover // overlay settings popover (open by `,` or cog)
 
-	queue       []Job
+	// jobQueue is the shared job registry; events is its SubscribeAll
+	// stream, drained into the Bubble Tea loop by waitForQueueEvent.
+	jobQueue *jobqueue.Queue
+	events   <-chan jobqueue.Job
+
+	queue       []Job // display rows, folded from queue snapshots
 	progress    int
 	currentTask string
 	running     bool
@@ -93,16 +103,23 @@ type Model struct {
 	quitting bool
 }
 
-// New builds a router seeded with the given config.
-func New(cfg config.Config) Model {
+// New builds a router seeded with the given config and the shared job queue.
+// q may be nil — the queue panel then stays empty and the Run button is a
+// no-op — but cmd/htools always passes a real queue.
+func New(cfg config.Config, q *jobqueue.Queue) Model {
 	styles := theme.Build(theme.Resolve(cfg.Theme.Name))
 	m := Model{
-		cfg:     cfg,
-		styles:  styles,
-		mascot:  mascot.New(styles),
-		pages:   map[PageID]Page{},
-		current: PageHome,
-		queue:   seedQueue(),
+		cfg:      cfg,
+		styles:   styles,
+		mascot:   mascot.New(styles),
+		pages:    map[PageID]Page{},
+		current:  PageHome,
+		jobQueue: q,
+	}
+	if q != nil {
+		// A process-lifetime subscription: the TUI runs until the process
+		// exits, so the Background context never needs canceling.
+		m.events = q.SubscribeAll(context.Background())
 	}
 	m.mascot.SetCharacter(characterFromConfig(cfg.Mascot.Style))
 	m.pages[PageHome] = newHomePage(styles)
@@ -112,8 +129,6 @@ func New(cfg config.Config) Model {
 	// label changes when the user picks Hopper.
 	m.mascot.Say(greetingFor(cfg.Mascot.Style))
 	m.mascot.Whisper(speechFor("convert-image"))
-	// Honor the worried-baseline rule from the design: if the seeded queue
-	// already has a failed job, surface that concern on first paint.
 	m.applyIdleMood()
 	return m
 }
@@ -177,64 +192,33 @@ func greetingFor(style string) string {
 	}
 }
 
-// seedQueue mirrors the JSX INITIAL_QUEUE so the queue panel reads as
-// populated (two done, one failed-with-logs, two queued).
-func seedQueue() []Job {
-	return []Job{
-		{
-			ID: "q1", Label: "invoice-2026-04.png → JPEG", Kind: "image",
-			Status: JobDone, Time: "14:02",
-			Logs: []LogLine{
-				{T: "14:02:01.012", Lvl: "INFO", Msg: "image.convert: starting · 1 file"},
-				{T: "14:02:01.018", Lvl: "DEBUG", Msg: "image.decode: invoice-2026-04.png · PNG 1840×2400 · 1.21 MB"},
-				{T: "14:02:01.214", Lvl: "INFO", Msg: "image.encode: jpeg quality=90 progressive=false"},
-				{T: "14:02:01.412", Lvl: "INFO", Msg: "image.write: ./out/invoice-2026-04.jpg · 412 KB (66% smaller)"},
-				{T: "14:02:01.413", Lvl: "DONE", Msg: "1 file processed in 401 ms"},
-			},
-		},
-		{
-			ID: "q2", Label: "docs.tar.gz → ./docs/", Kind: "archive",
-			Status: JobDone, Time: "14:05",
-			Logs: []LogLine{
-				{T: "14:05:02.001", Lvl: "INFO", Msg: "archive.extract: docs.tar.gz · gzip-compressed tar"},
-				{T: "14:05:02.014", Lvl: "DEBUG", Msg: "archive.inspect: 47 entries · 12.3 MB uncompressed"},
-				{T: "14:05:02.232", Lvl: "INFO", Msg: "extracting → ./docs/ (preserve perms, verify checksums)"},
-				{T: "14:05:02.901", Lvl: "INFO", Msg: "wrote 47 files · 0 skipped · 0 renamed"},
-				{T: "14:05:03.281", Lvl: "DONE", Msg: "extracted 47 entries in 1.28 s"},
-			},
-		},
-		{
-			ID: "q3", Label: "manual.pdf → 32 pages", Kind: "pdf",
-			Status: JobFailed, Time: "14:08",
-			Err:      "pdftoppm not found · brew install poppler",
-			Expanded: true,
-			Logs: []LogLine{
-				{T: "14:08:22.004", Lvl: "INFO", Msg: "pdf.render: opening manual.pdf"},
-				{T: "14:08:22.018", Lvl: "DEBUG", Msg: "pdf.inspect: 32 pages · 8.4 MB · PDF 1.7"},
-				{T: "14:08:22.020", Lvl: "INFO", Msg: "render plan: 32 pages → PNG @ 150 dpi → ./out/manual/"},
-				{T: "14:08:22.022", Lvl: "DEBUG", Msg: "sysdep.find: looking for \"pdftoppm\" on $PATH"},
-				{T: "14:08:22.031", Lvl: "WARN", Msg: "sysdep.find: tried /usr/local/bin, /usr/bin, /opt/homebrew/bin"},
-				{T: "14:08:22.032", Lvl: "ERROR", Msg: "sysdep.MISSING_BINARY: pdftoppm not present"},
-				{T: "14:08:22.033", Lvl: "ERROR", Msg: "tools/pdf.render: cannot render without pdftoppm (code MISSING_BINARY)"},
-				{T: "14:08:22.034", Lvl: "HINT", Msg: "brew install poppler  # macOS"},
-				{T: "14:08:22.034", Lvl: "HINT", Msg: "apt install poppler-utils  # Debian / Ubuntu"},
-				{T: "14:08:22.035", Lvl: "FAIL", Msg: "job aborted after 318 ms · 0 pages rendered"},
-			},
-		},
-		{ID: "q4", Label: "photos.zip → ./photos/", Kind: "archive", Status: JobQueued, Time: "—"},
-		{ID: "q5", Label: "big-batch (24 PNGs) → WebP", Kind: "image", Status: JobQueued, Time: "—"},
-	}
-}
-
-// Init begins the mascot animation loop and any per-page init commands.
+// Init begins the mascot animation loop, the queue-event bridge, and any
+// per-page init commands.
 func (m Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{mascot.Tick()}
+	if m.events != nil {
+		cmds = append(cmds, waitForQueueEvent(m.events))
+	}
 	for _, p := range m.pages {
 		if c := p.Init(); c != nil {
 			cmds = append(cmds, c)
 		}
 	}
 	return tea.Batch(cmds...)
+}
+
+// waitForQueueEvent blocks on the next job snapshot from the shared queue and
+// delivers it as a queueEventMsg. The queueEventMsg handler re-arms it, so one
+// snapshot is drained per Update cycle — the idiomatic Bubble Tea bridge for a
+// long-lived channel (no *tea.Program handle required).
+func waitForQueueEvent(ch <-chan jobqueue.Job) tea.Cmd {
+	return func() tea.Msg {
+		j, ok := <-ch
+		if !ok {
+			return nil
+		}
+		return queueEventMsg{job: j}
+	}
 }
 
 // Update routes messages.
@@ -314,9 +298,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyIdleMood()
 		return m, nil
 	case RunJob:
-		return m, m.startRun(msg)
-	case runStepMsg:
-		return m.stepRun(msg.jobID)
+		m.startRun(msg)
+		return m, nil
+	case queueEventMsg:
+		cmd := m.applyQueueEvent(msg.job)
+		return m, tea.Batch(cmd, waitForQueueEvent(m.events))
 	case MascotMsg:
 		m.mascot.Set(msg.State)
 		if msg.Greeting != "" {
@@ -398,132 +384,222 @@ func (m *Model) rebuildStyles() {
 	}
 }
 
-// startRun pushes a "running" job into the queue and schedules the first
-// progress step. Mirrors the JSX startRun simulation.
-func (m *Model) startRun(j RunJob) tea.Cmd {
-	if m.running {
-		return nil
+// startRun enqueues a job onto the shared queue. Progress flows back through
+// the SubscribeAll bridge as queueEventMsg; an optimistic display row is
+// prepended now so the queue panel reacts before the first event lands.
+func (m *Model) startRun(j RunJob) {
+	if m.jobQueue == nil || m.running {
+		return
 	}
-	id := fmt.Sprintf("r%d", time.Now().UnixNano()%1000000)
+	files := append([]fileItem(nil), j.Files...)
+	id := m.jobQueue.Enqueue(j.Tool.id, "run", simulatedRunner(files))
 	now := time.Now()
-	hh, mm, _ := now.Clock()
-	timeStr := fmt.Sprintf("%02d:%02d", hh, mm)
-	taskLabel := fmt.Sprintf("%s · %s", j.Tool.label, j.Summary)
-	startupLogs := []LogLine{
-		{T: ts(now, 0), Lvl: "INFO", Msg: fmt.Sprintf("%s: queued %d input(s)", j.Tool.id, len(j.Files))},
-		{T: ts(now, 6), Lvl: "DEBUG", Msg: "output → " + outPath(j)},
-		{T: ts(now, 12), Lvl: "INFO", Msg: "opening worker pool · 4 threads"},
-	}
-	job := Job{
-		ID: id, Label: taskLabel, Kind: j.Tool.id,
-		Status: JobRunning, Time: timeStr, Progress: 0, Logs: startupLogs,
-	}
-	m.queue = append([]Job{job}, m.queue...)
+	hh, mn, _ := now.Clock()
+	m.queue = append([]Job{{
+		ID:     id,
+		Label:  fmt.Sprintf("%s · %s", j.Tool.label, j.Summary),
+		Kind:   j.Tool.id,
+		Status: JobQueued,
+		Time:   fmt.Sprintf("%02d:%02d", hh, mn),
+	}}, m.queue...)
 	m.running = true
 	m.runJobID = id
-	m.currentTask = fmt.Sprintf("%s · 0/%d", j.Tool.label, len(j.Files))
+	m.currentTask = fmt.Sprintf("%s · 0/%d", j.Tool.label, len(files))
 	m.progress = 0
 	m.mascot.Set(mascot.StateThinking)
 	m.mascot.Whisper(speechForState(mascot.StateThinking, j.Tool.id, j.Tool.label, 0))
-	return tea.Tick(450*time.Millisecond, func(time.Time) tea.Msg {
-		return runStepMsg{jobID: id}
-	})
 }
 
-// stepRun advances the running job by ~12% per tick and emits a per-file
-// "processed" log line. Completes by flipping the job to Done + the mascot
-// to Success.
-func (m Model) stepRun(jobID string) (tea.Model, tea.Cmd) {
+// simulatedRunner is the #77a placeholder Runner — it emits one progress event
+// per input file, then returns so the queue marks the job complete. It proves
+// the queue↔Bubble Tea plumbing end to end; #77b swaps it for real tool
+// execution through the shared internal/server handlers.
+func simulatedRunner(files []fileItem) jobqueue.Runner {
+	n := len(files)
+	if n == 0 {
+		n = 1
+	}
+	return func(ctx context.Context, emit func(tools.Progress)) {
+		for i := 1; i <= n; i++ {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(220 * time.Millisecond):
+			}
+			name := fmt.Sprintf("item-%d", i)
+			if i-1 < len(files) {
+				name = files[i-1].Name
+			}
+			emit(tools.Progress{
+				Level:       tools.SeverityInfo,
+				Fraction:    float64(i) / float64(n),
+				CurrentItem: name,
+				Message:     "processed " + name,
+			})
+		}
+		emit(tools.Progress{
+			Level:    tools.SeverityInfo,
+			Fraction: 1,
+			Message:  fmt.Sprintf("%d item(s) processed", n),
+		})
+	}
+}
+
+// applyQueueEvent folds one queue snapshot into the display queue. When the
+// snapshot is for the job this TUI started it also drives the state block and
+// the mascot mood, returning the post-success idle-return tick if any.
+func (m *Model) applyQueueEvent(qj jobqueue.Job) tea.Cmd {
 	idx := -1
-	for i, j := range m.queue {
-		if j.ID == jobID {
+	for i := range m.queue {
+		if m.queue[i].ID == qj.ID {
 			idx = i
 			break
 		}
 	}
 	if idx < 0 {
-		m.running = false
-		return m, nil
+		// A job enqueued outside this TUI — the queue is shared, so still
+		// surface it. Prepend a fresh row.
+		m.queue = append([]Job{{ID: qj.ID}}, m.queue...)
+		idx = 0
 	}
 	job := m.queue[idx]
-	now := time.Now()
-	step := 12
-	job.Progress += step
-	if job.Progress > 100 {
-		job.Progress = 100
+	if job.Label == "" {
+		job.Label = queueJobLabel(qj)
 	}
-
-	// determine if we've crossed a file boundary
-	files := 1
-	if m.tool != nil {
-		files = len(m.tool.files)
-		if files == 0 {
-			files = 1
+	if job.Kind == "" {
+		job.Kind = qj.Tool
+	}
+	job.Status = queueJobStatus(qj)
+	job.Progress = clampPct(int(qj.Progress.Fraction * 100))
+	if !qj.StartedAt.IsZero() {
+		hh, mn, _ := qj.StartedAt.Clock()
+		job.Time = fmt.Sprintf("%02d:%02d", hh, mn)
+	}
+	if msg := qj.Progress.Message; msg != "" {
+		if n := len(job.Logs); n == 0 || job.Logs[n-1].Msg != msg {
+			job.Logs = append(job.Logs, LogLine{
+				T: ts(time.Now(), 0), Lvl: progressLevel(qj.Progress), Msg: msg,
+			})
 		}
 	}
-	done := (job.Progress * files) / 100
-	prev := ((job.Progress - step) * files) / 100
-	for k := prev; k < done && k < files; k++ {
-		name := fmt.Sprintf("item-%d", k+1)
-		if m.tool != nil && k < len(m.tool.files) {
-			name = m.tool.files[k].Name
+	if qj.Err != nil {
+		job.Err = qj.Err.Message
+		if qj.Err.Detail != "" {
+			job.Err += " · " + qj.Err.Detail
 		}
-		job.Logs = append(job.Logs, LogLine{
-			T:   ts(now, 0),
-			Lvl: "INFO",
-			Msg: "processed " + name,
-		})
+		job.Expanded = true
 	}
+	m.queue[idx] = job
 
-	if job.Progress >= 100 {
-		job.Status = JobDone
-		job.Progress = 100
-		job.Logs = append(job.Logs, LogLine{
-			T: ts(now, 0), Lvl: "DONE",
-			Msg: fmt.Sprintf("%d items processed", files),
-		})
-		m.queue[idx] = job
+	if qj.ID == m.runJobID {
+		return m.syncMascotToJob(job)
+	}
+	return nil
+}
+
+// syncMascotToJob mirrors the active job's status onto the state block and the
+// mascot. Mood while running follows the design's load curve.
+func (m *Model) syncMascotToJob(job Job) tea.Cmd {
+	switch job.Status {
+	case JobDone:
 		m.running = false
 		m.currentTask = ""
 		m.progress = 100
 		m.mascot.Set(mascot.StateHappy)
 		m.mascot.Whisper(speechForState(mascot.StateHappy, m.activeToolID(), "", 100))
-		m.showToast(fmt.Sprintf("done · %d files processed", files))
-		// After basking in success briefly, drop back to the appropriate
-		// idle mood (worried if a failed job still sits on the queue).
-		nextState, nextSpeech := m.idleMood()
-		return m, tea.Tick(1800*time.Millisecond, func(time.Time) tea.Msg {
-			return MascotMsg{State: nextState, Speech: nextSpeech}
+		m.showToast("done · " + job.Label)
+		// After basking in success briefly, drop back to the resting mood
+		// (worried if a failed job still sits on the queue).
+		st, sp := m.idleMood()
+		return tea.Tick(1800*time.Millisecond, func(time.Time) tea.Msg {
+			return MascotMsg{State: st, Speech: sp}
 		})
-	}
-
-	m.queue[idx] = job
-	m.progress = job.Progress
-	toolLabel := ""
-	if m.tool != nil {
-		toolLabel = m.tool.tool.label
-	}
-	m.currentTask = fmt.Sprintf("%s · %d/%d", toolLabel, done, files)
-	// Load-based mood transition from the design's app.jsx:
-	//   <38%  : watching   (calm observer)
-	//   38-78%: stressed   (lots in flight)
-	//   78-100: tired      (long-haul, almost there)
-	var moodNow mascot.State
-	switch {
-	case job.Progress < 38:
-		moodNow = mascot.StateWatching
-	case job.Progress < 78:
-		moodNow = mascot.StateStressed
+	case JobFailed:
+		m.running = false
+		m.currentTask = ""
+		m.mascot.Set(mascot.StateWorried)
+		m.mascot.Whisper(speechForState(mascot.StateWorried, m.activeToolID(), "", 0))
+		m.showToast("failed · " + job.Err)
+		return nil
 	default:
-		moodNow = mascot.StateTired
+		m.running = true
+		m.progress = job.Progress
+		m.currentTask = job.Label
+		mood := loadMood(job.Progress)
+		if m.mascot.State() != mood {
+			m.mascot.Set(mood)
+			m.mascot.Whisper(speechForState(mood, m.activeToolID(), job.Label, job.Progress))
+		}
+		return nil
 	}
-	if m.mascot.State() != moodNow {
-		m.mascot.Set(moodNow)
-		m.mascot.Whisper(speechForState(moodNow, m.activeToolID(), toolLabel, job.Progress))
+}
+
+// loadMood maps a running job's percentage onto the design's app.jsx load
+// curve: <38% watching, 38-78% stressed, ≥78% tired.
+func loadMood(pct int) mascot.State {
+	switch {
+	case pct < 38:
+		return mascot.StateWatching
+	case pct < 78:
+		return mascot.StateStressed
+	default:
+		return mascot.StateTired
 	}
-	return m, tea.Tick(450*time.Millisecond, func(time.Time) tea.Msg {
-		return runStepMsg{jobID: jobID}
-	})
+}
+
+// queueJobStatus derives a display status from a queue snapshot. A job with no
+// progress emitted yet is queued — the queue's emit callback always stamps
+// Progress.Tool, so an empty Tool means the Runner hasn't reported yet.
+func queueJobStatus(qj jobqueue.Job) JobStatus {
+	switch {
+	case qj.Err != nil:
+		return JobFailed
+	case qj.Completed:
+		return JobDone
+	case qj.Progress.Tool == "":
+		return JobQueued
+	default:
+		return JobRunning
+	}
+}
+
+// queueJobLabel builds a display label for a job not started from this TUI
+// (so it carries no RunJob-supplied summary).
+func queueJobLabel(qj jobqueue.Job) string {
+	label := qj.Tool
+	if qj.Action != "" {
+		label += " · " + qj.Action
+	}
+	if qj.Progress.CurrentItem != "" {
+		label += " · " + qj.Progress.CurrentItem
+	}
+	return label
+}
+
+// progressLevel renders a Progress's severity as a queue-log level label.
+func progressLevel(p tools.Progress) string {
+	if p.Err != nil {
+		return "ERROR"
+	}
+	switch p.Level {
+	case tools.SeverityWarning:
+		return "WARN"
+	case tools.SeverityError:
+		return "ERROR"
+	default:
+		return "INFO"
+	}
+}
+
+// clampPct bounds a percentage to 0..100.
+func clampPct(p int) int {
+	if p < 0 {
+		return 0
+	}
+	if p > 100 {
+		return 100
+	}
+	return p
 }
 
 // idleMood picks the resting mascot state when no job is active. If any
@@ -558,17 +634,6 @@ func (m Model) activeToolID() string {
 		return m.tool.tool.id
 	}
 	return ""
-}
-
-// outPath renders the chosen output destination for the startup log line.
-func outPath(j RunJob) string {
-	switch j.Out {
-	case outAlongside:
-		return "alongside input"
-	case outCustom:
-		return j.CustomPath
-	}
-	return "./out"
 }
 
 // ts builds a "HH:MM:SS.mmm" timestamp offset by addMS milliseconds.
