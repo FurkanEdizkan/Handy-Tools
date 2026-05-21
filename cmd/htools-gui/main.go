@@ -34,6 +34,7 @@ func main() {
 			// /v1/* API from one mux; the webview talks straight to it.
 			Handler: api.Handler(),
 		},
+		Menu:      appMenu(app),
 		OnStartup: app.startup,
 		Bind:      []any{app},
 	}); err != nil {
