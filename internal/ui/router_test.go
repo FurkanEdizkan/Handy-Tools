@@ -100,6 +100,24 @@ func TestViewRendersHomeAndToolPages(t *testing.T) {
 	}
 }
 
+// realImageRunJob builds a RunJob that converts one real PNG into a temp
+// output dir — used by the queue tests so the #153 runner produces a job that
+// actually reaches "done".
+func realImageRunJob(t *testing.T, m Model) RunJob {
+	t.Helper()
+	dir := t.TempDir()
+	src := filepath.Join(dir, "in.png")
+	writeTestPNG(t, src)
+	return RunJob{
+		Tool:       m.tool.tool,
+		Files:      []fileItem{{Path: src, Name: "in.png", Target: "JPEG"}},
+		Summary:    m.tool.summary(),
+		Out:        outCustom,
+		CustomPath: filepath.Join(dir, "out"),
+		Quality:    80,
+	}
+}
+
 // TestQueueRendersJobFromQueue runs a job through the real shared queue and
 // asserts it surfaces in the left-column queue panel — exercising the whole
 // Enqueue → SubscribeAll → queueEventMsg → render pipeline.
@@ -113,11 +131,7 @@ func TestQueueRendersJobFromQueue(t *testing.T) {
 
 	updated, _ = m.Update(OpenTool{ID: "convert-image"})
 	m = updated.(Model)
-	updated, _ = m.Update(RunJob{
-		Tool:    m.tool.tool,
-		Files:   m.tool.files,
-		Summary: m.tool.summary(),
-	})
+	updated, _ = m.Update(realImageRunJob(t, m))
 	m = updated.(Model)
 
 	m = drainQueue(t, m)
@@ -141,11 +155,7 @@ func TestRunJobUpdatesState(t *testing.T) {
 	if m.tool == nil {
 		t.Fatal("expected toolPage to be active")
 	}
-	updated, _ = m.Update(RunJob{
-		Tool:    m.tool.tool,
-		Files:   m.tool.files,
-		Summary: m.tool.summary(),
-	})
+	updated, _ = m.Update(realImageRunJob(t, m))
 	m = updated.(Model)
 	if !m.running {
 		t.Fatal("expected model.running=true after RunJob")
