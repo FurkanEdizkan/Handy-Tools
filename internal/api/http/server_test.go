@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/furkandedizkan/handy-tools/internal/buildinfo"
 	"github.com/furkandedizkan/handy-tools/internal/server"
 	"github.com/furkandedizkan/handy-tools/internal/tools"
 )
@@ -652,5 +653,33 @@ func TestImageBatchConvertRejectsUnknownFormat(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status: got %d want 400", resp.StatusCode)
+	}
+}
+
+func TestHealthEndpoint(t *testing.T) {
+	ts := newTestServer(t, t.TempDir())
+	// Sleep past one whole second so the truncated uptime is > 0.
+	time.Sleep(1100 * time.Millisecond)
+
+	resp, err := http.Get(ts.URL + "/v1/health")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status: got %d want 200", resp.StatusCode)
+	}
+	var hr healthResponse
+	if err := json.NewDecoder(resp.Body).Decode(&hr); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if hr.Version != buildinfo.Version {
+		t.Errorf("version: got %q want %q", hr.Version, buildinfo.Version)
+	}
+	if hr.UptimeSeconds < 1 {
+		t.Errorf("uptime_seconds: got %d, want > 0", hr.UptimeSeconds)
+	}
+	if len(hr.Transports) == 0 {
+		t.Errorf("transports empty; want grpc + http")
 	}
 }

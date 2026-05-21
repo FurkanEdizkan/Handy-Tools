@@ -152,6 +152,14 @@ type progressEvent struct {
 	Error       *errorEnvelope `json:"error,omitempty"`
 }
 
+// healthResponse is the body of 200 from GET /v1/health.
+type healthResponse struct {
+	Version        string   `json:"version"`
+	UptimeSeconds  int64    `json:"uptime_seconds"`
+	Transports     []string `json:"transports"`
+	ToolsAvailable []string `json:"tools_available"`
+}
+
 // sysdepResult mirrors sysdep.Result for the wire.
 type sysdepResult struct {
 	Name        string            `json:"name"`
