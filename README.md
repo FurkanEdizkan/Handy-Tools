@@ -212,17 +212,14 @@ home view abridged:
 ╰───────────────────────────────────╯
 
 ╭───────────────────────────────────╮
-│ QUEUE  0 run · 1 done · 1 fail    │
-│   ✓ invoice-2026-04.png  DONE     │
-│   ✕ manual.pdf → 32 pgs  FAIL  ▾  │
-│     STDERR · q3  10 lines         │
-│     [14:08] ERROR  MISSING_BINARY │
-│     [14:08] HINT   brew install   │
-│            poppler  # macOS       │
-│   • photos.zip          WAIT      │
-│   • big-batch (24 PNGs) WAIT      │
+│ QUEUE  0R 0D 0F 0Q                │
+│                                   │
 ╰───────────────────────────────────╯
 ```
+
+The queue panel starts empty and fills from the shared job registry
+(`internal/queue`): pressing **Run** on a tool enqueues a job, and each row
+shows live progress, a status pill, and an expandable stderr log.
 
 And the per-tool detail page (Convert images), with the **WebP** override on
 row 3 visibly diverging from the JPEG default and the run summary on the
