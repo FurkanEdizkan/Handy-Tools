@@ -2,12 +2,14 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/furkandedizkan/handy-tools/internal/server"
 	"github.com/furkandedizkan/handy-tools/internal/tools"
+	"github.com/furkandedizkan/handy-tools/internal/tools/pdf"
 )
 
 func (s *Server) handlePDFToImage(w http.ResponseWriter, r *http.Request) {
@@ -77,6 +79,51 @@ func (s *Server) handlePDFMerge(w http.ResponseWriter, r *http.Request) {
 			return nil
 		}); err != nil {
 			j.append(failureProgress(id, "pdf", "merge", err))
+		}
+	})
+}
+
+func (s *Server) handlePDFSplit(w http.ResponseWriter, r *http.Request) {
+	var req pdfSplitRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, err)
+		return
+	}
+	// page_ranges and every_n are mutually exclusive — exactly one mode.
+	hasRanges := len(req.PageRanges) > 0
+	if hasRanges == (req.EveryN > 0) {
+		writeError(w, &tools.Error{
+			Code:    tools.CodeBadRequest,
+			Message: "exactly one of page_ranges or every_n must be set",
+		})
+		return
+	}
+	ranges := make([]pdf.Range, 0, len(req.PageRanges))
+	for _, pr := range req.PageRanges {
+		// from is 1-based; to == 0 means "through the last page".
+		if pr.From < 1 || (pr.To != 0 && pr.To < pr.From) {
+			writeError(w, &tools.Error{
+				Code:    tools.CodeBadRequest,
+				Message: "invalid page range",
+				Detail:  fmt.Sprintf("from=%d to=%d", pr.From, pr.To),
+			})
+			return
+		}
+		ranges = append(ranges, pdf.Range{From: pr.From, To: pr.To})
+	}
+	params := server.PDFSplitParams{
+		Source:     req.Source.Path,
+		PageRanges: ranges,
+		EveryN:     req.EveryN,
+		OutputDir:  req.Output.Directory,
+	}
+	s.runPDFJob(w, "split", func(ctx context.Context, id string, j *job) {
+		if err := s.PDF.Split(ctx, params, func(p tools.Progress) error {
+			p.JobID = id
+			j.append(p)
+			return nil
+		}); err != nil {
+			j.append(failureProgress(id, "pdf", "split", err))
 		}
 	})
 }

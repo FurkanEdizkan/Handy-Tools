@@ -103,3 +103,36 @@ func (h *PDFHandler) Merge(ctx context.Context, p PDFMergeParams, emit func(tool
 	}
 	return nil
 }
+
+// PDFSplitParams drives PDFHandler.Split. PageRanges and EveryN are the two
+// mutually-exclusive split modes; the caller (transport handler) is expected
+// to have validated that exactly one is set.
+type PDFSplitParams struct {
+	Source     string
+	PageRanges []pdf.Range
+	EveryN     int
+	OutputDir  string
+}
+
+func (h *PDFHandler) Split(ctx context.Context, p PDFSplitParams, emit func(tools.Progress) error) error {
+	src, err := h.Opts.CheckPath(p.Source)
+	if err != nil {
+		return err
+	}
+	out, err := h.Opts.CheckPath(p.OutputDir)
+	if err != nil {
+		return err
+	}
+	ch := pdf.Split(ctx, pdf.SplitRequest{
+		Source:     src,
+		PageRanges: p.PageRanges,
+		EveryN:     p.EveryN,
+		OutputDir:  out,
+	})
+	for prog := range ch {
+		if err := emit(prog); err != nil {
+			return err
+		}
+	}
+	return nil
+}
