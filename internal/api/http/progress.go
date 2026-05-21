@@ -42,11 +42,11 @@ func severityName(s tools.Severity) string {
 	return ""
 }
 
-// writeSSEEvent writes one Server-Sent-Events frame: a "data: <json>\n\n"
+// writeSSEJSON writes one Server-Sent-Events frame: a "data: <json>\n\n"
 // block followed by a flush. The flusher is required because intermediaries
 // will otherwise buffer until the response body closes.
-func writeSSEEvent(w io.Writer, flush func(), p tools.Progress) error {
-	buf, err := json.Marshal(progressToWire(p))
+func writeSSEJSON(w io.Writer, flush func(), v any) error {
+	buf, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
@@ -57,4 +57,9 @@ func writeSSEEvent(w io.Writer, flush func(), p tools.Progress) error {
 		flush()
 	}
 	return nil
+}
+
+// writeSSEEvent writes one progress event as an SSE frame.
+func writeSSEEvent(w io.Writer, flush func(), p tools.Progress) error {
+	return writeSSEJSON(w, flush, progressToWire(p))
 }
