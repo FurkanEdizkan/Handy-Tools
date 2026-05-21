@@ -26,15 +26,13 @@ func (s *Server) handlePDFToImage(w http.ResponseWriter, r *http.Request) {
 		OutputDir: req.Output.Directory,
 		JPEG:      strings.EqualFold(req.TargetFormat, "JPEG") || strings.EqualFold(req.TargetFormat, "JPG"),
 	}
-	s.runPDFJob(w, "to-image", func(ctx context.Context, id string, j *job) {
-		if err := s.PDF.ToImage(ctx, params, func(p tools.Progress) error {
-			p.JobID = id
-			j.append(p)
-			return nil
-		}); err != nil {
-			j.append(failureProgress(id, "pdf", "to-image", err))
-		}
-	})
+	s.enqueue(w, "pdf", "to-image", 1*time.Hour,
+		func(ctx context.Context, emit func(tools.Progress)) error {
+			return s.PDF.ToImage(ctx, params, func(p tools.Progress) error {
+				emit(p)
+				return nil
+			})
+		})
 }
 
 func (s *Server) handlePDFToText(w http.ResponseWriter, r *http.Request) {
@@ -50,15 +48,13 @@ func (s *Server) handlePDFToText(w http.ResponseWriter, r *http.Request) {
 		Layout:     req.Layout,
 		OutputFile: req.Output.File,
 	}
-	s.runPDFJob(w, "to-text", func(ctx context.Context, id string, j *job) {
-		if err := s.PDF.ToText(ctx, params, func(p tools.Progress) error {
-			p.JobID = id
-			j.append(p)
-			return nil
-		}); err != nil {
-			j.append(failureProgress(id, "pdf", "to-text", err))
-		}
-	})
+	s.enqueue(w, "pdf", "to-text", 1*time.Hour,
+		func(ctx context.Context, emit func(tools.Progress)) error {
+			return s.PDF.ToText(ctx, params, func(p tools.Progress) error {
+				emit(p)
+				return nil
+			})
+		})
 }
 
 func (s *Server) handlePDFMerge(w http.ResponseWriter, r *http.Request) {
@@ -72,15 +68,13 @@ func (s *Server) handlePDFMerge(w http.ResponseWriter, r *http.Request) {
 		srcs = append(srcs, sref.Path)
 	}
 	params := server.PDFMergeParams{Sources: srcs, OutputFile: req.Output.File}
-	s.runPDFJob(w, "merge", func(ctx context.Context, id string, j *job) {
-		if err := s.PDF.Merge(ctx, params, func(p tools.Progress) error {
-			p.JobID = id
-			j.append(p)
-			return nil
-		}); err != nil {
-			j.append(failureProgress(id, "pdf", "merge", err))
-		}
-	})
+	s.enqueue(w, "pdf", "merge", 1*time.Hour,
+		func(ctx context.Context, emit func(tools.Progress)) error {
+			return s.PDF.Merge(ctx, params, func(p tools.Progress) error {
+				emit(p)
+				return nil
+			})
+		})
 }
 
 func (s *Server) handlePDFSplit(w http.ResponseWriter, r *http.Request) {
@@ -117,28 +111,11 @@ func (s *Server) handlePDFSplit(w http.ResponseWriter, r *http.Request) {
 		EveryN:     req.EveryN,
 		OutputDir:  req.Output.Directory,
 	}
-	s.runPDFJob(w, "split", func(ctx context.Context, id string, j *job) {
-		if err := s.PDF.Split(ctx, params, func(p tools.Progress) error {
-			p.JobID = id
-			j.append(p)
-			return nil
-		}); err != nil {
-			j.append(failureProgress(id, "pdf", "split", err))
-		}
-	})
-}
-
-// runPDFJob is the shared lifecycle for the three async PDF endpoints: it
-// creates the job, dispatches the work in a detached goroutine with a long
-// timeout, and writes the 202 envelope. The actual work is supplied by the
-// caller so each handler keeps its request-specific param parsing.
-func (s *Server) runPDFJob(w http.ResponseWriter, _ string, work func(ctx context.Context, id string, j *job)) {
-	id, j := s.jobs.create()
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Hour)
-		defer cancel()
-		work(ctx, id, j)
-		j.complete()
-	}()
-	writeJSON(w, http.StatusAccepted, jobResponse{JobID: id})
+	s.enqueue(w, "pdf", "split", 1*time.Hour,
+		func(ctx context.Context, emit func(tools.Progress)) error {
+			return s.PDF.Split(ctx, params, func(p tools.Progress) error {
+				emit(p)
+				return nil
+			})
+		})
 }

@@ -6,10 +6,14 @@ import (
 	"github.com/furkandedizkan/handy-tools/internal/tools"
 )
 
+// handleJobEvents streams a job's progress as Server-Sent Events. It subscribes
+// to the shared queue, which replays the job's full history from the start
+// before live events, so an SSE reader that connects after the POST returns
+// still sees everything.
 func (s *Server) handleJobEvents(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	j := s.jobs.get(id)
-	if j == nil {
+	ch, err := s.Queue.Subscribe(r.Context(), id)
+	if err != nil {
 		writeError(w, &tools.Error{
 			Code:    tools.CodeBadRequest,
 			Message: "unknown job",
@@ -38,7 +42,9 @@ func (s *Server) handleJobEvents(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 
 	flush := func() { flusher.Flush() }
-	_ = j.stream(r.Context(), func(p tools.Progress) error {
-		return writeSSEEvent(w, flush, p)
-	})
+	for p := range ch {
+		if err := writeSSEEvent(w, flush, p); err != nil {
+			return
+		}
+	}
 }

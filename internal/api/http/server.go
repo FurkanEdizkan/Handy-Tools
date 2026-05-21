@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/furkandedizkan/handy-tools/internal/queue"
 	"github.com/furkandedizkan/handy-tools/internal/server"
+	"github.com/furkandedizkan/handy-tools/internal/tools"
 )
 
 // Server is the HTTP/SSE transport. It owns its own *http.Server and shares
@@ -28,7 +30,10 @@ type Server struct {
 	Archive *server.ArchiveHandler
 	PDF     *server.PDFHandler
 
-	jobs      *jobs
+	// Queue is the shared job registry — the same instance the gRPC server
+	// uses — so a job started on either transport is visible to both.
+	Queue *queue.Queue
+
 	mux       *http.ServeMux
 	http      *http.Server
 	startedAt time.Time // captured in New(), reported by GET /v1/health
@@ -43,7 +48,7 @@ func New(opts server.Options) *Server {
 		Image:     &server.ImageHandler{Opts: opts},
 		Archive:   &server.ArchiveHandler{Opts: opts},
 		PDF:       &server.PDFHandler{Opts: opts},
-		jobs:      newJobs(),
+		Queue:     queue.New(),
 		startedAt: time.Now(),
 	}
 	s.mux = s.routes()
@@ -110,4 +115,25 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// enqueue registers a tool job on the shared queue and writes the 202 envelope.
+// run drives the tool with a timeout-bounded context and the queue's emit
+// callback; a non-nil error from run is turned into a terminal failure
+// Progress event so SSE subscribers see a structured failure. The queue runs
+// the job in its own goroutine and marks it complete when run returns.
+func (s *Server) enqueue(
+	w http.ResponseWriter,
+	tool, action string,
+	timeout time.Duration,
+	run func(ctx context.Context, emit func(tools.Progress)) error,
+) {
+	id := s.Queue.Enqueue(tool, action, func(ctx context.Context, emit func(tools.Progress)) {
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		if err := run(ctx, emit); err != nil {
+			emit(failureProgress(tool, action, err))
+		}
+	})
+	writeJSON(w, http.StatusAccepted, jobResponse{JobID: id})
 }

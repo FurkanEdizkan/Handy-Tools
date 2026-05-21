@@ -37,24 +37,13 @@ func (s *Server) handleImageConvert(w http.ResponseWriter, r *http.Request) {
 		Overwrite:    req.Output.Overwrite,
 	}
 
-	id, j := s.jobs.create()
-
-	// Background the work and detach from the request context so an SSE
-	// reader connecting after the POST returns can still observe events.
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
-		if err := s.Image.Convert(ctx, params, func(p tools.Progress) error {
-			p.JobID = id
-			j.append(p)
-			return nil
-		}); err != nil {
-			j.append(failureProgress(id, "image", "convert", err))
-		}
-		j.complete()
-	}()
-
-	writeJSON(w, http.StatusAccepted, jobResponse{JobID: id})
+	s.enqueue(w, "image", "convert", 30*time.Minute,
+		func(ctx context.Context, emit func(tools.Progress)) error {
+			return s.Image.Convert(ctx, params, func(p tools.Progress) error {
+				emit(p)
+				return nil
+			})
+		})
 }
 
 func (s *Server) handleImageBatchConvert(w http.ResponseWriter, r *http.Request) {
@@ -89,21 +78,13 @@ func (s *Server) handleImageBatchConvert(w http.ResponseWriter, r *http.Request)
 	// One job for the whole batch; image.BatchConvert emits one Progress per
 	// file (file name in CurrentItem) plus a terminal summary. A single
 	// file's failure is reported per-file and the batch continues — see #17.
-	id, j := s.jobs.create()
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Hour)
-		defer cancel()
-		if err := s.Image.BatchConvert(ctx, params, func(p tools.Progress) error {
-			p.JobID = id
-			j.append(p)
-			return nil
-		}); err != nil {
-			j.append(failureProgress(id, "image", "batch-convert", err))
-		}
-		j.complete()
-	}()
-
-	writeJSON(w, http.StatusAccepted, jobResponse{JobID: id})
+	s.enqueue(w, "image", "batch-convert", 1*time.Hour,
+		func(ctx context.Context, emit func(tools.Progress)) error {
+			return s.Image.BatchConvert(ctx, params, func(p tools.Progress) error {
+				emit(p)
+				return nil
+			})
+		})
 }
 
 // parseImageFormat maps the wire enum string to the image.Format value the
@@ -130,14 +111,14 @@ func parseImageFormat(s string) (image.Format, bool) {
 }
 
 // failureProgress wraps a non-tool error into a terminal Progress so SSE
-// subscribers receive a structured failure instead of a silent close.
-func failureProgress(jobID, tool, action string, err error) tools.Progress {
+// subscribers receive a structured failure instead of a silent close. The
+// queue's emit stamps JobID, so it is not set here.
+func failureProgress(tool, action string, err error) tools.Progress {
 	te, ok := err.(*tools.Error)
 	if !ok {
 		te = &tools.Error{Code: tools.CodeIO, Message: err.Error()}
 	}
 	return tools.Progress{
-		JobID:     jobID,
 		Tool:      tool,
 		Action:    action,
 		Level:     tools.SeverityError,
