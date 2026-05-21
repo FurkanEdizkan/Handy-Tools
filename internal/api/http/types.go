@@ -136,6 +136,26 @@ type jobResponse struct {
 	JobID string `json:"job_id"`
 }
 
+// jobSummary is the JSON shape of one job — used both in the GET /v1/jobs
+// list and in each GET /v1/jobs/events SSE frame.
+type jobSummary struct {
+	JobID       string         `json:"job_id"`
+	Tool        string         `json:"tool"`
+	Action      string         `json:"action"`
+	StartedAt   int64          `json:"started_unix_ms,omitempty"`
+	Status      string         `json:"status"` // queued|running|done|failed
+	Fraction    float64        `json:"fraction,omitempty"`
+	CurrentItem string         `json:"current_item,omitempty"`
+	Message     string         `json:"message,omitempty"`
+	Completed   bool           `json:"completed"`
+	Error       *errorEnvelope `json:"error,omitempty"`
+}
+
+// jobsResponse is the body of 200 from GET /v1/jobs.
+type jobsResponse struct {
+	Jobs []jobSummary `json:"jobs"`
+}
+
 // progressEvent is the JSON shape written into each SSE data: frame.
 type progressEvent struct {
 	JobID       string         `json:"job_id"`

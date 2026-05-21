@@ -83,6 +83,8 @@ POST /v1/archive/extract          → 202 {"job_id": "..."}
 POST /v1/pdf/to-image             → 202 {"job_id": "..."}
 POST /v1/pdf/to-text              → 202 {"job_id": "..."}
 POST /v1/pdf/merge                → 202 {"job_id": "..."}
+GET  /v1/jobs                     → 200 {"jobs": [JobSummary, ...]}
+GET  /v1/jobs/events              → text/event-stream of JobSummary (all jobs)
 GET  /v1/jobs/{id}/events         → text/event-stream of Progress
 GET  /v1/sysdep                   → 200 [SysdepResult, ...]
 ```
