@@ -28,7 +28,10 @@ permissions:
 jobs:
   goreleaser:
     name: GoReleaser
-    runs-on: ubuntu-latest
+    # Pinned to 22.04 so the CGO htools-gui build links against
+    # libwebkit2gtk-4.0 — the toolchain the CI gui-build job is proven green
+    # on. 24.04 ships only webkit2gtk-4.1, which needs a different Wails tag.
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
         with:
@@ -41,9 +44,21 @@ jobs:
         with:
           go-version: "1.25"
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
       - uses: bufbuild/buf-setup-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Wails system deps (htools-gui CGO build)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-3-dev libwebkit2gtk-4.0-dev
 
       - name: Verify tag is on main
         shell: bash
