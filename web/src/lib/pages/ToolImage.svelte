@@ -1,6 +1,9 @@
 <script lang="ts">
   import { Dropzone, OptionRow, Toast, type RadioOption } from '../components';
   import { IMAGE_FORMATS, imageSummary, imageFormReady, type ImageFile } from './toolform';
+  import { api, type ImageTargetFormat } from '../api';
+  import { isDesktop } from '../native';
+  import { runJob, dirOf } from './run';
 
   let files = $state<ImageFile[]>([]);
   let quality = $state(90);
@@ -9,7 +12,10 @@
   let recurse = $state(true);
   let outDest = $state('default');
   let toastVisible = $state(false);
+  let toastMsg = $state('');
+  let toastTone = $state<'info' | 'error'>('info');
 
+  const desktop = isDesktop();
   const outOptions: RadioOption[] = [
     { label: 'Default folder', value: 'default' },
     { label: 'Alongside source', value: 'alongside' },
@@ -28,10 +34,24 @@
     files = files.filter((_, i) => i !== index);
   }
 
-  function run(): void {
-    if (!ready) return;
-    // Track C wires this to the real queue; for now it only confirms the
-    // form is valid and ready to submit.
+  // One job per file so each row's target format is honored. Output lands
+  // alongside the source.
+  async function run(): Promise<void> {
+    if (!ready || !desktop) return;
+    const outcome = await runJob(() =>
+      Promise.all(
+        files.map((f) =>
+          api.imageConvert({
+            source: { path: f.name },
+            targetFormat: f.target.toUpperCase() as ImageTargetFormat,
+            options: { quality, maxWidth: 0, maxHeight: 0, stripMetadata },
+            output: { directory: dirOf(f.name), overwrite },
+          }),
+        ),
+      ),
+    );
+    toastMsg = outcome.message;
+    toastTone = outcome.ok ? 'info' : 'error';
     toastVisible = true;
   }
 </script>
@@ -85,14 +105,16 @@
   </section>
 
   <div class="flex items-center justify-between border-t border-border pt-4">
-    <span class="text-xs text-text-dim">{summary}</span>
+    <span class="text-xs text-text-dim">
+      {summary}{#if !desktop} · running needs the desktop app{/if}
+    </span>
     <button
       type="button"
       class="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-bg disabled:opacity-40 disabled:cursor-not-allowed"
-      disabled={!ready}
+      disabled={!ready || !desktop}
       onclick={run}
     >Run</button>
   </div>
 </div>
 
-<Toast message="queue not wired yet" tone="info" bind:visible={toastVisible} duration={2600} />
+<Toast message={toastMsg} tone={toastTone} bind:visible={toastVisible} duration={2600} />

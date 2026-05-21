@@ -91,6 +91,24 @@ export interface PdfMergeRequest {
   output: OutputRef;
 }
 
+/** POST /v1/pdf/split — page_ranges and every_n are mutually exclusive. */
+export interface PdfSplitRequest {
+  source: FileRef;
+  pageRanges: PageRange[];
+  everyN: number;
+  output: OutputRef;
+}
+
+/** POST /v1/archive/compress. */
+export interface CompressRequest {
+  sources: FileRef[];
+  destination: OutputRef;
+  /** ZIP|TAR|TAR_GZ|TAR_BZ2|TAR_ZST|SEVENZ; "" infers from the file extension. */
+  format: string;
+  compressionLevel: number;
+  password?: string;
+}
+
 export interface JobResponse {
   jobId: string;
 }
