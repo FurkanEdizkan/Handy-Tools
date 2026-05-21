@@ -6,6 +6,9 @@ before:
   hooks:
     - sh -c "buf generate"
     - go mod tidy
+    # Build the Svelte frontend so htoolsd and htools-gui embed the real SPA
+    # (web/webfs.go go:embed) instead of the committed placeholder.
+    - sh -c "cd web && npm ci && npm run build"
 
 builds:
   - id: htools
@@ -33,6 +36,24 @@ builds:
       - -X github.com/furkandedizkan/handy-tools/internal/buildinfo.Version={{.Version}}
       - -X github.com/furkandedizkan/handy-tools/internal/buildinfo.Commit={{.ShortCommit}}
       - -X github.com/furkandedizkan/handy-tools/internal/buildinfo.Date={{.Date}}
+
+  # The Wails desktop app. Unlike htools/htoolsd it needs CGO + the webkit2gtk
+  # toolchain, so it cannot be cross-compiled: it ships linux/amd64 only,
+  # built natively on the release runner (release.yml installs webkit and
+  # pins ubuntu-22.04). darwin/arm64 desktop builds need a macOS runner and
+  # are a post-1.0 follow-up. The `wails` tag selects the real app over the
+  # CGO-free stub (see cmd/htools-gui).
+  - id: htools-gui
+    main: ./cmd/htools-gui
+    binary: htools-gui
+    env:
+      - CGO_ENABLED=1
+    goos: [linux]
+    goarch: [amd64]
+    tags:
+      - wails
+    ldflags:
+      - -s -w
 
 archives:
   - id: default
