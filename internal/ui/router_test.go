@@ -274,6 +274,32 @@ func TestViewFitsSmallTerminal(t *testing.T) {
 	}
 }
 
+// TestToolPageCaptureSwallowsKeys confirms the router forwards keys to a tool
+// page while it captures a typed path — 'q' is typed into the buffer, not
+// treated as the global quit shortcut.
+func TestToolPageCaptureSwallowsKeys(t *testing.T) {
+	m := New(config.Defaults(), queue.New())
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 160, Height: 48})
+	m = updated.(Model)
+	updated, _ = m.Update(OpenTool{ID: "convert-image"})
+	m = updated.(Model)
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	m = updated.(Model)
+	if m.tool == nil || !m.tool.capturingText() {
+		t.Fatal("expected the tool page to be capturing text after 'b'")
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	m = updated.(Model)
+	if m.quitting {
+		t.Fatal("'q' during path capture must not quit the app")
+	}
+	if m.tool.captureBuf != "q" {
+		t.Fatalf("captureBuf = %q, want \"q\" (key should reach the tool page)", m.tool.captureBuf)
+	}
+}
+
 func mustContain(t *testing.T, haystack, needle string) {
 	t.Helper()
 	if !strings.Contains(haystack, needle) {
