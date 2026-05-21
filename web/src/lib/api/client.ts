@@ -18,6 +18,8 @@ import type {
   InspectRequest,
   InspectResponse,
   JobResponse,
+  JobsResponse,
+  JobSummary,
   PdfMergeRequest,
   PdfToImageRequest,
   PdfToTextRequest,
@@ -83,6 +85,13 @@ export class ApiClient {
     return this.postJSON('/v1/pdf/merge', req);
   }
 
+  // ---- Jobs -----------------------------------------------------------------
+
+  /** GET /v1/jobs — a snapshot of every job the shared queue knows about. */
+  fetchJobs(): Promise<JobsResponse> {
+    return this.getJSON('/v1/jobs');
+  }
+
   // ---- Sysdep / Health / Config --------------------------------------------
 
   fetchSysdep(): Promise<SysdepResult[]> {
@@ -142,6 +151,37 @@ export class ApiClient {
       },
       { once: true },
     );
+
+    return ac;
+  }
+
+  /**
+   * Subscribe to the all-jobs lifecycle stream (GET /v1/jobs/events). Each
+   * frame is a JobSummary snapshot. Unlike subscribeJob this stream does not
+   * replay history — pair it with fetchJobs for the initial state. Returns an
+   * AbortController that closes the EventSource when aborted.
+   */
+  subscribeJobs(
+    onEvent: (event: JobSummary) => void,
+    onError?: () => void,
+  ): AbortController {
+    const es = new EventSource(`${this.baseUrl}/v1/jobs/events`);
+    const ac = new AbortController();
+
+    es.onmessage = (msg: MessageEvent<string>) => {
+      try {
+        const raw = JSON.parse(msg.data) as Record<string, unknown>;
+        onEvent(fromSnake(raw) as JobSummary);
+      } catch {
+        /* malformed frame — drop, the server should never emit these */
+      }
+    };
+
+    if (onError) {
+      es.onerror = onError;
+    }
+
+    ac.signal.addEventListener('abort', () => es.close(), { once: true });
 
     return ac;
   }

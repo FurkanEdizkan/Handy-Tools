@@ -1,5 +1,12 @@
 <script lang="ts">
-  import { jobs, expandedJobs, toggleJobExpanded, type JobStatus } from './stores/jobs';
+  import { onMount } from 'svelte';
+  import {
+    jobs,
+    expandedJobs,
+    toggleJobExpanded,
+    startJobsFeed,
+    type JobStatus,
+  } from './stores/jobs';
 
   const STATUS_GLYPH: Record<JobStatus, string> = {
     wait: '•',
@@ -7,6 +14,14 @@
     done: '✓',
     fail: '✕',
   };
+
+  // Load the initial job list and open the live /v1/jobs/events stream while
+  // the panel is mounted; the AbortController closes the EventSource on
+  // teardown so navigating away doesn't leak a connection.
+  onMount(() => {
+    const feed = startJobsFeed();
+    return () => feed.abort();
+  });
 </script>
 
 <section class="queue-panel flex flex-col min-h-0">
@@ -66,6 +81,10 @@
             {/if}
           </div>
         {/if}
+      </li>
+    {:else}
+      <li class="px-3 py-6 text-center text-[11px] text-text-dim">
+        No jobs yet — run a tool to queue one.
       </li>
     {/each}
   </ul>

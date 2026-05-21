@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiClient, fromSnake, toSnake } from './client';
 import type { ConvertRequest, JobResponse } from './types';
 
@@ -144,5 +144,82 @@ describe('ApiClient.fetchSysdep camelCase mapping', () => {
         installHint: { darwin: 'brew install poppler' },
       },
     ]);
+  });
+});
+
+describe('ApiClient.fetchJobs', () => {
+  it('maps the snake_case job list into camelCase JobSummary objects', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo) => {
+      const url = typeof input === 'string' ? input : input.url;
+      expect(url).toBe('/v1/jobs');
+      return jsonResponse(200, {
+        jobs: [
+          {
+            job_id: 'job_1',
+            tool: 'image',
+            action: 'convert',
+            status: 'done',
+            completed: true,
+            fraction: 1,
+            current_item: 'a.png',
+            started_unix_ms: 1700000000000,
+          },
+        ],
+      }) as Response;
+    });
+    const client = new ApiClient({ fetch: fetchMock as typeof fetch });
+    const res = await client.fetchJobs();
+    expect(res.jobs).toEqual([
+      {
+        jobId: 'job_1',
+        tool: 'image',
+        action: 'convert',
+        status: 'done',
+        completed: true,
+        fraction: 1,
+        currentItem: 'a.png',
+        startedUnixMs: 1700000000000,
+      },
+    ]);
+  });
+});
+
+describe('ApiClient.subscribeJobs', () => {
+  class FakeEventSource {
+    static last: FakeEventSource | null = null;
+    url: string;
+    onmessage: ((e: MessageEvent<string>) => void) | null = null;
+    onerror: (() => void) | null = null;
+    closed = false;
+    constructor(url: string) {
+      this.url = url;
+      FakeEventSource.last = this;
+    }
+    close(): void {
+      this.closed = true;
+    }
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('parses each SSE frame into a JobSummary and closes on abort', () => {
+    vi.stubGlobal('EventSource', FakeEventSource);
+    const client = new ApiClient();
+    const seen: unknown[] = [];
+    const ac = client.subscribeJobs((s) => seen.push(s));
+
+    const es = FakeEventSource.last;
+    expect(es?.url).toBe('/v1/jobs/events');
+    es?.onmessage?.({
+      data: JSON.stringify({ job_id: 'j', tool: 'pdf', action: 'merge', status: 'running', completed: false }),
+    } as MessageEvent<string>);
+    expect(seen).toEqual([
+      { jobId: 'j', tool: 'pdf', action: 'merge', status: 'running', completed: false },
+    ]);
+
+    ac.abort();
+    expect(es?.closed).toBe(true);
   });
 });
