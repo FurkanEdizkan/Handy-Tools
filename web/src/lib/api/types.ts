@@ -95,6 +95,30 @@ export interface JobResponse {
   jobId: string;
 }
 
+export type JobStatusWire = 'queued' | 'running' | 'done' | 'failed';
+
+/**
+ * One job in GET /v1/jobs and each GET /v1/jobs/events SSE frame. Mirrors the
+ * jobSummary shape in internal/api/http/types.go.
+ */
+export interface JobSummary {
+  jobId: string;
+  tool: string;
+  action: string;
+  startedUnixMs?: number;
+  status: JobStatusWire;
+  fraction?: number;
+  currentItem?: string;
+  message?: string;
+  completed: boolean;
+  error?: ErrorEnvelope;
+}
+
+/** GET /v1/jobs response. */
+export interface JobsResponse {
+  jobs: JobSummary[];
+}
+
 export type ProgressLevel = 'INFO' | 'WARNING' | 'ERROR';
 
 export interface ProgressEvent {
