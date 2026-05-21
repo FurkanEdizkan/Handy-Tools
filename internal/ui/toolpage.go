@@ -9,6 +9,8 @@
 package ui
 
 import (
+	"fmt"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -38,10 +40,23 @@ const (
 type fileItem struct {
 	ID     string
 	Name   string
+	Path   string // absolute path — set for files the user typed in; empty for demo rows
 	From   string // source format display ("PNG", "JPEG", "7z (multi-part)" …)
 	Target string // current target format ("JPEG", "WebP", …) — image mode only
 	Size   string
 }
+
+// captureKind tracks which text field, if any, is currently swallowing
+// keystrokes. While capture != captureNone every rune key edits captureBuf
+// instead of triggering a tool-page shortcut, and the router forwards keys
+// straight here (see Model.Update).
+type captureKind int
+
+const (
+	captureNone   captureKind = iota
+	capturePath               // typing a source-file path into the dropzone
+	captureOutput             // editing the custom output-destination path
+)
 
 // archiveMode is the inner Pack/Extract toggle inside the Archive tool page.
 type archiveMode int
@@ -106,6 +121,10 @@ type toolPage struct {
 	// output destination
 	out        outDest
 	customPath string
+
+	// text capture (real file input / editable custom path)
+	capture    captureKind
+	captureBuf string
 
 	// options
 	quality          int
@@ -194,9 +213,18 @@ func (p *toolPage) Update(msg tea.Msg) (*toolPage, tea.Cmd) {
 		}
 		return p, nil
 	}
+	// While a text field is open, every key edits it — shortcuts are off.
+	if p.capture != captureNone {
+		p.updateCapture(k)
+		return p, nil
+	}
 	switch k.String() {
 	case "esc":
 		return p, func() tea.Msg { return GoHome{} }
+	case "b":
+		// Open the path-entry field so the user can add a real file.
+		p.focusKind = focusInput
+		p.capture, p.captureBuf = capturePath, ""
 	case "tab":
 		p.cycleFocus(+1)
 	case "shift+tab":
@@ -220,6 +248,11 @@ func (p *toolPage) Update(msg tea.Msg) (*toolPage, tea.Cmd) {
 			return p, p.runCmd()
 		}
 		p.toggleAtFocus()
+		// Enter on the Custom output row selects it and opens its path
+		// field for editing in one step.
+		if p.focusKind == focusOutDest && p.focusIdx == 2 {
+			p.capture, p.captureBuf = captureOutput, p.customPath
+		}
 	case "+", "=", "right", "l":
 		p.adjustOption(+1)
 	case "-", "_", "left", "h":
@@ -251,6 +284,62 @@ func (p *toolPage) runCmd() tea.Cmd {
 			CustomPath:  customPath,
 		}
 	}
+}
+
+// capturingText reports whether a text field is open. The router checks this
+// to forward every key straight to the page (so a typed path isn't read as a
+// shortcut), mirroring how the settings popover swallows keys.
+func (p *toolPage) capturingText() bool { return p.capture != captureNone }
+
+// updateCapture edits the open text buffer. Enter commits, Esc cancels;
+// otherwise printable runes append and Backspace / Ctrl+U trim.
+func (p *toolPage) updateCapture(k tea.KeyMsg) {
+	switch k.Type {
+	case tea.KeyEsc:
+		p.capture, p.captureBuf = captureNone, ""
+	case tea.KeyEnter:
+		p.commitCapture()
+	case tea.KeyBackspace:
+		if r := []rune(p.captureBuf); len(r) > 0 {
+			p.captureBuf = string(r[:len(r)-1])
+		}
+	case tea.KeyCtrlU:
+		p.captureBuf = ""
+	case tea.KeySpace:
+		p.captureBuf += " "
+	case tea.KeyRunes:
+		p.captureBuf += string(k.Runes)
+	}
+}
+
+// commitCapture applies the typed buffer: capturePath appends a real file row,
+// captureOutput updates the custom output path. An empty buffer is a no-op.
+func (p *toolPage) commitCapture() {
+	switch p.capture {
+	case capturePath:
+		if raw := strings.TrimSpace(p.captureBuf); raw != "" {
+			abs := raw
+			if a, err := filepath.Abs(raw); err == nil {
+				abs = a
+			}
+			name := filepath.Base(abs)
+			item := fileItem{
+				ID:   fmt.Sprintf("u%d", len(p.files)+1),
+				Name: name,
+				Path: abs,
+				From: strings.ToUpper(strings.TrimPrefix(filepath.Ext(name), ".")),
+			}
+			if p.tool.mode == modeImage {
+				item.Target = p.defaultFmt
+			}
+			p.files = append(p.files, item)
+		}
+	case captureOutput:
+		if v := strings.TrimSpace(p.captureBuf); v != "" {
+			p.customPath = v
+		}
+	}
+	p.capture, p.captureBuf = captureNone, ""
 }
 
 // cycleFocus walks the focus across the visible sections.
@@ -619,6 +708,22 @@ func (p *toolPage) renderInput() string {
 		lipgloss.JoinHorizontal(lipgloss.Top, browse, " ", browseFolder),
 		helper,
 	)
+	// While the path field is open the dropzone becomes a text input.
+	if p.capture == capturePath {
+		field := lipgloss.NewStyle().
+			Foreground(s.P.Text).
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(s.P.Accent).
+			Padding(0, 1).
+			Width(intMax(20, width-8)).
+			Render(p.captureBuf + "█")
+		body = lipgloss.JoinVertical(lipgloss.Center,
+			lipgloss.NewStyle().Foreground(s.P.Text).Bold(true).Render("Type a file or folder path"),
+			"",
+			field,
+			s.Dim.Render("enter to add · esc to cancel"),
+		)
+	}
 	return head + "\n" + box.Render(body)
 }
 
@@ -712,6 +817,19 @@ func (p *toolPage) renderFileRow(i int, f fileItem, width int) string {
 	return line
 }
 
+// customPathField renders the custom output path's bordered box — showing the
+// live edit buffer with a cursor while captureOutput is active.
+func (p *toolPage) customPathField() string {
+	s := p.styles
+	val, bf := p.customPath, s.P.Border
+	if p.capture == captureOutput {
+		val, bf = p.captureBuf+"█", s.P.Accent
+	}
+	return lipgloss.NewStyle().Foreground(s.P.Text).
+		Border(lipgloss.NormalBorder()).BorderForeground(bf).
+		Padding(0, 1).Render(val)
+}
+
 func (p *toolPage) renderOutDest() string {
 	s := p.styles
 	width := p.width - 4
@@ -754,9 +872,7 @@ func (p *toolPage) renderOutDest() string {
 		mk(2, p.out == outCustom,
 			lipgloss.NewStyle().Foreground(s.P.Text).Render("Custom path")+
 				s.Dim.Render(" — ")+
-				lipgloss.NewStyle().Foreground(s.P.Text).
-					Border(lipgloss.NormalBorder()).BorderForeground(s.P.Border).
-					Padding(0, 1).Render(p.customPath),
+				p.customPathField(),
 			""),
 	}
 	return strings.Join(rows, "\n")

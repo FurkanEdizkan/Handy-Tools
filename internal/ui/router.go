@@ -246,6 +246,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.pop.IsOpen() {
 			return m.updatePopoverKey(msg)
 		}
+		// Likewise, a tool page capturing a typed path swallows every key —
+		// otherwise 'q' would quit and ',' would open settings mid-path.
+		if m.current == PageTool && m.tool != nil && m.tool.capturingText() {
+			tp, c := m.tool.Update(msg)
+			m.tool = tp
+			return m, c
+		}
 		switch msg.String() {
 		case "ctrl+c", "q":
 			m.quitting = true
