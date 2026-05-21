@@ -34,6 +34,9 @@ type Server struct {
 	// uses — so a job started on either transport is visible to both.
 	Queue *queue.Queue
 
+	// previews is a small LRU of rendered thumbnails for GET /v1/preview.
+	previews *previewCache
+
 	mux       *http.ServeMux
 	http      *http.Server
 	startedAt time.Time // captured in New(), reported by GET /v1/health
@@ -50,6 +53,7 @@ func New(opts server.Options, q *queue.Queue) *Server {
 		Archive:   &server.ArchiveHandler{Opts: opts},
 		PDF:       &server.PDFHandler{Opts: opts},
 		Queue:     q,
+		previews:  newPreviewCache(previewMaxEntries),
 		startedAt: time.Now(),
 	}
 	s.mux = s.routes()
@@ -97,6 +101,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /v1/jobs", s.handleJobsList)
 	mux.HandleFunc("GET /v1/jobs/events", s.handleJobsEvents)
 	mux.HandleFunc("GET /v1/jobs/{id}/events", s.handleJobEvents)
+	mux.HandleFunc("GET /v1/preview", s.handlePreview)
 	mux.HandleFunc("GET /v1/sysdep", s.handleSysdep)
 	mux.HandleFunc("GET /v1/health", s.handleHealth)
 	mux.HandleFunc("GET /v1/config", s.handleConfigGet)
