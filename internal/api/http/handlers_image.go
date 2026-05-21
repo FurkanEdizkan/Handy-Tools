@@ -57,6 +57,55 @@ func (s *Server) handleImageConvert(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, jobResponse{JobID: id})
 }
 
+func (s *Server) handleImageBatchConvert(w http.ResponseWriter, r *http.Request) {
+	var req batchConvertRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, err)
+		return
+	}
+	fmt, ok := parseImageFormat(req.TargetFormat)
+	if !ok {
+		writeError(w, &tools.Error{
+			Code:    tools.CodeBadRequest,
+			Message: "unknown target_format",
+			Detail:  req.TargetFormat,
+		})
+		return
+	}
+	srcs := make([]string, 0, len(req.Sources))
+	for _, sref := range req.Sources {
+		srcs = append(srcs, sref.Path)
+	}
+	params := server.BatchConvertParams{
+		Sources:      srcs,
+		TargetFormat: fmt,
+		Quality:      req.Options.Quality,
+		MaxWidth:     req.Options.MaxWidth,
+		MaxHeight:    req.Options.MaxHeight,
+		OutputDir:    req.Output.Directory,
+		Overwrite:    req.Output.Overwrite,
+	}
+
+	// One job for the whole batch; image.BatchConvert emits one Progress per
+	// file (file name in CurrentItem) plus a terminal summary. A single
+	// file's failure is reported per-file and the batch continues — see #17.
+	id, j := s.jobs.create()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Hour)
+		defer cancel()
+		if err := s.Image.BatchConvert(ctx, params, func(p tools.Progress) error {
+			p.JobID = id
+			j.append(p)
+			return nil
+		}); err != nil {
+			j.append(failureProgress(id, "image", "batch-convert", err))
+		}
+		j.complete()
+	}()
+
+	writeJSON(w, http.StatusAccepted, jobResponse{JobID: id})
+}
+
 // parseImageFormat maps the wire enum string to the image.Format value the
 // tool layer expects. Empty / unknown values yield (FormatUnspecified, false)
 // so callers can return a clear 400.

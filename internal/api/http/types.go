@@ -53,6 +53,15 @@ type convertRequest struct {
 	Output       outputRef    `json:"output"`
 }
 
+// batchConvertRequest is the body of POST /v1/image/batch-convert. Every
+// source is converted to TargetFormat with the same Options into Output.
+type batchConvertRequest struct {
+	Sources      []fileRef    `json:"sources"`
+	TargetFormat string       `json:"target_format"` // PNG|JPEG|GIF|BMP|TIFF|WEBP|HEIC
+	Options      imageOptions `json:"options"`
+	Output       outputRef    `json:"output"`
+}
+
 // inspectRequest is the body of POST /v1/archive/inspect.
 type inspectRequest struct {
 	Source fileRef `json:"source"`
