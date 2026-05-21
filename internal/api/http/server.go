@@ -78,6 +78,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 func (s *Server) routes() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/image/convert", s.handleImageConvert)
+	mux.HandleFunc("POST /v1/image/batch-convert", s.handleImageBatchConvert)
 	mux.HandleFunc("POST /v1/archive/inspect", s.handleArchiveInspect)
 	mux.HandleFunc("POST /v1/archive/extract", s.handleArchiveExtract)
 	mux.HandleFunc("POST /v1/archive/compress", s.handleArchiveCompress)
