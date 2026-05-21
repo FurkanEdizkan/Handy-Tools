@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -77,14 +78,92 @@ func TestSplitRejectsAmbiguousMode(t *testing.T) {
 	}
 }
 
-func TestSplitReportsMissingBinary(t *testing.T) {
-	t.Setenv("PATH", t.TempDir())
+// multiPagePDF builds an N-page PDF in a temp dir by merging the 1-page
+// fixture N times, exercising Merge and giving Split a real multi-page input.
+func multiPagePDF(t *testing.T, pages int) string {
+	t.Helper()
+	src := fixturePath(t)
+	srcs := make([]string, pages)
+	for i := range srcs {
+		srcs[i] = src
+	}
+	out := filepath.Join(t.TempDir(), "multi.pdf")
+	last := collect(Merge(context.Background(), MergeRequest{Sources: srcs, OutputFile: out}))
+	if l := last[len(last)-1]; l.Err != nil {
+		t.Fatalf("build %d-page fixture: %v", pages, l.Err)
+	}
+	return out
+}
 
-	last := collect(Split(context.Background(), SplitRequest{
-		Source: "/nonexistent.pdf", OutputDir: t.TempDir(), EveryN: 1,
+// TestMergeRoundTrip merges the fixture PDF with itself via the pdfcpu Go
+// library and asserts a non-empty PDF is written — no system binary involved.
+func TestMergeRoundTrip(t *testing.T) {
+	src := fixturePath(t)
+	out := filepath.Join(t.TempDir(), "merged.pdf")
+	last := collect(Merge(context.Background(), MergeRequest{
+		Sources:    []string{src, src, src},
+		OutputFile: out,
 	}))
-	if l := last[len(last)-1]; l.Err == nil || l.Err.Code != tools.CodeMissingBinary {
-		t.Fatalf("expected MISSING_BINARY, got %+v", l)
+	if l := last[len(last)-1]; l.Err != nil {
+		t.Fatalf("merge: %v", l.Err)
+	}
+	info, err := os.Stat(out)
+	if err != nil {
+		t.Fatalf("stat merged: %v", err)
+	}
+	if info.Size() == 0 {
+		t.Fatalf("merged PDF is empty")
+	}
+}
+
+// TestSplitEveryN splits a 4-page PDF into 2-page spans and expects two files.
+func TestSplitEveryN(t *testing.T) {
+	src := multiPagePDF(t, 4)
+	out := t.TempDir()
+	last := collect(Split(context.Background(), SplitRequest{
+		Source: src, OutputDir: out, EveryN: 2,
+	}))
+	if l := last[len(last)-1]; l.Err != nil {
+		t.Fatalf("split: %v", l.Err)
+	}
+	pdfs := 0
+	entries, err := os.ReadDir(out)
+	if err != nil {
+		t.Fatalf("read out dir: %v", err)
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".pdf") {
+			pdfs++
+		}
+	}
+	if pdfs != 2 {
+		t.Fatalf("expected 2 output PDFs for 4 pages / span 2, got %d (%v)", pdfs, entries)
+	}
+}
+
+// TestSplitPageRanges collects two ranges out of a 3-page PDF and asserts the
+// stem_N.pdf outputs exist and are non-empty.
+func TestSplitPageRanges(t *testing.T) {
+	src := multiPagePDF(t, 3)
+	out := t.TempDir()
+	last := collect(Split(context.Background(), SplitRequest{
+		Source:     src,
+		OutputDir:  out,
+		PageRanges: []Range{{From: 1, To: 2}, {From: 3, To: 0}},
+	}))
+	if l := last[len(last)-1]; l.Err != nil {
+		t.Fatalf("split ranges: %v", l.Err)
+	}
+	stem := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
+	for i := 1; i <= 2; i++ {
+		p := filepath.Join(out, stem+"_"+strconv.Itoa(i)+".pdf")
+		info, err := os.Stat(p)
+		if err != nil {
+			t.Fatalf("expected %s: %v", p, err)
+		}
+		if info.Size() == 0 {
+			t.Fatalf("%s is empty", p)
+		}
 	}
 }
 
