@@ -54,20 +54,13 @@ func (s *Server) handleArchiveExtract(w http.ResponseWriter, r *http.Request) {
 		AutoMultiPart: req.AutoAcceptMultiPart,
 	}
 
-	id, j := s.jobs.create()
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Hour)
-		defer cancel()
-		if err := s.Archive.Extract(ctx, params, func(p tools.Progress) error {
-			p.JobID = id
-			j.append(p)
-			return nil
-		}); err != nil {
-			j.append(failureProgress(id, "archive", "extract", err))
-		}
-		j.complete()
-	}()
-	writeJSON(w, http.StatusAccepted, jobResponse{JobID: id})
+	s.enqueue(w, "archive", "extract", 1*time.Hour,
+		func(ctx context.Context, emit func(tools.Progress)) error {
+			return s.Archive.Extract(ctx, params, func(p tools.Progress) error {
+				emit(p)
+				return nil
+			})
+		})
 }
 
 func (s *Server) handleArchiveCompress(w http.ResponseWriter, r *http.Request) {
@@ -106,20 +99,13 @@ func (s *Server) handleArchiveCompress(w http.ResponseWriter, r *http.Request) {
 	// Path-check failures (sources/output outside allow-roots) surface as a
 	// terminal SSE error event, consistent with the other async handlers
 	// (see handleArchiveExtract / handleImageConvert).
-	id, j := s.jobs.create()
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Hour)
-		defer cancel()
-		if err := s.Archive.Compress(ctx, params, func(p tools.Progress) error {
-			p.JobID = id
-			j.append(p)
-			return nil
-		}); err != nil {
-			j.append(failureProgress(id, "archive", "compress", err))
-		}
-		j.complete()
-	}()
-	writeJSON(w, http.StatusAccepted, jobResponse{JobID: id})
+	s.enqueue(w, "archive", "compress", 1*time.Hour,
+		func(ctx context.Context, emit func(tools.Progress)) error {
+			return s.Archive.Compress(ctx, params, func(p tools.Progress) error {
+				emit(p)
+				return nil
+			})
+		})
 }
 
 // parseArchiveFormat is the inverse of archiveFormatName: it maps the wire
