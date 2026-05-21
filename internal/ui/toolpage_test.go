@@ -154,3 +154,92 @@ func TestToolPageCaptureBackspace(t *testing.T) {
 		t.Fatalf("captureBuf after Backspace = %q, want ab", p.captureBuf)
 	}
 }
+
+func toolPageFor(t *testing.T, id string) *toolPage {
+	t.Helper()
+	tl, ok := lookupTool(id)
+	if !ok {
+		t.Fatalf("tool %q not found in defaultTools", id)
+	}
+	return newToolPage(theme.Build(theme.Resolve("forge")), tl)
+}
+
+// TestToolPageExtractOptionsAreReal verifies the #163 change: the
+// Archive-Extract option rows mutate real toolPage state, not literals.
+func TestToolPageExtractOptionsAreReal(t *testing.T) {
+	p := toolPageFor(t, "archive-extract")
+	if got := p.optionCount(); got != 2 {
+		t.Fatalf("extract optionCount = %d, want 2", got)
+	}
+	p.focusKind, p.focusIdx = focusOptions, 0
+	ow := p.overwrite
+	p, _ = p.Update(tea.KeyMsg{Type: tea.KeySpace})
+	if p.overwrite == ow {
+		t.Fatal("space on extract row 0 should toggle overwrite")
+	}
+	p.focusIdx = 1
+	amp := p.autoMultiPart
+	p, _ = p.Update(tea.KeyMsg{Type: tea.KeySpace})
+	if p.autoMultiPart == amp {
+		t.Fatal("space on extract row 1 should toggle autoMultiPart")
+	}
+}
+
+// TestToolPagePDFOptionsAreReal verifies each PDF operation's option rows are
+// bound to real state (#163): merge has none, render/split/text have working
+// toggles and sliders.
+func TestToolPagePDFOptionsAreReal(t *testing.T) {
+	p := toolPageFor(t, "pdf")
+
+	p.pdfop = pdfMerge
+	if got := p.optionCount(); got != 0 {
+		t.Fatalf("pdf merge optionCount = %d, want 0", got)
+	}
+
+	p.pdfop = pdfRender
+	if got := p.optionCount(); got != 2 {
+		t.Fatalf("pdf render optionCount = %d, want 2", got)
+	}
+	p.focusKind, p.focusIdx = focusOptions, 1
+	jpeg := p.pdfJPEG
+	p, _ = p.Update(tea.KeyMsg{Type: tea.KeySpace})
+	if p.pdfJPEG == jpeg {
+		t.Fatal("space on render row 1 should toggle pdfJPEG")
+	}
+
+	p.pdfop = pdfSplit
+	p.focusKind, p.focusIdx = focusOptions, 0
+	n := p.pdfEveryN
+	p, _ = p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'+'}})
+	if p.pdfEveryN <= n {
+		t.Fatalf("'+' on split row 0 should raise pdfEveryN; %d → %d", n, p.pdfEveryN)
+	}
+
+	p.pdfop = pdfText
+	p.focusKind, p.focusIdx = focusOptions, 0
+	lay := p.pdfLayout
+	p, _ = p.Update(tea.KeyMsg{Type: tea.KeySpace})
+	if p.pdfLayout == lay {
+		t.Fatal("space on text row 0 should toggle pdfLayout")
+	}
+}
+
+// TestRunCmdCarriesOptions confirms runCmd's RunJob carries the option payload
+// the #153 runner needs.
+func TestRunCmdCarriesOptions(t *testing.T) {
+	p := imageToolPage(t)
+	p.quality = 73
+	p.overwrite = true
+
+	msg := p.runCmd()()
+	job, ok := msg.(RunJob)
+	if !ok {
+		t.Fatalf("runCmd message type = %T, want RunJob", msg)
+	}
+	if job.Quality != 73 {
+		t.Fatalf("RunJob.Quality = %d, want 73", job.Quality)
+	}
+	if !job.Overwrite {
+		t.Fatal("RunJob.Overwrite should be true")
+	}
+}

@@ -60,6 +60,17 @@ type RunJob struct {
 	PDFOp       pdfOp
 	Out         outDest
 	CustomPath  string
+
+	// option payload — populated from the tool page's form state so the
+	// runner can build a real tool request (see #163).
+	Quality          int  // image: JPEG/WebP quality
+	CompressionLevel int  // archive-pack: 0..9
+	DPI              int  // pdf-render: dots per inch
+	EveryN           int  // pdf-split: pages per output file
+	Overwrite        bool // image / archive-extract: overwrite existing
+	AutoMultiPart    bool // archive-extract: accept multi-part without a prompt
+	PDFJpeg          bool // pdf-render: JPEG output (false = PNG)
+	PDFLayout        bool // pdf-text: preserve physical layout
 }
 
 // MascotMsg lets pages drive the global mascot.
