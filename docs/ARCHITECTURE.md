@@ -83,6 +83,8 @@ POST /v1/archive/extract          → 202 {"job_id": "..."}
 POST /v1/pdf/to-image             → 202 {"job_id": "..."}
 POST /v1/pdf/to-text              → 202 {"job_id": "..."}
 POST /v1/pdf/merge                → 202 {"job_id": "..."}
+GET  /v1/jobs                     → 200 {"jobs": [JobSummary, ...]}
+GET  /v1/jobs/events              → text/event-stream of JobSummary (all jobs)
 GET  /v1/jobs/{id}/events         → text/event-stream of Progress
 GET  /v1/sysdep                   → 200 [SysdepResult, ...]
 ```
@@ -191,7 +193,5 @@ status and the staged phases. Issues #55–#59 track them:
   adding one package + one proto file, no UI changes.
 - **WebP encoder**: currently disabled (no pure-Go encoder); add via
   `chai2010/webp` once we accept its CGO requirement.
-- **Real YAML lib**: swap the hand-rolled config parser for
-  `gopkg.in/yaml.v3` once we have other reasons to take that dep.
 - **`pdfcpu` library import**: pull merge/split into pure Go instead of
   shelling out to the CLI.

@@ -19,14 +19,14 @@ A third entry point, `cmd/snapshot`, is a developer-only helper that renders the
 make proto      # regenerate Go bindings into gen/ from api/proto (run once after clone)
 make build      # bin/htools + bin/htoolsd
 make test       # go test -race -count=1 ./...
-make fuzz       # short fuzz over the YAML mini-parser
+make fuzz       # short fuzz over the config YAML decoder
 make lint       # golangci-lint + buf lint
 make cover      # coverage.out + coverage.html
 ```
 
 Run a single test: `go test -race -run TestName ./internal/tools/archive`.
 
-CI uses Go 1.22 and `golangci-lint v1.59` — match locally or lint output may diverge.
+CI uses Go 1.25 and `golangci-lint v2.12.2` — match locally or lint output may diverge. The lint config (`.golangci.yml`) is golangci-lint v2 schema; `gofmt`/`goimports` are configured as v2 *formatters*.
 
 ## Generated code
 
@@ -50,7 +50,7 @@ Optional system binaries (`unrar`, `7z`, `pdftoppm`, `pdftotext`, `magick`) are 
 
 ## Config
 
-Settings live at `$HANDY_TOOLS_CONFIG` → `$XDG_CONFIG_HOME/handy-tools/config.yaml` → `~/.config/handy-tools/config.yaml` (in that order). The on-disk YAML is parsed by a tiny hand-rolled reader in [internal/config/yaml_min.go](internal/config/yaml_min.go) — only flat scalars + the `recent`/`allow_roots` lists are supported. If you need richer YAML, swap to `gopkg.in/yaml.v3` rather than extending the hand-rolled parser. `Defaults()` must always return a complete `Config` so partial files round-trip safely.
+Settings live at `$HANDY_TOOLS_CONFIG` → `$XDG_CONFIG_HOME/handy-tools/config.yaml` → `~/.config/handy-tools/config.yaml` (in that order). The on-disk YAML is decoded with `gopkg.in/yaml.v3` via the thin `decode`/`writeYAML` helpers in [internal/config/config.go](internal/config/config.go); every `Config` field carries a `yaml:` struct tag. `loadFile` unmarshals over a `Defaults()` value, so `Defaults()` must always return a complete `Config` for partial files to round-trip safely.
 
 ## Installer script
 
@@ -86,10 +86,10 @@ Don't tag manually; the workflow owns the tag/release surface. When we eventuall
 
 CI ([ci.yml](.github/workflows/ci.yml)) is Linux-only and runs on every push/PR to `main` and `test` — no path filter, so required status checks always report (even on docs-only PRs):
 
-- `lint-go` — golangci-lint v1.59, runs `buf generate` first so generated code is in scope.
+- `lint-go` — golangci-lint v2.12.2, runs `buf generate` first so generated code is in scope.
 - `lint-proto` — `buf lint` against `api/proto/`.
 - `web-build` — installs/builds/tests the Svelte frontend, uploads the `web-dist` artifact.
-- `test-quick` — `go test -race` plus a 20-second fuzz pass over the YAML mini-parser (`FuzzDecodeMinimalYAML`); consumes `web-dist`.
+- `test-quick` — `go test -race` plus a 20-second fuzz pass over the config YAML decoder (`FuzzDecodeYAML`); consumes `web-dist`.
 - `build` — final assembly check for the Linux binaries.
 
 There is no OS matrix while the project is pre-1.0; non-Linux coverage is release-time only, via [verify-install.yml](.github/workflows/verify-install.yml). Restoring an ubuntu × macos (+ Windows compile) matrix is tracked for ~v1.0.0.
@@ -120,7 +120,11 @@ go run ./cmd/snapshot
 - **Never open PRs against `main`.** All contributor PRs target `test`. A scheduled workflow promotes `test` → `main` automatically when CI is green.
 - Branch prefixes: `feat/`, `fix/`, `docs/`, `refactor/`, `chore/`, `ci/`, `test/`.
 - PR titles **must** be Conventional Commits (validated by the commitlint workflow). Common scopes: `image`, `archive`, `pdf`, `ui`, `server`, `api`, `config`, `mascot`, `ci`, `release`.
-- Squash-merge is the default; the PR title becomes the commit message.
+- PRs are merged with **merge commits** — never squash — so every commit is
+  preserved on `test` and `main` and the branch graph stays intact. The PR
+  title (a Conventional Commit) becomes the merge commit message; keep the
+  individual commits on your branch clean and Conventional too, since they
+  land in history and feed the release changelog.
 
 Full checklist in [docs/PR_GUIDELINES.md](docs/PR_GUIDELINES.md).
 

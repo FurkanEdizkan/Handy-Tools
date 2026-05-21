@@ -24,6 +24,7 @@ import (
 	httpapi "github.com/furkandedizkan/handy-tools/internal/api/http"
 	"github.com/furkandedizkan/handy-tools/internal/buildinfo"
 	"github.com/furkandedizkan/handy-tools/internal/config"
+	"github.com/furkandedizkan/handy-tools/internal/queue"
 	"github.com/furkandedizkan/handy-tools/internal/server"
 )
 
@@ -67,8 +68,11 @@ func main() {
 	}
 
 	opts := server.Options{AllowRoots: roots}
-	grpcSrv := server.New(opts)
-	httpSrv := httpapi.New(opts)
+	// One shared queue drives both transports, so a job started over gRPC is
+	// visible to an HTTP/SSE subscriber and vice versa.
+	q := queue.New()
+	grpcSrv := server.New(opts, q)
+	httpSrv := httpapi.New(opts, q)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)

@@ -91,8 +91,50 @@ export interface PdfMergeRequest {
   output: OutputRef;
 }
 
+/** POST /v1/pdf/split — page_ranges and every_n are mutually exclusive. */
+export interface PdfSplitRequest {
+  source: FileRef;
+  pageRanges: PageRange[];
+  everyN: number;
+  output: OutputRef;
+}
+
+/** POST /v1/archive/compress. */
+export interface CompressRequest {
+  sources: FileRef[];
+  destination: OutputRef;
+  /** ZIP|TAR|TAR_GZ|TAR_BZ2|TAR_ZST|SEVENZ; "" infers from the file extension. */
+  format: string;
+  compressionLevel: number;
+  password?: string;
+}
+
 export interface JobResponse {
   jobId: string;
+}
+
+export type JobStatusWire = 'queued' | 'running' | 'done' | 'failed';
+
+/**
+ * One job in GET /v1/jobs and each GET /v1/jobs/events SSE frame. Mirrors the
+ * jobSummary shape in internal/api/http/types.go.
+ */
+export interface JobSummary {
+  jobId: string;
+  tool: string;
+  action: string;
+  startedUnixMs?: number;
+  status: JobStatusWire;
+  fraction?: number;
+  currentItem?: string;
+  message?: string;
+  completed: boolean;
+  error?: ErrorEnvelope;
+}
+
+/** GET /v1/jobs response. */
+export interface JobsResponse {
+  jobs: JobSummary[];
 }
 
 export type ProgressLevel = 'INFO' | 'WARNING' | 'ERROR';
@@ -129,13 +171,15 @@ export interface ErrorEnvelope {
 }
 
 /**
- * /v1/health response. Not yet on the wire (#64); the field set is the agreed
- * shape so the client and Header badge can both compile against it now.
+ * GET /v1/health response (#64). The endpoint has no status field — a
+ * successful HTTP response *is* the liveness signal; reachability decides the
+ * badge level.
  */
 export interface HealthResponse {
-  status: 'ok' | 'serving' | 'degraded' | 'offline';
   version: string;
   uptimeSeconds: number;
+  transports: string[];
+  toolsAvailable: string[];
 }
 
 /**

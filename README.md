@@ -212,17 +212,14 @@ home view abridged:
 ╰───────────────────────────────────╯
 
 ╭───────────────────────────────────╮
-│ QUEUE  0 run · 1 done · 1 fail    │
-│   ✓ invoice-2026-04.png  DONE     │
-│   ✕ manual.pdf → 32 pgs  FAIL  ▾  │
-│     STDERR · q3  10 lines         │
-│     [14:08] ERROR  MISSING_BINARY │
-│     [14:08] HINT   brew install   │
-│            poppler  # macOS       │
-│   • photos.zip          WAIT      │
-│   • big-batch (24 PNGs) WAIT      │
+│ QUEUE  0R 0D 0F 0Q                │
+│                                   │
 ╰───────────────────────────────────╯
 ```
+
+The queue panel starts empty and fills from the shared job registry
+(`internal/queue`): pressing **Run** on a tool enqueues a job, and each row
+shows live progress, a status pill, and an expandable stderr log.
 
 And the per-tool detail page (Convert images), with the **WebP** override on
 row 3 visibly diverging from the JPEG default and the run summary on the
@@ -286,10 +283,10 @@ $XDG_CONFIG_HOME/handy-tools/config.yaml     (XDG, when set)
 ~/.config/handy-tools/config.yaml            (default)
 ```
 
-The on-disk YAML is parsed by a tiny hand-rolled reader in
-[internal/config/yaml_min.go](internal/config/yaml_min.go); the canonical
-shape and defaults live in [internal/config/config.go](internal/config/config.go).
-Unknown keys are silently ignored so configs stay forward-compatible.
+The on-disk YAML is decoded with [`gopkg.in/yaml.v3`](https://pkg.go.dev/gopkg.in/yaml.v3);
+the canonical shape and defaults live in
+[internal/config/config.go](internal/config/config.go). Unknown keys are
+silently ignored so configs stay forward-compatible.
 
 A minimal config looks like:
 
@@ -298,7 +295,7 @@ theme:
   name: forge        # forge (default), snow, ember
 mascot:
   enabled: true
-  style: wrenly
+  style: wrenly        # wrenly (default), hopper — selects the character
 image:
   default_jpeg_quality: 90
 pdf:
@@ -319,12 +316,12 @@ make build       # builds bin/htools and bin/htoolsd
 make tui         # runs the TUI
 make serve       # runs the gRPC server on the address from config (default :7777)
 make test        # go test -race -count=1 ./...
-make fuzz        # 20s fuzz pass over the YAML mini-parser
+make fuzz        # 20s fuzz pass over the config YAML decoder
 make lint        # golangci-lint + buf lint
 make cover       # coverage.out + coverage.html
 ```
 
-CI uses Go 1.22 and `golangci-lint v1.59` — match locally or lint output may
+CI uses Go 1.25 and `golangci-lint v2.12.2` — match locally or lint output may
 diverge.
 
 ## Releasing

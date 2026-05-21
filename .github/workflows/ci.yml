@@ -32,10 +32,10 @@ jobs:
     name: Lint (Go)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
-          go-version: "1.22"
+          go-version: "1.25"
           cache: true
       - uses: bufbuild/buf-setup-action@v1
         with:
@@ -43,16 +43,16 @@ jobs:
       - name: Generate proto bindings
         run: buf generate
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v1.59
+          version: v2.12.2
           args: --timeout=5m
 
   lint-proto:
     name: Lint (proto)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: bufbuild/buf-setup-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -69,10 +69,10 @@ jobs:
     needs: [web-build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
-          go-version: "1.22"
+          go-version: "1.25"
           cache: true
       - uses: bufbuild/buf-setup-action@v1
         with:
@@ -83,7 +83,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             p7zip-full unrar-free poppler-utils imagemagick
       - name: Download web dist artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: web/dist
@@ -99,43 +99,38 @@ jobs:
           fi
       - name: Test
         run: go test -race -count=1 ./...
-      - name: Fuzz yaml_min parser (20s)
-        run: go test -run=^$ -fuzz=FuzzDecodeMinimalYAML -fuzztime=20s ./internal/config
+      - name: Fuzz config YAML decoder (20s)
+        run: go test -run=^$ -fuzz=FuzzDecodeYAML -fuzztime=20s ./internal/config
 
   web-build:
     name: Web (Svelte / Vite)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Check for web/
-        id: check
+      - uses: actions/checkout@v6
+      - name: Require web/ scaffold
         shell: bash
         run: |
-          # The web/ directory is scaffolded by issue #66 (pivot Phase 2).
-          # Until then this job is a deliberate no-op so the workflow file
-          # can land first and the frontend PR doesn't have to touch CI.
-          if [ -f web/package.json ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "web/package.json not present yet — skipping."
+          # The web/ frontend was scaffolded by issue #66; this job now fails
+          # loudly so genuine bundler/test regressions break CI (#95). If this
+          # assertion ever trips, web/package.json was removed or moved —
+          # that is a real problem, not a reason to skip the job.
+          if [ ! -f web/package.json ]; then
+            echo "::error::web/package.json is missing — the web frontend scaffold is expected to exist." >&2
+            exit 1
           fi
-      - uses: actions/setup-node@v4
-        if: steps.check.outputs.present == 'true'
+      - uses: actions/setup-node@v6
         with:
           node-version: "24"
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Install + build + test
-        if: steps.check.outputs.present == 'true'
         working-directory: web
         run: |
           npm ci
           npm run build
           npm test
       - name: Upload dist artifact
-        if: steps.check.outputs.present == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: web-dist
           path: web/dist
@@ -150,16 +145,16 @@ jobs:
     needs: [lint-go, test-quick, web-build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
-          go-version: "1.22"
+          go-version: "1.25"
           cache: true
       - uses: bufbuild/buf-setup-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download web dist artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: web/dist
@@ -170,3 +165,29 @@ jobs:
           mkdir -p bin
           go build -ldflags="-s -w" -o bin/htools  ./cmd/htools
           go build -ldflags="-s -w" -o bin/htoolsd ./cmd/htoolsd
+
+  # The Wails desktop binary (cmd/htools-gui) needs CGO + the webkit2gtk
+  # toolchain, so it builds in its own job rather than forcing those system
+  # deps onto every Go job. cmd/htools-gui is gated behind the `wails` build
+  # tag — without it a stub stands in, keeping the jobs above CGO-free.
+  gui-build:
+    name: Build (desktop / Wails)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache: true
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install Wails system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-3-dev libwebkit2gtk-4.0-dev
+      - name: Generate proto bindings
+        run: buf generate
+      - name: Build htools-gui
+        run: go build -tags wails -o /tmp/htools-gui ./cmd/htools-gui

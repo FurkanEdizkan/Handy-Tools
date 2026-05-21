@@ -57,8 +57,8 @@ cover: ## Run tests with coverage report
 	$(GO) tool cover -html=coverage.out -o coverage.html
 
 .PHONY: fuzz
-fuzz: ## Run short fuzz pass over hand-rolled YAML parser
-	$(GO) test -run=^$$ -fuzz=FuzzDecodeMinimalYAML -fuzztime=20s ./internal/config
+fuzz: ## Run short fuzz pass over the config YAML decoder
+	$(GO) test -run=^$$ -fuzz=FuzzDecodeYAML -fuzztime=20s ./internal/config
 
 .PHONY: lint
 lint: ## Run linters

@@ -1,9 +1,12 @@
 <script lang="ts">
   /**
-   * Drag-and-drop file input. Accepts real browser `DataTransfer.files` today;
-   * the `onfiles` payload is typed `File[] | string[]` so the Wails build can
-   * feed native path lists through the same callback in Phase 4 (#81).
+   * Drag-and-drop file input. In the Wails desktop build clicking the zone
+   * opens the native OS picker (#80/#81), which yields real absolute paths as
+   * `string[]`; in a plain browser it falls back to a `<input type=file>`,
+   * which yields `File[]`. Both arrive through the same `onfiles` callback.
    */
+  import { isDesktop, pickFiles } from '../native';
+
   interface Props {
     /** `accept` attribute for the file picker (e.g. "image/*,.zip"). */
     accept?: string;
@@ -48,8 +51,15 @@
     emit(ev.dataTransfer?.files ?? null);
   }
 
-  function browse(): void {
-    if (!disabled) input.click();
+  async function browse(): Promise<void> {
+    if (disabled) return;
+    // Desktop: the native picker returns real absolute paths.
+    if (isDesktop()) {
+      const paths = await pickFiles();
+      if (paths.length > 0) onfiles?.(multiple ? paths : paths.slice(0, 1));
+      return;
+    }
+    input.click();
   }
 
   function onKey(ev: KeyboardEvent): void {

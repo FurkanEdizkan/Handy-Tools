@@ -64,3 +64,45 @@ func (h *ArchiveHandler) Extract(ctx context.Context, p ExtractParams, emit func
 	}
 	return nil
 }
+
+// CompressParams drives ArchiveHandler.Compress. Format may be
+// archive.FormatUnknown, in which case archive.Compress infers it from the
+// output file extension.
+type CompressParams struct {
+	Sources          []string
+	Format           archive.Format
+	Output           string
+	Password         string
+	CompressionLevel int
+}
+
+// Compress packs Sources into a single archive at Output. Every source path
+// and the output path are run through CheckPath so the allow-root sandbox is
+// enforced for archive creation just as it is for extraction.
+func (h *ArchiveHandler) Compress(ctx context.Context, p CompressParams, emit func(tools.Progress) error) error {
+	srcs := make([]string, 0, len(p.Sources))
+	for _, s := range p.Sources {
+		v, err := h.Opts.CheckPath(s)
+		if err != nil {
+			return err
+		}
+		srcs = append(srcs, v)
+	}
+	out, err := h.Opts.CheckPath(p.Output)
+	if err != nil {
+		return err
+	}
+	ch := archive.Compress(ctx, archive.CompressRequest{
+		Sources:          srcs,
+		Format:           p.Format,
+		Output:           out,
+		Password:         p.Password,
+		CompressionLevel: p.CompressionLevel,
+	})
+	for prog := range ch {
+		if err := emit(prog); err != nil {
+			return err
+		}
+	}
+	return nil
+}

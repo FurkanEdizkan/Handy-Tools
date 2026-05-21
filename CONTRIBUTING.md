@@ -58,8 +58,10 @@ contributors  ->  feature/*  ->  PR into test  ->  CI green  ->  merged into tes
 3. Ensure `make lint test` passes locally.
 4. Push and open a PR **into `test`**. Fill out the PR template.
 5. Address review feedback. CI must be green before merge.
-6. Maintainers will squash-merge. Your PR title becomes the commit message,
-   so it must follow Conventional Commits.
+6. Maintainers merge with a merge commit (not squash). Your PR title becomes
+   the merge commit message, so it must follow Conventional Commits — and
+   because every commit on your branch is preserved in history, write those
+   cleanly and Conventionally too.
 
 Read [docs/PR_GUIDELINES.md](docs/PR_GUIDELINES.md) for the full checklist.
 

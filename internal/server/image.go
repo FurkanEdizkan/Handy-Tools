@@ -63,3 +63,50 @@ func (h *ImageHandler) Convert(ctx context.Context, p ConvertParams, emit func(t
 	}
 	return nil
 }
+
+// BatchConvertParams is the wire-shape-agnostic input for a batch job: every
+// source is converted to the same TargetFormat and written into OutputDir.
+type BatchConvertParams struct {
+	Sources      []string
+	TargetFormat image.Format
+	Quality      int
+	MaxWidth     int
+	MaxHeight    int
+	OutputDir    string
+	Overwrite    bool
+}
+
+// BatchConvert converts every source in one job, forwarding the per-file and
+// terminal progress events from image.BatchConvert to emit. Each source path
+// and the output directory are run through CheckPath.
+func (h *ImageHandler) BatchConvert(ctx context.Context, p BatchConvertParams, emit func(tools.Progress) error) error {
+	srcs := make([]string, 0, len(p.Sources))
+	for _, s := range p.Sources {
+		v, err := h.Opts.CheckPath(s)
+		if err != nil {
+			return err
+		}
+		srcs = append(srcs, v)
+	}
+	out, err := h.Opts.CheckPath(p.OutputDir)
+	if err != nil {
+		return err
+	}
+	ch := image.BatchConvert(ctx, image.BatchConvertRequest{
+		Sources:      srcs,
+		TargetFormat: p.TargetFormat,
+		Opts: image.Options{
+			Quality:   p.Quality,
+			MaxWidth:  p.MaxWidth,
+			MaxHeight: p.MaxHeight,
+		},
+		OutputDir: out,
+		Overwrite: p.Overwrite,
+	})
+	for prog := range ch {
+		if err := emit(prog); err != nil {
+			return err
+		}
+	}
+	return nil
+}

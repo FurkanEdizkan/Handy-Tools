@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pdfcpu/pdfcpu/pkg/api"
+
 	"github.com/furkandedizkan/handy-tools/internal/tools"
 	"github.com/furkandedizkan/handy-tools/internal/tools/sysdep"
 )
@@ -171,10 +173,8 @@ type MergeRequest struct {
 	OutputFile string
 }
 
-// Merge concatenates the given PDFs. The current implementation requires
-// pdfcpu CLI as a system dependency; it can be swapped for the library import
-// once we add the dependency to go.mod (left as a follow-up to keep this
-// commit dep-light).
+// Merge concatenates the given PDFs in order using the pdfcpu Go library, so
+// no system binary is required.
 func Merge(ctx context.Context, req MergeRequest) <-chan tools.Progress {
 	ch := make(chan tools.Progress, 4)
 	go func() {
@@ -197,24 +197,122 @@ func Merge(ctx context.Context, req MergeRequest) <-chan tools.Progress {
 			return
 		}
 
-		path, err := exec.LookPath("pdfcpu")
-		if err != nil {
+		if err := ctx.Err(); err != nil {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
-				Code: tools.CodeMissingBinary, Message: "pdfcpu not found",
-				Detail: "install with: go install github.com/pdfcpu/pdfcpu/cmd/pdfcpu@latest",
+				Code: tools.CodeAborted, Message: "merge canceled",
 			}})
 			return
 		}
-		args := append([]string{"merge", req.OutputFile}, req.Sources...)
-		if err := streamCmd(ctx, path, args, emit); err != nil {
+		if err := api.MergeCreateFile(req.Sources, req.OutputFile, false, nil); err != nil {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
-				Code: tools.CodeIO, Message: "pdfcpu merge failed", Detail: err.Error(),
+				Code: tools.CodeIO, Message: "pdf merge failed", Detail: err.Error(),
 			}})
 			return
 		}
 		emit(tools.Progress{Completed: true, Fraction: 1, Message: "wrote " + req.OutputFile})
 	}()
 	return ch
+}
+
+// SplitRequest describes a split job. Exactly one mode must be set:
+//   - PageRanges: each range is collected into its own output PDF.
+//   - EveryN: the source is split into consecutive N-page files.
+type SplitRequest struct {
+	Source     string
+	PageRanges []Range // page-ranges mode: one output PDF per range
+	EveryN     int     // every-n mode: split into N-page files
+	OutputDir  string
+}
+
+// Split splits a PDF using the pdfcpu Go library, so no system binary is
+// required. PageRanges mode collects each range into its own output PDF;
+// EveryN mode splits the source into consecutive N-page files.
+func Split(ctx context.Context, req SplitRequest) <-chan tools.Progress {
+	ch := make(chan tools.Progress, 4)
+	go func() {
+		defer close(ch)
+		started := time.Now()
+		emit := func(p tools.Progress) {
+			p.Tool = "pdf"
+			p.Action = "split"
+			p.StartedAt = started
+			if p.CurrentItem == "" {
+				p.CurrentItem = filepath.Base(req.Source)
+			}
+			select {
+			case <-ctx.Done():
+			case ch <- p:
+			}
+		}
+
+		hasRanges := len(req.PageRanges) > 0
+		hasEveryN := req.EveryN > 0
+		if hasRanges == hasEveryN {
+			emit(tools.Progress{Completed: true, Err: &tools.Error{
+				Code:    tools.CodeBadRequest,
+				Message: "split needs exactly one mode: page_ranges or every_n",
+			}})
+			return
+		}
+
+		if err := os.MkdirAll(req.OutputDir, 0o755); err != nil {
+			emit(tools.Progress{Completed: true, Err: &tools.Error{
+				Code: tools.CodeIO, Message: "create output dir", Detail: err.Error(),
+			}})
+			return
+		}
+
+		if hasEveryN {
+			if err := api.SplitFile(req.Source, req.OutputDir, req.EveryN, nil); err != nil {
+				emit(tools.Progress{Completed: true, Err: &tools.Error{
+					Code: tools.CodeIO, Message: "pdf split failed", Detail: err.Error(),
+				}})
+				return
+			}
+			emit(tools.Progress{Completed: true, Fraction: 1,
+				Message: fmt.Sprintf("split every %d page(s) into %s", req.EveryN, req.OutputDir)})
+			return
+		}
+
+		// page-ranges mode: one collect operation per range.
+		stem := strings.TrimSuffix(filepath.Base(req.Source), filepath.Ext(req.Source))
+		for i, r := range req.PageRanges {
+			if err := ctx.Err(); err != nil {
+				emit(tools.Progress{Completed: true, Err: &tools.Error{
+					Code: tools.CodeAborted, Message: "split canceled",
+				}})
+				return
+			}
+			outFile := filepath.Join(req.OutputDir, fmt.Sprintf("%s_%d.pdf", stem, i+1))
+			if err := api.CollectFile(req.Source, outFile, []string{rangeSelector(r)}, nil); err != nil {
+				emit(tools.Progress{Completed: true, Err: &tools.Error{
+					Code: tools.CodeIO, Message: "pdf collect failed", Detail: err.Error(),
+				}})
+				return
+			}
+			emit(tools.Progress{
+				Level:       tools.SeverityInfo,
+				Message:     fmt.Sprintf("[%d/%d] wrote %s", i+1, len(req.PageRanges), outFile),
+				Fraction:    float64(i+1) / float64(len(req.PageRanges)),
+				CurrentItem: filepath.Base(outFile),
+			})
+		}
+		emit(tools.Progress{Completed: true, Fraction: 1,
+			Message: fmt.Sprintf("wrote %d range(s) into %s", len(req.PageRanges), req.OutputDir)})
+	}()
+	return ch
+}
+
+// rangeSelector renders a Range as a pdfcpu page-selection string: "from-to",
+// "from-" when To is open-ended, or a single "n".
+func rangeSelector(r Range) string {
+	if r.To <= 0 {
+		return strconv.Itoa(r.From) + "-"
+	}
+	if r.From == r.To {
+		return strconv.Itoa(r.From)
+	}
+	return strconv.Itoa(r.From) + "-" + strconv.Itoa(r.To)
 }
 
 func streamCmd(ctx context.Context, name string, args []string, emit func(tools.Progress)) error {

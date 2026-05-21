@@ -123,3 +123,93 @@ func TestWebPEncodeNotImplemented(t *testing.T) {
 		t.Fatalf("expected error for webp encode")
 	}
 }
+
+// writeNamedPNG writes a 4×4 PNG at the given path — used by the batch tests,
+// which need sources with distinct basenames.
+func writeNamedPNG(t *testing.T, path string) {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 4, 4))
+	for y := 0; y < 4; y++ {
+		for x := 0; x < 4; x++ {
+			img.Set(x, y, color.RGBA{R: uint8(x * 64), G: uint8(y * 64), B: 200, A: 255})
+		}
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create %s: %v", path, err)
+	}
+	defer f.Close()
+	if err := png.Encode(f, img); err != nil {
+		t.Fatalf("encode %s: %v", path, err)
+	}
+}
+
+func TestBatchConvertRejectsEmpty(t *testing.T) {
+	progress := collect(BatchConvert(context.Background(), BatchConvertRequest{
+		TargetFormat: FormatJPEG,
+		OutputDir:    t.TempDir(),
+	}))
+	if last := progress[len(progress)-1]; last.Err == nil || last.Err.Code != tools.CodeBadRequest {
+		t.Fatalf("expected BAD_REQUEST, got %+v", last)
+	}
+}
+
+func TestBatchConvertAllSucceed(t *testing.T) {
+	dir := t.TempDir()
+	out := t.TempDir()
+	a := filepath.Join(dir, "a.png")
+	b := filepath.Join(dir, "b.png")
+	writeNamedPNG(t, a)
+	writeNamedPNG(t, b)
+
+	progress := collect(BatchConvert(context.Background(), BatchConvertRequest{
+		Sources:      []string{a, b},
+		TargetFormat: FormatJPEG,
+		OutputDir:    out,
+		Opts:         Options{Quality: 80},
+	}))
+
+	last := progress[len(progress)-1]
+	if !last.Completed || last.Err != nil {
+		t.Fatalf("expected success, got %+v", last)
+	}
+	for _, name := range []string{"a.jpg", "b.jpg"} {
+		if _, err := os.Stat(filepath.Join(out, name)); err != nil {
+			t.Errorf("output %s missing: %v", name, err)
+		}
+	}
+}
+
+func TestBatchConvertPartialFailureContinues(t *testing.T) {
+	dir := t.TempDir()
+	out := t.TempDir()
+	good := filepath.Join(dir, "good.png")
+	writeNamedPNG(t, good)
+	missing := filepath.Join(dir, "missing.png")
+
+	progress := collect(BatchConvert(context.Background(), BatchConvertRequest{
+		Sources:      []string{good, missing},
+		TargetFormat: FormatJPEG,
+		OutputDir:    out,
+	}))
+
+	// The batch must finish (not abort) and not be marked a hard failure.
+	last := progress[len(progress)-1]
+	if !last.Completed || last.Err != nil {
+		t.Fatalf("expected partial success terminal, got %+v", last)
+	}
+	if _, err := os.Stat(filepath.Join(out, "good.jpg")); err != nil {
+		t.Errorf("good output missing: %v", err)
+	}
+}
+
+func TestBatchConvertAllFail(t *testing.T) {
+	progress := collect(BatchConvert(context.Background(), BatchConvertRequest{
+		Sources:      []string{"/nope-1.png", "/nope-2.png"},
+		TargetFormat: FormatJPEG,
+		OutputDir:    t.TempDir(),
+	}))
+	if last := progress[len(progress)-1]; last.Err == nil || last.Err.Code != tools.CodeIO {
+		t.Fatalf("expected IO_ERROR when every file fails, got %+v", last)
+	}
+}

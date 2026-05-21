@@ -15,6 +15,8 @@
 //	POST /v1/pdf/merge                → 202 {"job_id": "..."}
 //	GET  /v1/jobs/{id}/events         → text/event-stream of Progress
 //	GET  /v1/sysdep                   → 200 [SysdepResult, ...]
+//	GET  /v1/config                   → 200 {Config}
+//	PATCH /v1/config                  → 200 {Config} (partial body, deep-merged)
 package http
 
 // fileRef mirrors handytools.v1.FileRef.
@@ -51,6 +53,15 @@ type convertRequest struct {
 	Output       outputRef    `json:"output"`
 }
 
+// batchConvertRequest is the body of POST /v1/image/batch-convert. Every
+// source is converted to TargetFormat with the same Options into Output.
+type batchConvertRequest struct {
+	Sources      []fileRef    `json:"sources"`
+	TargetFormat string       `json:"target_format"` // PNG|JPEG|GIF|BMP|TIFF|WEBP|HEIC
+	Options      imageOptions `json:"options"`
+	Output       outputRef    `json:"output"`
+}
+
 // inspectRequest is the body of POST /v1/archive/inspect.
 type inspectRequest struct {
 	Source fileRef `json:"source"`
@@ -79,6 +90,15 @@ type extractRequest struct {
 	AutoAcceptMultiPart bool      `json:"auto_accept_multi_part"`
 }
 
+// compressRequest is the body of POST /v1/archive/compress.
+type compressRequest struct {
+	Sources          []fileRef `json:"sources"`
+	Destination      outputRef `json:"destination"`        // File is the archive path
+	Format           string    `json:"format"`             // ZIP|TAR|TAR_GZ|TAR_BZ2|TAR_ZST|SEVENZ; "" = infer from extension
+	CompressionLevel int       `json:"compression_level"`  // 0 = format default, 1..9
+	Password         string    `json:"password,omitempty"` // optional; pure-Go formats reject it
+}
+
 // pdfToImageRequest is the body of POST /v1/pdf/to-image.
 type pdfToImageRequest struct {
 	Source       fileRef   `json:"source"`
@@ -102,9 +122,38 @@ type pdfMergeRequest struct {
 	Output  outputRef `json:"output"`
 }
 
+// pdfSplitRequest is the body of POST /v1/pdf/split. page_ranges and every_n
+// are mutually exclusive — exactly one mode must be set.
+type pdfSplitRequest struct {
+	Source     fileRef     `json:"source"`
+	PageRanges []pageRange `json:"page_ranges"`
+	EveryN     int         `json:"every_n"`
+	Output     outputRef   `json:"output"` // Directory is where the split files land
+}
+
 // jobResponse is the body of 202 from any async POST endpoint.
 type jobResponse struct {
 	JobID string `json:"job_id"`
+}
+
+// jobSummary is the JSON shape of one job — used both in the GET /v1/jobs
+// list and in each GET /v1/jobs/events SSE frame.
+type jobSummary struct {
+	JobID       string         `json:"job_id"`
+	Tool        string         `json:"tool"`
+	Action      string         `json:"action"`
+	StartedAt   int64          `json:"started_unix_ms,omitempty"`
+	Status      string         `json:"status"` // queued|running|done|failed
+	Fraction    float64        `json:"fraction,omitempty"`
+	CurrentItem string         `json:"current_item,omitempty"`
+	Message     string         `json:"message,omitempty"`
+	Completed   bool           `json:"completed"`
+	Error       *errorEnvelope `json:"error,omitempty"`
+}
+
+// jobsResponse is the body of 200 from GET /v1/jobs.
+type jobsResponse struct {
+	Jobs []jobSummary `json:"jobs"`
 }
 
 // progressEvent is the JSON shape written into each SSE data: frame.
@@ -121,6 +170,14 @@ type progressEvent struct {
 	Message     string         `json:"message,omitempty"`
 	Completed   bool           `json:"completed"`
 	Error       *errorEnvelope `json:"error,omitempty"`
+}
+
+// healthResponse is the body of 200 from GET /v1/health.
+type healthResponse struct {
+	Version        string   `json:"version"`
+	UptimeSeconds  int64    `json:"uptime_seconds"`
+	Transports     []string `json:"transports"`
+	ToolsAvailable []string `json:"tools_available"`
 }
 
 // sysdepResult mirrors sysdep.Result for the wire.

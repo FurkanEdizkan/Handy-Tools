@@ -15,7 +15,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Config is the persisted user settings tree.
@@ -35,9 +36,15 @@ type Theme struct {
 	Accent     string `yaml:"accent"     json:"accent"`
 }
 
+// Mascot configures the companion sprite. Style selects which character is
+// drawn — it is not a rendering-detail switch (there is no "minimal"/"full"
+// variant): the two values are the two characters, "wrenly" (the orange panda,
+// default) and "hopper" (the lilac rabbit). The legacy value "classic" and any
+// unrecognized value are treated as "wrenly" by the UI, so old configs keep
+// working.
 type Mascot struct {
 	Enabled bool   `yaml:"enabled" json:"enabled"`
-	Style   string `yaml:"style"   json:"style"` // "wrenly" (default)
+	Style   string `yaml:"style"   json:"style"` // "wrenly" (default) | "hopper"
 }
 
 type Archive struct {
@@ -128,67 +135,35 @@ func Save(c Config) (string, error) {
 	return path, os.Rename(tmp.Name(), path)
 }
 
-// loadFile reads YAML using a tiny hand-rolled parser to avoid pulling in
-// a yaml dependency for Phase 5. We only need flat scalar keys plus the
-// `recent:` list, which is enough until we adopt a real yaml lib.
+// loadFile reads and decodes the YAML config at path. It starts from
+// Defaults() and unmarshals over it, so a partial file leaves every absent
+// field at its default value.
 func loadFile(path string) (Config, error) {
 	cfg := Defaults()
-	f, err := os.Open(path) //nolint:gosec
+	body, err := os.ReadFile(path) //nolint:gosec
 	if err != nil {
 		return cfg, err
 	}
-	defer f.Close()
-	body, err := io.ReadAll(f)
-	if err != nil {
-		return cfg, err
-	}
-	if err := decodeMinimalYAML(body, &cfg); err != nil {
+	if err := decode(body, &cfg); err != nil {
 		return cfg, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return cfg, nil
 }
 
-// writeYAML emits the tiny YAML dialect that decodeMinimalYAML can read.
-func writeYAML(w io.Writer, c Config) error {
-	out := &strings.Builder{}
-	fmt.Fprintf(out, "theme:\n  name: %s\n  background: %s\n  accent: %s\n",
-		yamlString(c.Theme.Name), yamlString(c.Theme.Background), yamlString(c.Theme.Accent))
-	fmt.Fprintf(out, "mascot:\n  enabled: %t\n  style: %s\n",
-		c.Mascot.Enabled, yamlString(c.Mascot.Style))
-	fmt.Fprintf(out, "archive:\n  auto_extract_multi_part: %t\n  overwrite_by_default: %t\n  default_destination: %s\n",
-		c.Archive.AutoExtractMultiPart, c.Archive.OverwriteByDefault, yamlString(c.Archive.DefaultDestination))
-	fmt.Fprintf(out, "image:\n  default_jpeg_quality: %d\n  strip_metadata: %t\n",
-		c.Image.DefaultJPEGQuality, c.Image.StripMetadata)
-	fmt.Fprintf(out, "pdf:\n  default_dpi: %d\n", c.PDF.DefaultDPI)
-	fmt.Fprintf(out, "server:\n  listen: %s\n  http_listen: %s\n",
-		yamlString(c.Server.Listen), yamlString(c.Server.HTTPListen))
-	if len(c.Server.AllowRoots) > 0 {
-		out.WriteString("  allow_roots:\n")
-		for _, r := range c.Server.AllowRoots {
-			fmt.Fprintf(out, "    - %s\n", yamlString(r))
-		}
-	} else {
-		out.WriteString("  allow_roots: []\n")
-	}
-	if len(c.Recent) > 0 {
-		out.WriteString("recent:\n")
-		for _, r := range c.Recent {
-			fmt.Fprintf(out, "  - %s\n", yamlString(r))
-		}
-	} else {
-		out.WriteString("recent: []\n")
-	}
-	_, err := io.WriteString(w, out.String())
-	return err
+// decode unmarshals YAML into cfg. Keys absent from the document keep their
+// existing values, which is what lets partial config files round-trip safely.
+// Unknown keys are ignored for forward compatibility.
+func decode(body []byte, cfg *Config) error {
+	return yaml.Unmarshal(body, cfg)
 }
 
-func yamlString(s string) string {
-	if s == "" {
-		return `""`
+// writeYAML serializes c as YAML. Field order and key names come from the
+// `yaml:` struct tags on Config.
+func writeYAML(w io.Writer, c Config) error {
+	body, err := yaml.Marshal(c)
+	if err != nil {
+		return err
 	}
-	if strings.ContainsAny(s, ":#\n\"") {
-		// crude but sufficient quoting
-		return `"` + strings.ReplaceAll(s, `"`, `\"`) + `"`
-	}
-	return s
+	_, err = w.Write(body)
+	return err
 }

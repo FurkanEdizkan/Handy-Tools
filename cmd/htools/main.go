@@ -9,6 +9,7 @@ import (
 
 	"github.com/furkandedizkan/handy-tools/internal/buildinfo"
 	"github.com/furkandedizkan/handy-tools/internal/config"
+	"github.com/furkandedizkan/handy-tools/internal/queue"
 	"github.com/furkandedizkan/handy-tools/internal/ui"
 )
 
@@ -28,7 +29,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "config: ", err)
 		os.Exit(1)
 	}
-	prog := tea.NewProgram(ui.New(cfg), tea.WithAltScreen())
+	prog := tea.NewProgram(ui.New(cfg, queue.New()), tea.WithAltScreen())
 	if _, err := prog.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

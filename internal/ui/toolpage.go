@@ -9,11 +9,15 @@
 package ui
 
 import (
+	"fmt"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/furkandedizkan/handy-tools/internal/tools/sysdep"
 	"github.com/furkandedizkan/handy-tools/internal/ui/theme"
 )
 
@@ -36,10 +40,23 @@ const (
 type fileItem struct {
 	ID     string
 	Name   string
+	Path   string // absolute path — set for files the user typed in; empty for demo rows
 	From   string // source format display ("PNG", "JPEG", "7z (multi-part)" …)
 	Target string // current target format ("JPEG", "WebP", …) — image mode only
 	Size   string
 }
+
+// captureKind tracks which text field, if any, is currently swallowing
+// keystrokes. While capture != captureNone every rune key edits captureBuf
+// instead of triggering a tool-page shortcut, and the router forwards keys
+// straight here (see Model.Update).
+type captureKind int
+
+const (
+	captureNone   captureKind = iota
+	capturePath               // typing a source-file path into the dropzone
+	captureOutput             // editing the custom output-destination path
+)
 
 // archiveMode is the inner Pack/Extract toggle inside the Archive tool page.
 type archiveMode int
@@ -105,6 +122,10 @@ type toolPage struct {
 	out        outDest
 	customPath string
 
+	// text capture (real file input / editable custom path)
+	capture    captureKind
+	captureBuf string
+
 	// options
 	quality          int
 	overwrite        bool
@@ -112,6 +133,10 @@ type toolPage struct {
 	recurse          bool
 	compressionLevel int
 	dpi              int
+	autoMultiPart    bool // archive-extract: accept multi-part without a prompt
+	pdfEveryN        int  // pdf-split: pages per output file
+	pdfJPEG          bool // pdf-render: JPEG output (false = PNG)
+	pdfLayout        bool // pdf-text: preserve physical layout
 }
 
 // newToolPage builds a populated page for the given tool id.
@@ -128,6 +153,7 @@ func newToolPage(s theme.Styles, t tool) *toolPage {
 		recurse:          true,
 		compressionLevel: 6,
 		dpi:              150,
+		pdfEveryN:        1,
 		focusKind:        focusInput,
 	}
 	if t.mode == modeExtractArchive {
@@ -181,9 +207,29 @@ func (p *toolPage) Update(msg tea.Msg) (*toolPage, tea.Cmd) {
 	if !ok {
 		return p, nil
 	}
+	// The Doctor page is read-only: it has no focusable rows, no Run job.
+	// Only Back (esc) and a PATH re-scan (r) apply.
+	if p.tool.mode == modeDoctor {
+		switch k.String() {
+		case "esc":
+			return p, func() tea.Msg { return GoHome{} }
+		case "r":
+			sysdep.Reset() // bust the cache so the next render re-probes PATH
+		}
+		return p, nil
+	}
+	// While a text field is open, every key edits it — shortcuts are off.
+	if p.capture != captureNone {
+		p.updateCapture(k)
+		return p, nil
+	}
 	switch k.String() {
 	case "esc":
 		return p, func() tea.Msg { return GoHome{} }
+	case "b":
+		// Open the path-entry field so the user can add a real file.
+		p.focusKind = focusInput
+		p.capture, p.captureBuf = capturePath, ""
 	case "tab":
 		p.cycleFocus(+1)
 	case "shift+tab":
@@ -207,6 +253,11 @@ func (p *toolPage) Update(msg tea.Msg) (*toolPage, tea.Cmd) {
 			return p, p.runCmd()
 		}
 		p.toggleAtFocus()
+		// Enter on the Custom output row selects it and opens its path
+		// field for editing in one step.
+		if p.focusKind == focusOutDest && p.focusIdx == 2 {
+			p.capture, p.captureBuf = captureOutput, p.customPath
+		}
 	case "+", "=", "right", "l":
 		p.adjustOption(+1)
 	case "-", "_", "left", "h":
@@ -218,26 +269,82 @@ func (p *toolPage) Update(msg tea.Msg) (*toolPage, tea.Cmd) {
 }
 
 func (p *toolPage) runCmd() tea.Cmd {
-	files := append([]fileItem(nil), p.files...)
-	summary := p.summary()
-	tool := p.tool
-	archive := p.archive
-	archiveOut := p.archiveOut
-	pdfop := p.pdfop
-	outMode := p.out
-	customPath := p.customPath
-	return func() tea.Msg {
-		return RunJob{
-			Tool:        tool,
-			Files:       files,
-			Summary:     summary,
-			ArchiveMode: archive,
-			ArchiveOut:  archiveOut,
-			PDFOp:       pdfop,
-			Out:         outMode,
-			CustomPath:  customPath,
+	job := RunJob{
+		Tool:        p.tool,
+		Files:       append([]fileItem(nil), p.files...),
+		Summary:     p.summary(),
+		ArchiveMode: p.archive,
+		ArchiveOut:  p.archiveOut,
+		PDFOp:       p.pdfop,
+		Out:         p.out,
+		CustomPath:  p.customPath,
+
+		Quality:          p.quality,
+		CompressionLevel: p.compressionLevel,
+		DPI:              p.dpi,
+		EveryN:           p.pdfEveryN,
+		Overwrite:        p.overwrite,
+		AutoMultiPart:    p.autoMultiPart,
+		PDFJpeg:          p.pdfJPEG,
+		PDFLayout:        p.pdfLayout,
+	}
+	return func() tea.Msg { return job }
+}
+
+// capturingText reports whether a text field is open. The router checks this
+// to forward every key straight to the page (so a typed path isn't read as a
+// shortcut), mirroring how the settings popover swallows keys.
+func (p *toolPage) capturingText() bool { return p.capture != captureNone }
+
+// updateCapture edits the open text buffer. Enter commits, Esc cancels;
+// otherwise printable runes append and Backspace / Ctrl+U trim.
+func (p *toolPage) updateCapture(k tea.KeyMsg) {
+	switch k.Type {
+	case tea.KeyEsc:
+		p.capture, p.captureBuf = captureNone, ""
+	case tea.KeyEnter:
+		p.commitCapture()
+	case tea.KeyBackspace:
+		if r := []rune(p.captureBuf); len(r) > 0 {
+			p.captureBuf = string(r[:len(r)-1])
+		}
+	case tea.KeyCtrlU:
+		p.captureBuf = ""
+	case tea.KeySpace:
+		p.captureBuf += " "
+	case tea.KeyRunes:
+		p.captureBuf += string(k.Runes)
+	}
+}
+
+// commitCapture applies the typed buffer: capturePath appends a real file row,
+// captureOutput updates the custom output path. An empty buffer is a no-op.
+func (p *toolPage) commitCapture() {
+	switch p.capture {
+	case capturePath:
+		if raw := strings.TrimSpace(p.captureBuf); raw != "" {
+			abs := raw
+			if a, err := filepath.Abs(raw); err == nil {
+				abs = a
+			}
+			name := filepath.Base(abs)
+			item := fileItem{
+				ID:   fmt.Sprintf("u%d", len(p.files)+1),
+				Name: name,
+				Path: abs,
+				From: strings.ToUpper(strings.TrimPrefix(filepath.Ext(name), ".")),
+			}
+			if p.tool.mode == modeImage {
+				item.Target = p.defaultFmt
+			}
+			p.files = append(p.files, item)
+		}
+	case captureOutput:
+		if v := strings.TrimSpace(p.captureBuf); v != "" {
+			p.customPath = v
 		}
 	}
+	p.capture, p.captureBuf = captureNone, ""
 }
 
 // cycleFocus walks the focus across the visible sections.
@@ -270,8 +377,10 @@ func (p *toolPage) cycleFocus(dir int) {
 		if dir > 0 {
 			if p.focusIdx < 2 {
 				p.focusIdx++
-			} else {
+			} else if p.optionCount() > 0 {
 				p.focusKind, p.focusIdx = focusOptions, 0
+			} else {
+				p.focusKind = focusRun // modes with no options (PDF merge)
 			}
 		} else {
 			if p.focusIdx > 0 {
@@ -299,7 +408,11 @@ func (p *toolPage) cycleFocus(dir int) {
 		}
 	case focusRun:
 		if dir < 0 {
-			p.focusKind, p.focusIdx = focusOptions, p.optionCount()-1
+			if n := p.optionCount(); n > 0 {
+				p.focusKind, p.focusIdx = focusOptions, n-1
+			} else {
+				p.focusKind, p.focusIdx = focusOutDest, 2
+			}
 		}
 	}
 }
@@ -310,9 +423,19 @@ func (p *toolPage) optionCount() int {
 	case modeImage:
 		return 4
 	case modePackArchive, modeExtractArchive:
-		return 4
+		if p.archive == archivePack {
+			return 4
+		}
+		return 2 // extract: overwrite + auto-multi-part
 	case modePDF:
-		return 2
+		switch p.pdfop {
+		case pdfMerge:
+			return 0 // output is <dest>/merged.pdf — no options
+		case pdfSplit, pdfText:
+			return 1
+		case pdfRender:
+			return 2
+		}
 	}
 	return 0
 }
@@ -356,6 +479,7 @@ func (p *toolPage) cyclePackExtract() {
 		p.archive = archivePack
 	}
 	p.files = p.sampleFilesForArchive()
+	p.resetFocusToInput() // option-row count differs between pack and extract
 }
 
 func (p *toolPage) sampleFilesForArchive() []fileItem {
@@ -377,6 +501,14 @@ func (p *toolPage) cyclePDFOp() {
 		return
 	}
 	p.pdfop = pdfOp((int(p.pdfop) + 1) % 4)
+	p.resetFocusToInput() // option-row count differs between PDF operations
+}
+
+// resetFocusToInput parks focus on the dropzone. Called when an action
+// (pack/extract toggle, PDF-op cycle) changes how many option rows exist, so
+// a stale focusIdx can't point past the new option count.
+func (p *toolPage) resetFocusToInput() {
+	p.focusKind, p.focusIdx = focusInput, 0
 }
 
 // toggleAtFocus is the SPACE/ENTER action on any focused row.
@@ -401,15 +533,34 @@ func (p *toolPage) toggleOption() {
 			p.recurse = !p.recurse
 		}
 	case modePackArchive, modeExtractArchive:
-		// slider on row 0, three toggles on rows 1..3
-		if p.focusIdx == 1 {
-			p.overwrite = !p.overwrite
+		if p.archive == archivePack {
+			// slider on row 0, three toggles on rows 1..3
+			switch p.focusIdx {
+			case 1:
+				p.overwrite = !p.overwrite
+			case 2:
+				p.preserveMtime = !p.preserveMtime
+			case 3:
+				p.recurse = !p.recurse
+			}
+		} else {
+			switch p.focusIdx {
+			case 0:
+				p.overwrite = !p.overwrite
+			case 1:
+				p.autoMultiPart = !p.autoMultiPart
+			}
 		}
-		if p.focusIdx == 2 {
-			p.preserveMtime = !p.preserveMtime
-		}
-		if p.focusIdx == 3 {
-			p.recurse = !p.recurse
+	case modePDF:
+		switch p.pdfop {
+		case pdfRender:
+			if p.focusIdx == 1 {
+				p.pdfJPEG = !p.pdfJPEG
+			}
+		case pdfText:
+			if p.focusIdx == 0 {
+				p.pdfLayout = !p.pdfLayout
+			}
 		}
 	}
 }
@@ -428,8 +579,11 @@ func (p *toolPage) adjustOption(dir int) {
 			p.compressionLevel = clamp(p.compressionLevel+dir, 0, 9)
 		}
 	case modePDF:
-		if p.focusIdx == 0 && p.pdfop == pdfRender {
+		switch {
+		case p.pdfop == pdfRender && p.focusIdx == 0:
 			p.dpi = clamp(p.dpi+dir*12, 72, 600)
+		case p.pdfop == pdfSplit && p.focusIdx == 0:
+			p.pdfEveryN = clamp(p.pdfEveryN+dir, 1, 50)
 		}
 	}
 }
@@ -606,6 +760,22 @@ func (p *toolPage) renderInput() string {
 		lipgloss.JoinHorizontal(lipgloss.Top, browse, " ", browseFolder),
 		helper,
 	)
+	// While the path field is open the dropzone becomes a text input.
+	if p.capture == capturePath {
+		field := lipgloss.NewStyle().
+			Foreground(s.P.Text).
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(s.P.Accent).
+			Padding(0, 1).
+			Width(intMax(20, width-8)).
+			Render(p.captureBuf + "█")
+		body = lipgloss.JoinVertical(lipgloss.Center,
+			lipgloss.NewStyle().Foreground(s.P.Text).Bold(true).Render("Type a file or folder path"),
+			"",
+			field,
+			s.Dim.Render("enter to add · esc to cancel"),
+		)
+	}
 	return head + "\n" + box.Render(body)
 }
 
@@ -699,6 +869,19 @@ func (p *toolPage) renderFileRow(i int, f fileItem, width int) string {
 	return line
 }
 
+// customPathField renders the custom output path's bordered box — showing the
+// live edit buffer with a cursor while captureOutput is active.
+func (p *toolPage) customPathField() string {
+	s := p.styles
+	val, bf := p.customPath, s.P.Border
+	if p.capture == captureOutput {
+		val, bf = p.captureBuf+"█", s.P.Accent
+	}
+	return lipgloss.NewStyle().Foreground(s.P.Text).
+		Border(lipgloss.NormalBorder()).BorderForeground(bf).
+		Padding(0, 1).Render(val)
+}
+
 func (p *toolPage) renderOutDest() string {
 	s := p.styles
 	width := p.width - 4
@@ -741,9 +924,7 @@ func (p *toolPage) renderOutDest() string {
 		mk(2, p.out == outCustom,
 			lipgloss.NewStyle().Foreground(s.P.Text).Render("Custom path")+
 				s.Dim.Render(" — ")+
-				lipgloss.NewStyle().Foreground(s.P.Text).
-					Border(lipgloss.NormalBorder()).BorderForeground(s.P.Border).
-					Padding(0, 1).Render(p.customPath),
+				p.customPathField(),
 			""),
 	}
 	return strings.Join(rows, "\n")
@@ -764,7 +945,7 @@ func (p *toolPage) renderOptions() string {
 	switch p.tool.mode {
 	case modeImage:
 		rows = append(rows,
-			p.optSlider(0, "JPEG/WebP quality", p.quality, 50, 100),
+			p.optSlider("JPEG/WebP quality", p.quality, 50, 100),
 			p.optToggle(1, "Overwrite existing", p.overwrite),
 			p.optToggle(2, "Preserve mtime", p.preserveMtime),
 			p.optToggle(3, "Recurse subfolders", p.recurse),
@@ -772,49 +953,40 @@ func (p *toolPage) renderOptions() string {
 	case modePackArchive, modeExtractArchive:
 		if p.archive == archivePack {
 			rows = append(rows,
-				p.optSlider(0, "Compression level", p.compressionLevel, 0, 9),
+				p.optSlider("Compression level", p.compressionLevel, 0, 9),
 				p.optToggle(1, "Follow symlinks", p.overwrite),
 				p.optToggle(2, "Preserve permissions", p.preserveMtime),
 				p.optToggle(3, "Recurse into folders", p.recurse),
 			)
 		} else {
 			rows = append(rows,
-				p.optText(0, "On conflict", "ask"),
-				p.optToggle(1, "Verify checksums", true),
-				p.optToggle(2, "Strip top-level folder", false),
-				p.optToggle(3, "Preserve permissions", true),
+				p.optToggle(0, "Overwrite existing files", p.overwrite),
+				p.optToggle(1, "Auto-accept multi-part archives", p.autoMultiPart),
 			)
 		}
 	case modePDF:
 		switch p.pdfop {
 		case pdfMerge:
-			rows = append(rows,
-				p.optText(0, "Output filename", "combined.pdf"),
-				p.optText(1, "Preserve metadata from", "first doc"),
-			)
+			rows = append(rows, "  "+s.Dim.Render("no options — merges into merged.pdf"))
 		case pdfSplit:
-			rows = append(rows,
-				p.optText(0, "Pages per split", "1"),
-				p.optText(1, "Page ranges", "all"),
-			)
+			rows = append(rows, p.optSlider("Pages per split file", p.pdfEveryN, 1, 50))
 		case pdfRender:
 			rows = append(rows,
-				p.optSlider(0, "DPI", p.dpi, 72, 600),
-				p.optText(1, "Image format", "PNG"),
+				p.optSlider("DPI", p.dpi, 72, 600),
+				p.optToggle(1, "JPEG output (off = PNG)", p.pdfJPEG),
 			)
 		case pdfText:
-			rows = append(rows,
-				p.optText(0, "Layout", "reading"),
-				p.optText(1, "Pages", "all"),
-			)
+			rows = append(rows, p.optToggle(0, "Preserve physical layout", p.pdfLayout))
 		}
 	}
 	return strings.Join(rows, "\n")
 }
 
-func (p *toolPage) optSlider(idx int, label string, val, lo, hi int) string {
+// optSlider renders the focus-row-0 numeric option (every mode puts its one
+// slider — quality / compression / DPI / pages-per-split — on row 0).
+func (p *toolPage) optSlider(label string, val, lo, hi int) string {
 	s := p.styles
-	focused := p.focusKind == focusOptions && p.focusIdx == idx
+	focused := p.focusKind == focusOptions && p.focusIdx == 0
 	pct := 0
 	if hi > lo {
 		pct = ((val - lo) * 100) / (hi - lo)
@@ -847,21 +1019,6 @@ func (p *toolPage) optToggle(idx int, label string, on bool) string {
 	return left + "    " + box
 }
 
-func (p *toolPage) optText(idx int, label, val string) string {
-	s := p.styles
-	focused := p.focusKind == focusOptions && p.focusIdx == idx
-	left := s.Dim.Render(label)
-	right := lipgloss.NewStyle().Foreground(s.P.Text).
-		Border(lipgloss.NormalBorder()).BorderForeground(s.P.Border).
-		Padding(0, 1).Render(val)
-	if focused {
-		left = s.Accent.Bold(true).Render("▸ ") + left
-	} else {
-		left = "  " + left
-	}
-	return left + "    " + right
-}
-
 func (p *toolPage) renderRunRow() string {
 	s := p.styles
 	summary := s.Dim.Render("ready: ") +
@@ -885,21 +1042,16 @@ func (p *toolPage) renderRunRow() string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, summary, "    ", btn, hint)
 }
 
+// renderDoctor shows live system-dependency state. It reads sysdep.All() on
+// every render, so a press of `r` (which calls sysdep.Reset()) re-probes PATH
+// without restarting the TUI. The same sysdep.All() data drives the
+// `htools doctor` subcommand, so both surfaces always agree.
 func (p *toolPage) renderDoctor() string {
 	s := p.styles
-	deps := []struct {
-		name, feature string
-		ok            bool
-	}{
-		{"unrar", "RAR (incl. multi-part)", true},
-		{"7z", "7z multi-part", true},
-		{"pdftoppm", "PDF → image", true},
-		{"pdftotext", "PDF → text", true},
-		{"magick", "HEIC images", false},
-	}
+	results := sysdep.All()
 	found := 0
-	for _, d := range deps {
-		if d.ok {
+	for _, r := range results {
+		if r.Found {
 			found++
 		}
 	}
@@ -909,28 +1061,36 @@ func (p *toolPage) renderDoctor() string {
 		lipgloss.JoinHorizontal(lipgloss.Top,
 			s.Section.Render("SYSTEM DEPENDENCIES"),
 			"  ",
-			s.Dim.Render(itoa(found)+" / "+itoa(len(deps))+" found"),
+			s.Dim.Render(itoa(found)+" / "+itoa(len(results))+" found"),
 		),
+		"",
 	}
-	for _, d := range deps {
-		icon := s.OK.Render("●")
+	name := lipgloss.NewStyle().Width(12).Foreground(s.P.Text).Bold(true)
+	for _, r := range results {
+		// Main row stays short (glyph · name · state) so it fits the
+		// right column at minimum width; detail lines wrap below.
+		icon := s.OK.Render("✓")
 		state := s.OK.Render("FOUND")
-		if !d.ok {
-			icon = s.Warn.Render("○")
+		if !r.Found {
+			icon = s.Warn.Render("✗")
 			state = s.Warn.Render("MISSING")
 		}
 		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top,
-			"  ", icon, "  ",
-			lipgloss.NewStyle().Width(12).Foreground(s.P.Text).Bold(true).Render(d.name),
-			s.Dim.Render(d.feature),
-			"   ", state,
+			"  ", icon, "  ", name.Render(r.Tool.Name), "   ", state,
 		))
+		rows = append(rows, s.Dim.Render("       "+r.Tool.Description))
+		for _, feat := range r.Tool.Features {
+			rows = append(rows, s.Dim.Render("       · "+feat))
+		}
+		if !r.Found {
+			if hint := r.Tool.InstallHint[runtime.GOOS]; hint != "" {
+				rows = append(rows, s.Dim.Render("       install: ")+
+					lipgloss.NewStyle().Foreground(s.P.Text).Render(hint))
+			}
+		}
 	}
 	rows = append(rows, "",
-		s.Section.Render("INSTALL HINTS"),
-		s.Dim.Render("  macOS:  ")+lipgloss.NewStyle().Foreground(s.P.Text).Render("brew install imagemagick"),
-		s.Dim.Render("  Debian: ")+lipgloss.NewStyle().Foreground(s.P.Text).Render("apt install imagemagick"),
-		s.Dim.Render("  Arch:   ")+lipgloss.NewStyle().Foreground(s.P.Text).Render("pacman -S imagemagick"),
+		s.Dim.Render("  press ")+s.KbdChip.Render("r")+s.Dim.Render(" to re-scan PATH"),
 	)
 	return strings.Join(rows, "\n")
 }
