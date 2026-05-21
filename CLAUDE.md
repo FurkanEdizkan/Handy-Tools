@@ -26,7 +26,7 @@ make cover      # coverage.out + coverage.html
 
 Run a single test: `go test -race -run TestName ./internal/tools/archive`.
 
-CI uses Go 1.22 and `golangci-lint v1.59` — match locally or lint output may diverge.
+CI uses Go 1.25 and `golangci-lint v2.12.2` — match locally or lint output may diverge. The lint config (`.golangci.yml`) is golangci-lint v2 schema; `gofmt`/`goimports` are configured as v2 *formatters*.
 
 ## Generated code
 
@@ -86,7 +86,7 @@ Don't tag manually; the workflow owns the tag/release surface. When we eventuall
 
 CI ([ci.yml](.github/workflows/ci.yml)) is Linux-only and runs on every push/PR to `main` and `test` — no path filter, so required status checks always report (even on docs-only PRs):
 
-- `lint-go` — golangci-lint v1.59, runs `buf generate` first so generated code is in scope.
+- `lint-go` — golangci-lint v2.12.2, runs `buf generate` first so generated code is in scope.
 - `lint-proto` — `buf lint` against `api/proto/`.
 - `web-build` — installs/builds/tests the Svelte frontend, uploads the `web-dist` artifact.
 - `test-quick` — `go test -race` plus a 20-second fuzz pass over the config YAML decoder (`FuzzDecodeYAML`); consumes `web-dist`.

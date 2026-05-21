@@ -115,7 +115,7 @@ func (g *grpcArchiveServer) Inspect(ctx context.Context, req *handytoolsv1.Inspe
 		DetectedParts:         parts,
 		MissingParts:          ins.MissingParts,
 		UncompressedSizeBytes: ins.UncompressedSz,
-		EntryCount:            int32(ins.EntryCount),
+		EntryCount:            int32(ins.EntryCount), //nolint:gosec // G115: archive entry count is bounded by real archive contents, far below int32 max
 		RequiresPassword:      ins.RequiresPwd,
 		RequiresBinary:        ins.RequiresBinary,
 		BinaryAvailable:       ins.BinaryAvailable,

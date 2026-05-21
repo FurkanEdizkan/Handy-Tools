@@ -324,7 +324,7 @@ make lint        # golangci-lint + buf lint
 make cover       # coverage.out + coverage.html
 ```
 
-CI uses Go 1.22 and `golangci-lint v1.59` — match locally or lint output may
+CI uses Go 1.25 and `golangci-lint v2.12.2` — match locally or lint output may
 diverge.
 
 ## Releasing
