@@ -36,9 +36,15 @@ type Theme struct {
 	Accent     string `yaml:"accent"     json:"accent"`
 }
 
+// Mascot configures the companion sprite. Style selects which character is
+// drawn — it is not a rendering-detail switch (there is no "minimal"/"full"
+// variant): the two values are the two characters, "wrenly" (the orange panda,
+// default) and "hopper" (the lilac rabbit). The legacy value "classic" and any
+// unrecognized value are treated as "wrenly" by the UI, so old configs keep
+// working.
 type Mascot struct {
 	Enabled bool   `yaml:"enabled" json:"enabled"`
-	Style   string `yaml:"style"   json:"style"` // "wrenly" (default)
+	Style   string `yaml:"style"   json:"style"` // "wrenly" (default) | "hopper"
 }
 
 type Archive struct {

@@ -295,7 +295,7 @@ theme:
   name: forge        # forge (default), snow, ember
 mascot:
   enabled: true
-  style: wrenly
+  style: wrenly        # wrenly (default), hopper — selects the character
 image:
   default_jpeg_quality: 90
 pdf:
