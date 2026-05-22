@@ -21,6 +21,7 @@ import (
 	"github.com/furkandedizkan/handy-tools/internal/queue"
 	"github.com/furkandedizkan/handy-tools/internal/server"
 	"github.com/furkandedizkan/handy-tools/internal/tools"
+	"github.com/furkandedizkan/handy-tools/internal/upload"
 )
 
 // writeTinyPNG mirrors internal/tools/image/image_test.go's helper so the HTTP
@@ -46,15 +47,29 @@ func writeTinyPNG(t *testing.T, dir string) string {
 	return src
 }
 
-// newTestServer builds an HTTP server scoped to dir as the only allow-root.
-// The returned *httptest.Server uses its own goroutine and is cleaned up by
-// the test's t.Cleanup hook.
+// newTestServer builds an HTTP server scoped to dir as an allow-root, with an
+// upload Manager rooted at its own temp directory (also an allow-root so
+// staged files pass CheckPath). The returned *httptest.Server uses its own
+// goroutine and is cleaned up by the test's t.Cleanup hook.
 func newTestServer(t *testing.T, dir string) *httptest.Server {
 	t.Helper()
-	s := New(server.Options{AllowRoots: []string{dir}}, queue.New())
+	um := newTestUploadManager(t)
+	opts := server.Options{AllowRoots: []string{dir, um.Base}}
+	s := New(opts, queue.New(), um)
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)
 	return ts
+}
+
+// newTestUploadManager builds an upload.Manager rooted under a fresh temp dir,
+// with a 1 MiB body cap and a 1-hour TTL so the reaper never fires mid-test.
+func newTestUploadManager(t *testing.T) *upload.Manager {
+	t.Helper()
+	um, err := upload.NewManager(filepath.Join(t.TempDir(), "uploads"), 1<<20, time.Hour)
+	if err != nil {
+		t.Fatalf("upload.NewManager: %v", err)
+	}
+	return um
 }
 
 func TestSysdepEndpoint(t *testing.T) {
@@ -170,7 +185,7 @@ func TestImageConvertOutsideAllowRoots(t *testing.T) {
 	allow := t.TempDir()
 	src := writeTinyPNG(t, dir)
 
-	s := New(server.Options{AllowRoots: []string{allow}}, queue.New())
+	s := New(server.Options{AllowRoots: []string{allow}}, queue.New(), nil)
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)
 
@@ -371,7 +386,7 @@ func TestArchiveCompressOutsideAllowRoots(t *testing.T) {
 	allow := t.TempDir() // a sibling dir — the source below won't be permitted
 	src := writeTextFile(t, dir, "a.txt", "x")
 
-	s := New(server.Options{AllowRoots: []string{allow}}, queue.New())
+	s := New(server.Options{AllowRoots: []string{allow}}, queue.New(), nil)
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)
 

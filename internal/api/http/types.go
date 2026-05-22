@@ -136,6 +136,22 @@ type jobResponse struct {
 	JobID string `json:"job_id"`
 }
 
+// uploadedFile is one staged file in an uploadCreateResponse. Path is the
+// server-side absolute path the client passes back as a fileRef.path.
+type uploadedFile struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+// uploadCreateResponse is the body of 200 from POST /v1/uploads. The browser
+// feeds Files[].Path as tool sources and OutputDir as the tool output
+// directory, then GETs /v1/uploads/{upload_id}/download for the result.
+type uploadCreateResponse struct {
+	UploadID  string         `json:"upload_id"`
+	Files     []uploadedFile `json:"files"`
+	OutputDir string         `json:"output_dir"`
+}
+
 // jobSummary is the JSON shape of one job — used both in the GET /v1/jobs
 // list and in each GET /v1/jobs/events SSE frame.
 type jobSummary struct {
