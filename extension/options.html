@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Handy Tools — Settings</title>
+    <link rel="stylesheet" href="/src/popup/popup.css" />
+  </head>
+  <body class="options">
+    <h1>Handy Tools — Settings</h1>
+
+    <label class="field">
+      <span>htoolsd endpoint</span>
+      <input type="url" id="endpoint" placeholder="http://127.0.0.1:8080" />
+    </label>
+    <p class="hint">
+      Run the server with <code>htoolsd --http :8080</code>. A hosted
+      <code>https://</code> endpoint will prompt for permission when you save.
+    </p>
+
+    <div class="row">
+      <button id="save" class="run">Save</button>
+      <button id="check">Test connection</button>
+    </div>
+
+    <p id="result" class="result"></p>
+
+    <script type="module" src="/src/options/main.ts"></script>
+  </body>
+</html>

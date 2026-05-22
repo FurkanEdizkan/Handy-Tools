@@ -44,7 +44,10 @@ type Server struct {
 	// registered.
 	uploads *upload.Manager
 
-	mux       *http.ServeMux
+	mux *http.ServeMux
+	// handler is mux wrapped in the CORS middleware — the entry point both
+	// Serve and Handler hand out so cross-origin browser clients work.
+	handler   http.Handler
 	http      *http.Server
 	startedAt time.Time // captured in New(), reported by GET /v1/health
 }
@@ -71,17 +74,18 @@ func New(opts server.Options, q *queue.Queue, uploads *upload.Manager) *Server {
 	if spa, err := newSPAHandler(); err == nil {
 		s.mux.Handle("GET /", spa)
 	}
+	s.handler = corsMiddleware(s.mux, opts.CORSOrigins)
 	return s
 }
 
-// Handler exposes the underlying mux so tests can drive it via httptest.
-func (s *Server) Handler() http.Handler { return s.mux }
+// Handler exposes the CORS-wrapped handler so tests can drive it via httptest.
+func (s *Server) Handler() http.Handler { return s.handler }
 
 // Serve runs the HTTP server on the given listener. It blocks until Shutdown
 // is called or the listener returns an error.
 func (s *Server) Serve(lis net.Listener) error {
 	s.http = &http.Server{
-		Handler:           s.mux,
+		Handler:           s.handler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	if err := s.http.Serve(lis); err != nil && !errors.Is(err, http.ErrServerClosed) {

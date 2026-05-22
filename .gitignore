@@ -41,3 +41,8 @@ web/node_modules/
 # web/placeholder.html (sibling of dist/) and is embedded separately.
 web/dist/*
 !web/dist/.gitkeep
+
+# Chrome MV3 extension. Unlike web/dist, nothing embeds extension/dist into a
+# Go binary, so the whole directory is ignored — no .gitkeep needed.
+extension/node_modules/
+extension/dist/

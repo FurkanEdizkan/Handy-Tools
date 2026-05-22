@@ -34,6 +34,7 @@ func main() {
 	listen := flag.String("listen", "", "gRPC address to listen on (overrides config)")
 	httpListen := flag.String("http", "", "HTTP+SSE address to listen on (overrides config; empty = disabled)")
 	allow := flag.String("allow-roots", "", "comma-separated allow-list of filesystem roots; overrides config")
+	corsOrigins := flag.String("cors-origins", "", "comma-separated browser origins allowed cross-origin; overrides config")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 	if *showVersion {
@@ -102,7 +103,12 @@ func main() {
 		effectiveRoots = append(effectiveRoots, uploads.Base)
 	}
 
-	opts := server.Options{AllowRoots: effectiveRoots}
+	corsList := cfg.Server.CORSOrigins
+	if *corsOrigins != "" {
+		corsList = splitCSV(*corsOrigins)
+	}
+
+	opts := server.Options{AllowRoots: effectiveRoots, CORSOrigins: corsList}
 	// One shared queue drives both transports, so a job started over gRPC is
 	// visible to an HTTP/SSE subscriber and vice versa.
 	q := queue.New()

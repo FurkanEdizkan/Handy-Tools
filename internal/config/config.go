@@ -75,6 +75,12 @@ type Server struct {
 	UploadDir      string `yaml:"upload_dir"       json:"upload_dir"`
 	UploadMaxBytes int64  `yaml:"upload_max_bytes" json:"upload_max_bytes"`
 	UploadTTLSecs  int    `yaml:"upload_ttl_secs"  json:"upload_ttl_secs"`
+
+	// CORSOrigins lists the browser origins allowed to call the HTTP API
+	// cross-origin (the Chrome extension, a hosted web client). Empty -> a
+	// built-in safe default: localhost / 127.0.0.1 on any port plus any
+	// chrome-extension:// origin. A non-empty list replaces that default.
+	CORSOrigins []string `yaml:"cors_origins" json:"cors_origins"`
 }
 
 // Defaults returns a freshly-populated Config.
