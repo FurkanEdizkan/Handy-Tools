@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Dropzone, OptionRow, Toast, type RadioOption } from '../components';
+  import { Dropzone, OptionRow, Toast, Thumbnail, type RadioOption } from '../components';
   import { PDF_OPS, pdfFormReady, pdfSummary, type PdfOp } from './toolform';
   import { api } from '../api';
   import { isDesktop } from '../native';
@@ -104,6 +104,7 @@
         {#each files as name, i (name + i)}
           <li class="flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2">
             <span class="text-text-dim text-xs tabular-nums">{i + 1}</span>
+            <Thumbnail path={name} />
             <span class="flex-1 truncate text-sm">{name}</span>
             <button
               type="button"
