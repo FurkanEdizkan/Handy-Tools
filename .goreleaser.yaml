@@ -56,7 +56,14 @@ builds:
       - -s -w
 
 archives:
+  # htools + htoolsd ship on every linux/darwin × amd64/arch64 platform, so
+  # they go in the default archive. htools-gui is linux/amd64-only (CGO +
+  # webkit), so it gets its own archive — GoReleaser rejects a single archive
+  # whose binary count differs across platforms.
   - id: default
+    ids:
+      - htools
+      - htoolsd
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]
     format_overrides:
@@ -66,6 +73,15 @@ archives:
       - LICENSE
       - README.md
       - docs/**/*
+
+  - id: gui
+    ids:
+      - htools-gui
+    name_template: "{{ .ProjectName }}-gui_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    files:
+      - LICENSE
+      - README.md
 
 source:
   enabled: true
