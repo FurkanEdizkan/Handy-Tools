@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Dropzone, OptionRow, Toast, type RadioOption } from '../components';
+  import { Dropzone, OptionRow, Toast, Thumbnail, type RadioOption } from '../components';
   import { IMAGE_FORMATS, imageSummary, imageFormReady, type ImageFile } from './toolform';
   import { api, type ImageTargetFormat } from '../api';
   import { isDesktop } from '../native';
@@ -67,6 +67,7 @@
       <ul class="space-y-1.5">
         {#each files as f, i (f.name + i)}
           <li class="flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2">
+            <Thumbnail path={f.name} />
             <span class="flex-1 truncate text-sm">{f.name}</span>
             <select
               bind:value={f.target}
