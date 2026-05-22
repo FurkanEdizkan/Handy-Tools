@@ -8,7 +8,7 @@ Handy Tools is a single Go module that produces three binaries from one core:
 
 - `cmd/htools` — Bubble Tea TUI (`make tui` / `go run ./cmd/htools`)
 - `cmd/htoolsd` — gRPC + HTTP/SSE server exposing the same tools (`make serve` / `go run ./cmd/htoolsd`)
-- `cmd/htools-gui` — Wails v2 desktop app, gated behind the `wails` build tag (CGO + webkit2gtk, linux/amd64); without the tag a stub stands in so the other jobs stay CGO-free
+- `cmd/htools-gui` — Wails v2 desktop app (`make gui` / `make gui-build`), gated behind the `wails` build tag (CGO + webkit2gtk, linux/amd64); without the tag a stub stands in so the other jobs stay CGO-free. `make gui` also adds the `webkit2_41` tag when `pkg-config` finds webkit2gtk-4.1 (Ubuntu 24.04+), so one command builds against either webkit 4.0 or 4.1
 
 All three depend on `internal/tools/<feature>/` (image, archive, pdf), which is the **only** layer allowed to touch files, run external binaries, or know about formats. `internal/ui/` and `internal/server/` are thin adapters — never put tool logic in either. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -19,6 +19,7 @@ A fourth entry point, `cmd/snapshot`, is a developer-only helper that renders th
 ```sh
 make proto      # regenerate Go bindings into gen/ from api/proto (run once after clone)
 make build      # bin/htools + bin/htoolsd
+make gui        # build the web UI + run the Wails desktop app (needs GTK/webkit dev headers)
 make test       # go test -race -count=1 ./...
 make fuzz       # short fuzz over the config YAML decoder
 make lint       # golangci-lint + buf lint
@@ -47,9 +48,7 @@ Optional system binaries (`unrar`, `7z`, `pdftoppm`, `pdftotext`, `magick`) are 
 
 ## Server invariant: AllowRoots
 
-`htoolsd` starts without `server.allow_roots` (config or `--allow-roots` flag) **only** when HTTP is enabled — the browser-upload converter then provides a sandboxed, server-owned workspace root (see below). With HTTP disabled and no roots it still refuses to start. Every `FileRef.path` is run through `Options.CheckPath` before any tool is called. The default behavior on empty effective roots is **fail closed** (reject everything), not "serve cwd" — preserve this when editing [internal/server/server.go](internal/server/server.go).
-
-The browser-upload file converter ([internal/upload](internal/upload/upload.go)) stages multipart uploads into per-request temp workspaces under a base directory (`server.upload_dir`, default `{tmpdir}/handy-uploads`). `cmd/htoolsd` appends that base to the effective `AllowRoots` so staged files pass the same `CheckPath`; the HTTP layer exposes `POST /v1/uploads`, `GET /v1/uploads/{id}/download` and `DELETE /v1/uploads/{id}`, and a TTL reaper deletes abandoned workspaces. The desktop (Wails) build passes a `nil` upload Manager — it has native paths and needs no staging.
+`htoolsd` **refuses to start without `server.allow_roots`** (config or `--allow-roots` flag) — with no roots there is nothing it can safely act on. Every `FileRef.path` is run through `Options.CheckPath` before any tool is called. The default behavior on empty roots is **fail closed** (reject everything), not "serve cwd" — preserve this when editing [internal/server/server.go](internal/server/server.go). The desktop (Wails) build runs on the user's own machine and so passes `AllowRoots: ["/"]`; the TUI calls the tool packages directly and has no path sandbox at all.
 
 ## Config
 
@@ -99,7 +98,7 @@ There is no OS matrix while the project is pre-1.0; non-Linux coverage is releas
 
 ## Branding
 
-Display brand is **Handy Tools**. Binary names are `htools` and `htoolsd`. The proto package is `handytools.v1`. The companion mascot is **Wrenly** — an orange panda. The TUI renders Wrenly (or **Hopper**, the lilac rabbit alternate) as a 15×14 dot-grid sprite in [internal/ui/mascot/mascot.go](internal/ui/mascot/mascot.go); per-state expressions (idle / thinking / watching / stressed / tired / happy / worried) tint the fur and swap the eye glyph + a one-row overlay (thought dots, sparkles, sweat, huff marks). The brand mark on every non-TUI surface is the **same sprite** rendered through `mascot.Sprite(character)` with the design's plain glyphs (`●` fur/stripe, `○` cream, `▪` mouth) — `cmd/snapshot` writes the rendered art to [docs/brand/wrenly.txt](docs/brand/wrenly.txt) and [docs/brand/hopper.txt](docs/brand/hopper.txt), and those exact glyph lines are pasted into the [README.md](README.md) hero and the [install.sh](install.sh) banner. Don't hand-edit those blocks — re-run `go run ./cmd/snapshot` if the sprite changes. The vector form at [docs/brand/wrenly.svg](docs/brand/wrenly.svg) is the matching colored mark (rasterize to PNG for web/Chrome surfaces). The default theme `forge` is orange-and-black; `snow` (cyan) and `ember` (warm orange) remain as alternative palettes.
+Display brand is **Handy Tools**. Binary names are `htools` and `htoolsd`. The proto package is `handytools.v1`. The companion mascot is **Wrenly** — an orange panda. The TUI renders Wrenly (or **Hopper**, the lilac rabbit alternate) as a 15×14 dot-grid sprite in [internal/ui/mascot/mascot.go](internal/ui/mascot/mascot.go); per-state expressions (idle / thinking / watching / stressed / tired / happy / worried) tint the fur and swap the eye glyph + a one-row overlay (thought dots, sparkles, sweat, huff marks). The brand mark on every non-TUI surface is the **same sprite** rendered through `mascot.Sprite(character)` with the design's plain glyphs (`●` fur/stripe, `○` cream, `▪` mouth) — `cmd/snapshot` writes the rendered art to [docs/brand/wrenly.txt](docs/brand/wrenly.txt) and [docs/brand/hopper.txt](docs/brand/hopper.txt), and those exact glyph lines are pasted into the [README.md](README.md) hero and the [install.sh](install.sh) banner. Don't hand-edit those blocks — re-run `go run ./cmd/snapshot` if the sprite changes. The vector form at [docs/brand/wrenly.svg](docs/brand/wrenly.svg) is the matching colored mark (rasterize to PNG for web surfaces). The default theme `forge` is orange-and-black; `snow` (cyan) and `ember` (warm orange) remain as alternative palettes.
 
 ## TUI layout
 

@@ -2,14 +2,11 @@
  * run.ts — shared Run-button plumbing for the ToolPage forms.
  *
  * Running a tool needs real server-side filesystem paths. The Wails desktop
- * build supplies them directly via the native picker (#80/#81); a plain
- * browser has no paths, so resolveSources uploads the picked File blobs to a
- * server-side workspace (#191) and uses the staged paths it gets back. Either
- * way the existing /v1/* tool endpoints run unchanged.
+ * build supplies them directly via the native picker (#80/#81); resolveSources
+ * maps the picked files onto FileRef paths the /v1/* tool endpoints consume.
  */
 
-import { ApiError, api, type JobResponse } from '../api';
-import { isDesktop } from '../native';
+import { ApiError, type JobResponse } from '../api';
 import type { PickedFile } from './toolform';
 
 /** dirOf returns the directory component of an absolute path. */
@@ -72,34 +69,17 @@ export interface ResolvedSources {
   sources: ResolvedSource[];
   /** Server-side directory the tool should write its output into. */
   outputDir: string;
-  /** Set in browser mode — the upload workspace to download the result from. */
-  uploadId?: string;
 }
 
 /**
  * resolveSources turns the user's picked files into server-side paths a tool
- * endpoint can run against. In the desktop build the paths are already real;
- * in a browser the File blobs are uploaded and the staged paths are returned.
- * Throws ApiError if the upload fails.
+ * endpoint can run against. The Wails native picker hands back real absolute
+ * paths, so the mapping is direct.
  */
-export async function resolveSources(files: PickedFile[]): Promise<ResolvedSources> {
+export function resolveSources(files: PickedFile[]): ResolvedSources {
   if (files.length === 0) {
     throw new Error('no files selected');
   }
-  if (isDesktop()) {
-    const sources = files.map((f) => ({ name: f.name, path: f.path ?? f.name }));
-    return { sources, outputDir: dirOf(sources[0].path) };
-  }
-  const blobs = files
-    .map((f) => f.file)
-    .filter((f): f is File => f instanceof File);
-  if (blobs.length === 0) {
-    throw new Error('selected files have no uploadable content');
-  }
-  const resp = await api.uploadFiles(blobs);
-  return {
-    sources: resp.files.map((u) => ({ name: u.name, path: u.path })),
-    outputDir: resp.outputDir,
-    uploadId: resp.uploadId,
-  };
+  const sources = files.map((f) => ({ name: f.name, path: f.path ?? f.name }));
+  return { sources, outputDir: dirOf(sources[0].path) };
 }

@@ -4,7 +4,6 @@
     OptionRow,
     Toast,
     Thumbnail,
-    DownloadResult,
     type RadioOption,
   } from '../components';
   import {
@@ -24,10 +23,6 @@
   let toastVisible = $state(false);
   let toastMsg = $state('');
   let toastTone = $state<'info' | 'error'>('info');
-
-  // Set after a successful browser run so the result can be downloaded.
-  let lastUploadId = $state('');
-  let lastJobIds = $state<string[]>([]);
 
   // Per-operation options.
   let splitEvery = $state(10); // Split: start a new file every N pages.
@@ -55,15 +50,15 @@
     files = files.filter((_, i) => i !== index);
   }
 
-  // The chosen PDF operation maps to one job; in a browser the documents are
-  // uploaded first. Output lands in resolved.outputDir.
+  // The chosen PDF operation maps to one job; output lands in
+  // resolved.outputDir.
   async function run(): Promise<void> {
     if (!ready) return;
     let resolved;
     try {
-      resolved = await resolveSources(files);
+      resolved = resolveSources(files);
     } catch (e) {
-      toastMsg = e instanceof ApiError ? e.message : 'Upload failed.';
+      toastMsg = e instanceof ApiError ? e.message : 'Could not start the job.';
       toastTone = 'error';
       toastVisible = true;
       return;
@@ -104,10 +99,6 @@
     toastMsg = outcome.message;
     toastTone = outcome.ok ? 'info' : 'error';
     toastVisible = true;
-    if (outcome.ok && resolved.uploadId) {
-      lastUploadId = resolved.uploadId;
-      lastJobIds = outcome.jobIds;
-    }
   }
 </script>
 
@@ -118,7 +109,6 @@
   </section>
 
   <Dropzone
-    accept="application/pdf,.pdf"
     label="Drop PDF files here"
     hint="or click to browse — PDFs only"
     onfiles={addFiles}
@@ -133,7 +123,7 @@
         {#each files as f, i (f.name + i)}
           <li class="flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2">
             <span class="text-text-dim text-xs tabular-nums">{i + 1}</span>
-            <Thumbnail path={f.path} file={f.file} />
+            <Thumbnail path={f.path} />
             <span class="flex-1 truncate text-sm">{f.name}</span>
             <button
               type="button"
@@ -172,12 +162,6 @@
       onclick={run}
     >Run</button>
   </div>
-
-  {#if lastUploadId}
-    <div class="flex justify-end">
-      <DownloadResult uploadId={lastUploadId} jobIds={lastJobIds} />
-    </div>
-  {/if}
 </div>
 
 <Toast message={toastMsg} tone={toastTone} bind:visible={toastVisible} duration={2600} />

@@ -9,9 +9,6 @@ before:
     # Build the Svelte frontend so htoolsd and htools-gui embed the real SPA
     # (web/webfs.go go:embed) instead of the committed placeholder.
     - sh -c "cd web && npm ci && npm run build"
-    # Build the Chrome MV3 extension so its dist/ can be zipped as a release
-    # asset (see the `extension` archive below).
-    - sh -c "cd extension && npm ci && npm run build"
 
 builds:
   - id: htools
@@ -53,8 +50,13 @@ builds:
       - CGO_ENABLED=1
     goos: [linux]
     goarch: [amd64]
+    # `wails` selects the real app over the CGO-free stub; `production` is
+    # required by Wails itself — without it the binary aborts at startup with
+    # "will not build without the correct build tags". The release runner is
+    # ubuntu-22.04 (webkit2gtk-4.0), so no `webkit2_41` tag here.
     tags:
       - wails
+      - production
     ldflags:
       - -s -w
 
@@ -85,20 +87,6 @@ archives:
     files:
       - LICENSE
       - README.md
-
-  # The Chrome MV3 extension is static assets, not a Go binary, so it uses a
-  # build-less `meta` archive. `strip_parent` drops the fixed extension/dist/
-  # prefix while keeping the wildcard structure, so the zip is a directly
-  # loadable unpacked extension (manifest.json + icons/ + assets/ at the root).
-  - id: extension
-    meta: true
-    name_template: "{{ .ProjectName }}-extension_{{ .Version }}"
-    formats: [zip]
-    files:
-      - src: extension/dist/**/*
-        dst: .
-        strip_parent: true
-      - LICENSE
 
 source:
   enabled: true

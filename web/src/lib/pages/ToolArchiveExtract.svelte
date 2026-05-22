@@ -1,8 +1,7 @@
 <script lang="ts">
-  import { Dropzone, OptionRow, Toast, DownloadResult } from '../components';
+  import { Dropzone, OptionRow, Toast } from '../components';
   import { archiveExtractReady, archiveExtractSummary, type PickedFile } from './toolform';
   import { ApiError, api } from '../api';
-  import { isDesktop } from '../native';
   import { runJob, resolveSources } from './run';
 
   let source = $state('');
@@ -14,25 +13,8 @@
   let toastMsg = $state('');
   let toastTone = $state<'info' | 'error'>('info');
 
-  // Set after a successful browser run so the result can be downloaded.
-  let lastUploadId = $state('');
-  let lastJobIds = $state<string[]>([]);
-
-  // A plain browser has no destination folder to type — the extracted files
-  // land in the upload workspace and come back as a zip. The desktop build
-  // keeps the folder field.
-  const desktop = isDesktop();
-
-  let summary = $derived(
-    desktop
-      ? archiveExtractSummary(source, destination)
-      : source === ''
-        ? 'choose an archive to extract'
-        : `ready: extract ${source}`,
-  );
-  let ready = $derived(
-    desktop ? archiveExtractReady(source, destination) : source !== '',
-  );
+  let summary = $derived(archiveExtractSummary(source, destination));
+  let ready = $derived(archiveExtractReady(source, destination));
 
   function pickSource(dropped: File[] | string[]): void {
     const first = dropped[0];
@@ -50,9 +32,9 @@
     if (!ready || !sourcePicked) return;
     let resolved;
     try {
-      resolved = await resolveSources([sourcePicked]);
+      resolved = resolveSources([sourcePicked]);
     } catch (e) {
-      toastMsg = e instanceof ApiError ? e.message : 'Upload failed.';
+      toastMsg = e instanceof ApiError ? e.message : 'Could not start the job.';
       toastTone = 'error';
       toastVisible = true;
       return;
@@ -61,7 +43,7 @@
       api.archiveExtract({
         source: { path: resolved.sources[0].path },
         parts: [],
-        destinationDir: desktop ? destination : resolved.outputDir,
+        destinationDir: destination,
         password: '',
         overwrite,
         autoAcceptMultiPart: autoMultiPart,
@@ -70,10 +52,6 @@
     toastMsg = outcome.message;
     toastTone = outcome.ok ? 'info' : 'error';
     toastVisible = true;
-    if (outcome.ok && resolved.uploadId) {
-      lastUploadId = resolved.uploadId;
-      lastJobIds = outcome.jobIds;
-    }
   }
 </script>
 
@@ -92,20 +70,18 @@
     </p>
   {/if}
 
-  {#if desktop}
-    <section>
-      <h2 class="text-xs font-semibold uppercase tracking-wide text-text-dim mb-2">Destination</h2>
-      <label class="flex items-center gap-3 text-sm">
-        <span class="w-28 text-text-dim">Folder</span>
-        <input
-          bind:value={destination}
-          class="flex-1 rounded border border-border bg-surface text-sm px-2 py-1"
-          placeholder="/path/to/output"
-          aria-label="Destination folder"
-        />
-      </label>
-    </section>
-  {/if}
+  <section>
+    <h2 class="text-xs font-semibold uppercase tracking-wide text-text-dim mb-2">Destination</h2>
+    <label class="flex items-center gap-3 text-sm">
+      <span class="w-28 text-text-dim">Folder</span>
+      <input
+        bind:value={destination}
+        class="flex-1 rounded border border-border bg-surface text-sm px-2 py-1"
+        placeholder="/path/to/output"
+        aria-label="Destination folder"
+      />
+    </label>
+  </section>
 
   <section class="space-y-1">
     <h2 class="text-xs font-semibold uppercase tracking-wide text-text-dim mb-2">Options</h2>
@@ -127,12 +103,6 @@
       onclick={run}
     >Run</button>
   </div>
-
-  {#if lastUploadId}
-    <div class="flex justify-end">
-      <DownloadResult uploadId={lastUploadId} jobIds={lastJobIds} />
-    </div>
-  {/if}
 </div>
 
 <Toast message={toastMsg} tone={toastTone} bind:visible={toastVisible} duration={2600} />

@@ -21,9 +21,8 @@ import (
 func main() {
 	// A desktop app runs on the user's own machine, so there is no path
 	// sandbox: AllowRoots is "/" and the native file picker (#80) hands the
-	// tools real absolute paths the user already has access to. The desktop
-	// build needs no browser-upload staging, so the upload Manager is nil.
-	api := httpapi.New(server.Options{AllowRoots: []string{"/"}}, queue.New(), nil)
+	// tools real absolute paths the user already has access to.
+	api := httpapi.New(server.Options{AllowRoots: []string{"/"}}, queue.New())
 
 	app := newApp()
 	if err := wails.Run(&options.App{

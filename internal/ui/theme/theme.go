@@ -23,8 +23,7 @@ type Palette struct {
 
 // Forge is the default orange-on-black palette: black background, deep amber
 // accents, warm rust mascot fur. It matches the installer's ANSI banner and
-// the brand colors used by Handy Tools across surfaces (TUI, future web,
-// Chrome extension).
+// the brand colors used by Handy Tools across surfaces (TUI, web, desktop).
 var Forge = Palette{
 	Name:       "forge",
 	Background: lipgloss.Color("#0a0807"),

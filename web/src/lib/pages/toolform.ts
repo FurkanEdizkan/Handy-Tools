@@ -8,16 +8,15 @@ export const IMAGE_FORMATS = ['JPEG', 'PNG', 'WebP', 'GIF', 'BMP', 'TIFF'] as co
 export type ImageFormat = (typeof IMAGE_FORMATS)[number];
 
 /**
- * A file the user picked for a tool. The desktop build supplies a real
- * absolute `path`; a plain browser supplies the `File` object itself, which
- * the Run flow uploads (see resolveSources in run.ts). Exactly one of the two
- * is set; `name` is always the display label.
+ * A file the user picked for a tool. The native picker supplies a real
+ * absolute `path`; a drag-and-drop supplies the `File` object itself. `name`
+ * is always the display label.
  */
 export interface PickedFile {
   name: string;
-  /** Browser mode — the File blob to upload. */
+  /** Drag-and-drop — the dropped File blob. */
   file?: File;
-  /** Desktop mode — the native absolute path. */
+  /** Native picker — the absolute path. */
   path?: string;
 }
 
