@@ -4,8 +4,8 @@
  * stays snake_case — the client layer is responsible for the mapping at the
  * boundary (see client.ts).
  *
- * Keep this file hand-mirrored for now; a proto→TS generator is a later
- * optimization (#89 / Track D).
+ * Keep this file hand-mirrored for now; a proto→TS generator is a possible
+ * later optimization.
  */
 
 export interface FileRef {
@@ -113,6 +113,24 @@ export interface JobResponse {
   jobId: string;
 }
 
+/** One staged file in an UploadCreateResponse. */
+export interface UploadedFile {
+  name: string;
+  /** Server-side absolute path — passed back as a FileRef.path. */
+  path: string;
+}
+
+/**
+ * POST /v1/uploads response. The browser feeds files[].path as tool sources
+ * and outputDir as the tool output directory, then downloads the result from
+ * /v1/uploads/{uploadId}/download.
+ */
+export interface UploadCreateResponse {
+  uploadId: string;
+  files: UploadedFile[];
+  outputDir: string;
+}
+
 export type JobStatusWire = 'queued' | 'running' | 'done' | 'failed';
 
 /**
@@ -183,8 +201,8 @@ export interface HealthResponse {
 }
 
 /**
- * /v1/config response. Not yet on the wire (#65). Optional fields cover the
- * forward-compat case where the server omits keys we don't care about yet.
+ * GET /v1/config response. Optional fields cover the forward-compat case
+ * where the server omits keys we don't care about yet.
  */
 export interface ConfigResponse {
   theme?: 'forge' | 'snow' | 'ember';

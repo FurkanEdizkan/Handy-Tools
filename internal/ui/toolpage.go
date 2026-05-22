@@ -147,7 +147,7 @@ func newToolPage(s theme.Styles, t tool) *toolPage {
 		defaultFmt:       "JPEG",
 		archiveOut:       "zip",
 		out:              outDefault,
-		customPath:       "/Users/me/converted",
+		customPath:       "./converted",
 		quality:          90,
 		preserveMtime:    true,
 		recurse:          true,
@@ -159,46 +159,13 @@ func newToolPage(s theme.Styles, t tool) *toolPage {
 	if t.mode == modeExtractArchive {
 		p.archive = archiveExtract
 	}
-	p.files = p.sampleFiles()
+	// The page opens with no files — the user adds real input via `b`
+	// (path entry) or the dropzone. renderFiles() handles an empty list.
 	return p
 }
 
 func (p *toolPage) SetWidth(w int) { p.width = w }
 func (p *toolPage) Tool() tool     { return p.tool }
-
-// sampleFiles returns the design's pre-populated file rows for the current
-// mode. Real input wiring would replace this with the user's actual selection.
-func (p *toolPage) sampleFiles() []fileItem {
-	switch p.tool.mode {
-	case modeImage:
-		return []fileItem{
-			{ID: "i1", Name: "screenshot-2026-05-14.png", From: "PNG", Target: "JPEG", Size: "2.1 MB"},
-			{ID: "i2", Name: "logo-mark.png", From: "PNG", Target: "JPEG", Size: "184 KB"},
-			{ID: "i3", Name: "export@2x.png", From: "PNG", Target: "WebP", Size: "5.4 MB"},
-			{ID: "i4", Name: "cover-shot.jpg", From: "JPEG", Target: "JPEG", Size: "1.8 MB"},
-		}
-	case modePackArchive:
-		return []fileItem{
-			{ID: "p1", Name: "report-q1.pdf", Size: "482 KB"},
-			{ID: "p2", Name: "cover.png", Size: "1.1 MB"},
-			{ID: "p3", Name: "data/raw.csv", Size: "904 KB"},
-			{ID: "p4", Name: "data/clean.csv", Size: "612 KB"},
-			{ID: "p5", Name: "notes.md", Size: "12 KB"},
-			{ID: "p6", Name: "README.md", Size: "4 KB"},
-		}
-	case modeExtractArchive:
-		return []fileItem{
-			{ID: "x1", Name: "backup-2026-05.7z.001", From: "7z (multi-part)", Size: "42 MB"},
-		}
-	case modePDF:
-		return []fileItem{
-			{ID: "d1", Name: "chapter-01.pdf", Size: "212 KB"},
-			{ID: "d2", Name: "chapter-02.pdf", Size: "188 KB"},
-			{ID: "d3", Name: "appendix.pdf", Size: "96 KB"},
-		}
-	}
-	return nil
-}
 
 // Update routes keys for the tool page. Returns a RunJob message when the
 // user triggers the Run button.
@@ -478,22 +445,10 @@ func (p *toolPage) cyclePackExtract() {
 	} else {
 		p.archive = archivePack
 	}
-	p.files = p.sampleFilesForArchive()
+	// Pack and extract take different input (loose files vs. an archive),
+	// so a mode switch drops whatever was queued.
+	p.files = nil
 	p.resetFocusToInput() // option-row count differs between pack and extract
-}
-
-func (p *toolPage) sampleFilesForArchive() []fileItem {
-	if p.archive == archiveExtract {
-		return []fileItem{{ID: "x1", Name: "backup-2026-05.7z.001", From: "7z (multi-part)", Size: "42 MB"}}
-	}
-	return []fileItem{
-		{ID: "p1", Name: "report-q1.pdf", Size: "482 KB"},
-		{ID: "p2", Name: "cover.png", Size: "1.1 MB"},
-		{ID: "p3", Name: "data/raw.csv", Size: "904 KB"},
-		{ID: "p4", Name: "data/clean.csv", Size: "612 KB"},
-		{ID: "p5", Name: "notes.md", Size: "12 KB"},
-		{ID: "p6", Name: "README.md", Size: "4 KB"},
-	}
 }
 
 func (p *toolPage) cyclePDFOp() {

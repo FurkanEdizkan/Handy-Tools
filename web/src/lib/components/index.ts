@@ -5,6 +5,8 @@ export { default as Dropzone } from './Dropzone.svelte';
 export { default as OptionRow } from './OptionRow.svelte';
 export { default as ProgressBar } from './ProgressBar.svelte';
 export { default as Toast } from './Toast.svelte';
+export { default as Thumbnail } from './Thumbnail.svelte';
+export { default as DownloadResult } from './DownloadResult.svelte';
 
 export * from './mascot-art';
 export * from './progress';

@@ -4,14 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project shape
 
-Handy Tools is a single Go module that produces two binaries from one core:
+Handy Tools is a single Go module that produces three binaries from one core:
 
 - `cmd/htools` — Bubble Tea TUI (`make tui` / `go run ./cmd/htools`)
-- `cmd/htoolsd` — gRPC server exposing the same tools (`make serve` / `go run ./cmd/htoolsd`)
+- `cmd/htoolsd` — gRPC + HTTP/SSE server exposing the same tools (`make serve` / `go run ./cmd/htoolsd`)
+- `cmd/htools-gui` — Wails v2 desktop app, gated behind the `wails` build tag (CGO + webkit2gtk, linux/amd64); without the tag a stub stands in so the other jobs stay CGO-free
 
-Both depend on `internal/tools/<feature>/` (image, archive, pdf), which is the **only** layer allowed to touch files, run external binaries, or know about formats. `internal/ui/` and `internal/server/` are thin adapters — never put tool logic in either. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+All three depend on `internal/tools/<feature>/` (image, archive, pdf), which is the **only** layer allowed to touch files, run external binaries, or know about formats. `internal/ui/` and `internal/server/` are thin adapters — never put tool logic in either. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-A third entry point, `cmd/snapshot`, is a developer-only helper that renders the TUI views into `docs/screenshots/htools-*.txt` so the README previews stay in sync. It is **excluded** from release builds (not listed under `builds:` in `.goreleaser.yaml`). Re-run `go run ./cmd/snapshot` after any UI-shaping change.
+A fourth entry point, `cmd/snapshot`, is a developer-only helper that renders the TUI views into `docs/screenshots/htools-*.txt` so the README previews stay in sync. It is **excluded** from release builds (not listed under `builds:` in `.goreleaser.yaml`). Re-run `go run ./cmd/snapshot` after any UI-shaping change.
 
 ## Common commands
 
@@ -46,7 +47,9 @@ Optional system binaries (`unrar`, `7z`, `pdftoppm`, `pdftotext`, `magick`) are 
 
 ## Server invariant: AllowRoots
 
-`htoolsd` refuses to start without `server.allow_roots` (config or `--allow-roots` flag). Every `FileRef.path` is run through `Options.CheckPath` before any tool is called. The default behavior on empty roots is **fail closed** (reject everything), not "serve cwd" — preserve this when editing [internal/server/server.go](internal/server/server.go).
+`htoolsd` starts without `server.allow_roots` (config or `--allow-roots` flag) **only** when HTTP is enabled — the browser-upload converter then provides a sandboxed, server-owned workspace root (see below). With HTTP disabled and no roots it still refuses to start. Every `FileRef.path` is run through `Options.CheckPath` before any tool is called. The default behavior on empty effective roots is **fail closed** (reject everything), not "serve cwd" — preserve this when editing [internal/server/server.go](internal/server/server.go).
+
+The browser-upload file converter ([internal/upload](internal/upload/upload.go)) stages multipart uploads into per-request temp workspaces under a base directory (`server.upload_dir`, default `{tmpdir}/handy-uploads`). `cmd/htoolsd` appends that base to the effective `AllowRoots` so staged files pass the same `CheckPath`; the HTTP layer exposes `POST /v1/uploads`, `GET /v1/uploads/{id}/download` and `DELETE /v1/uploads/{id}`, and a TTL reaper deletes abandoned workspaces. The desktop (Wails) build passes a `nil` upload Manager — it has native paths and needs no staging.
 
 ## Config
 
@@ -132,4 +135,5 @@ Full checklist in [docs/PR_GUIDELINES.md](docs/PR_GUIDELINES.md).
 
 - The `.gitignore` ignores `/htools` and `/htoolsd` at repo root (ad-hoc `go build` outputs). It used to be too broad and accidentally excluded `cmd/handy/` sources — if you add new top-level files or directories whose name starts with `htools` or `handy`, double-check they aren't ignored.
 - Tests should use real fixtures under `testdata/`, not mocks, when verifying file-format behavior. Keep fixtures tiny (a 4-pixel PNG, a 3-byte file in a zip).
+- There is no plugin system — each tool is in-house code or a directly-bound library. Any new third-party dependency must be credited in [NOTICE](NOTICE) with its copyright holder and license.
 - WebP and HEIC encoding have no pure-Go encoder (and the project hasn't accepted CGO), so both are delegated to the optional `magick` binary via `encodeViaMagick` in [internal/tools/image/image.go](internal/tools/image/image.go). Without `magick` on `PATH` a WebP/HEIC convert surfaces a `MISSING_BINARY` error — it never panics. Decoding WebP is pure-Go (`golang.org/x/image/webp`).

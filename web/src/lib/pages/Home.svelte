@@ -15,7 +15,7 @@
         glyph={t.glyph}
         title={t.label}
         description={t.desc}
-        href={`#/tool/${t.id}`}
+        href={t.id === 'doctor' ? '#/doctor' : `#/tool/${t.id}`}
       />
     {/each}
   </div>

@@ -6,10 +6,10 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/dsnet/compress v0.0.1
-	github.com/klauspost/compress v1.17.11
+	github.com/klauspost/compress v1.18.6
 	github.com/pdfcpu/pdfcpu v0.12.1
 	github.com/wailsapp/wails/v2 v2.12.0
-	golang.org/x/image v0.40.0
+	golang.org/x/image v0.41.0
 	google.golang.org/grpc v1.81.1
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1

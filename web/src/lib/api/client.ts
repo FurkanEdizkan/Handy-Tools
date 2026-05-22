@@ -27,6 +27,7 @@ import type {
   PdfToTextRequest,
   ProgressEvent,
   SysdepResult,
+  UploadCreateResponse,
 } from './types';
 
 const DEFAULT_BASE = '';
@@ -93,6 +94,34 @@ export class ApiClient {
 
   pdfSplit(req: PdfSplitRequest): Promise<JobResponse> {
     return this.postJSON('/v1/pdf/split', req);
+  }
+
+  // ---- Uploads --------------------------------------------------------------
+
+  /**
+   * Upload one or more files to a fresh server-side workspace (POST
+   * /v1/uploads). The browser uses this when it has no native filesystem
+   * paths to give the tool endpoints — the response hands back server-side
+   * paths to feed into imageConvert / pdf* / archive* as FileRef.path.
+   */
+  uploadFiles(files: File[]): Promise<UploadCreateResponse> {
+    const form = new FormData();
+    for (const f of files) form.append('files', f, f.name);
+    return this.requestForm('/v1/uploads', form);
+  }
+
+  /**
+   * Absolute URL of an upload's download endpoint — suitable for an
+   * `<a href download>` once the job that wrote into the workspace completes.
+   */
+  uploadDownloadUrl(uploadId: string): string {
+    return `${this.baseUrl}/v1/uploads/${encodeURIComponent(uploadId)}/download`;
+  }
+
+  /** Reap an upload workspace (DELETE /v1/uploads/{id}). Best-effort. */
+  async deleteUpload(uploadId: string): Promise<void> {
+    const url = `${this.baseUrl}/v1/uploads/${encodeURIComponent(uploadId)}`;
+    await this.fetchFn(url, { method: 'DELETE' });
   }
 
   // ---- Jobs -----------------------------------------------------------------
@@ -229,6 +258,33 @@ export class ApiClient {
       throw new ApiError(
         res.status,
         env?.message ?? `${method} ${path} → ${res.status}`,
+        env,
+      );
+    }
+
+    return (parsed === null ? (null as TRes) : (fromSnake(parsed) as TRes));
+  }
+
+  /**
+   * POST a multipart/form-data body. Unlike requestJSON this must NOT set a
+   * content-type header — the browser fills in the multipart boundary — and
+   * the body is sent as-is rather than JSON-encoded. The response is still
+   * snake_case JSON, decoded the same way.
+   */
+  private async requestForm<TRes>(path: string, body: FormData): Promise<TRes> {
+    const res = await this.fetchFn(`${this.baseUrl}${path}`, {
+      method: 'POST',
+      headers: { accept: 'application/json' },
+      body,
+    });
+    const text = await res.text();
+    const parsed = text ? safeParseJSON(text) : null;
+
+    if (!res.ok) {
+      const env = extractError(parsed);
+      throw new ApiError(
+        res.status,
+        env?.message ?? `POST ${path} → ${res.status}`,
         env,
       );
     }

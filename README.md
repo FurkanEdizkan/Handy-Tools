@@ -33,35 +33,32 @@
 ---
 
 Handy Tools is a small toolbox for the file work you do every day — converting
-images, extracting odd archive formats, slicing PDFs apart — without leaving
-the terminal. Two binaries, one core, one mascot named **Wrenly**
-([vector mark](docs/brand/wrenly.svg)).
+images, extracting odd archive formats, slicing PDFs apart. Three binaries, one
+core, one mascot named **Wrenly** ([vector mark](docs/brand/wrenly.svg)).
 
 - **`htools`** — an interactive TUI (built with [Bubble Tea]) that lets you
   pick files, choose an action, confirm, and watch progress live.
-- **`htoolsd`** — the same tools exposed over **gRPC** (and soon HTTP + SSE),
-  so you can run Handy Tools as a service and call its features from anywhere
-  (web, CI, scripts).
-- **`htools-gui`** *(in progress)* — a Wails desktop app and matching
-  web frontend that share one Svelte + Tailwind bundle, served by
-  `htoolsd` in server mode and embedded by `htools-gui` in desktop
-  mode. See the [pivot phases on Project #14](https://github.com/users/FurkanEdizkan/projects/14/views/1?filterQuery=label%3Aarea%2Fapi+label%3Aarea%2Fweb+label%3Aarea%2Fgui+label%3Aarea%2Fqueue).
+- **`htoolsd`** — the same tools exposed over **gRPC** and **HTTP + SSE**, so
+  you can run Handy Tools as a service and call its features from anywhere
+  (web, CI, scripts). It also embeds and serves the Svelte web UI.
+- **`htools-gui`** — a Wails desktop app that wraps the same web UI in a
+  native window with file dialogs. Built behind the `wails` build tag
+  (CGO + webkit2gtk, linux/amd64).
 
-Both share one core: every tool is a plain Go package, used identically by the
-TUI and the server. The architecture is on one page in
+All three share one core: every tool is a plain Go package, used identically by
+the TUI, the server, and the desktop app. The architecture is on one page in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 [Bubble Tea]: https://github.com/charmbracelet/bubbletea
 
-> **Status:** pre-alpha. The eight initial milestones (scaffolding through
-> release polish) have landed on `main`. The current focus is a **web GUI
-> pivot**: a Svelte/Vite frontend served either by `htoolsd` (self-hosted)
-> or by a new Wails desktop app, with progress streamed over SSE. The
-> Bubble Tea TUI keeps working alongside it — both will share a new
-> `internal/queue/` package on top of the existing tool core. See
-> [Project #14](https://github.com/users/FurkanEdizkan/projects/14) for the
-> staged phases and live status, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap)
-> for the longer-horizon roadmap.
+> **Status:** pre-1.0, calver pre-releases. The TUI, the `htoolsd` server
+> (gRPC + HTTP/SSE), the embedded Svelte web UI, and the Wails desktop app all
+> run real image/archive/PDF jobs through a shared `internal/queue/`. The
+> current focus is a Phase-1 hardening pass toward "a fully working tool";
+> a browser-upload web converter and a Chrome extension are the next phases.
+> See [Project #14](https://github.com/users/FurkanEdizkan/projects/14) for
+> live status and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap) for the
+> longer-horizon roadmap.
 
 ## Features
 
@@ -69,34 +66,27 @@ TUI and the server. The architecture is on one page in
 
 | Domain       | What you get                                                                               | Pure Go?             |
 | ------------ | ------------------------------------------------------------------------------------------ | -------------------- |
-| **Images**   | Convert PNG / JPEG / GIF / BMP / TIFF / WebP (decode-only).                                | Yes                  |
-| **Images**   | HEIC / HEIF decoding.                                                                      | Needs `magick`       |
-| **Archives** | Extract & inspect zip, tar, gz, bz2, zst.                                                  | Yes                  |
+| **Images**   | Convert PNG / JPEG / GIF / BMP / TIFF, decode WebP.                                        | Yes                  |
+| **Images**   | WebP / HEIC encoding, HEIC / HEIF decoding.                                                | Needs `magick`       |
+| **Archives** | Pack & extract & inspect zip, tar, gz, bz2, zst.                                           | Yes                  |
 | **Archives** | RAR (incl. multi-part `.partN.rar`) and 7z (incl. `.7z.001` parts).                        | Needs `unrar` / `7z` |
 | **PDF**      | Merge, split, metadata.                                                                    | Yes                  |
-| **PDF**      | Render pages to images, extract text.                                                      | Needs Poppler        |
+| **PDF**      | Render pages to images, extract text, multi-page previews.                                 | Needs Poppler        |
 | **TUI**      | Home menu + per-tool detail page, live queue with expandable logs, three themes, mascot.   | —                    |
 | **gRPC**     | Streaming progress, allow-rooted path sandbox, reflection enabled.                         | —                    |
+| **HTTP/SSE** | REST endpoints mirroring gRPC, `tools.Progress` streamed as Server-Sent Events.            | —                    |
+| **Web UI**   | Svelte + Tailwind SPA embedded into `htoolsd`; thumbnails, PDF previews, drag-and-drop.     | —                    |
+| **Desktop**  | `htools-gui` — the web UI in a native Wails window with file dialogs.                      | —                    |
 
 ### What's coming
 
-- **HTTP + SSE on `htoolsd`** — REST endpoints mirroring the gRPC
-  services, with `tools.Progress` streamed as Server-Sent Events.
-  Same `--allow-roots` fail-closed invariant as gRPC.
-- **Web frontend** (`web/`) — Svelte + Vite + TS + Tailwind, embedded
-  into the `htoolsd` binary via `go:embed`. Image thumbnails, PDF page
-  previews, real drag-and-drop — the visuals the TUI couldn't render.
-- **Shared queue** (`internal/queue/`) — one job/progress model that
-  the TUI, web UI, and gRPC clients all subscribe to. Replaces the
-  current TUI run-simulator.
-- **`htools-gui`** — a Wails desktop app that bundles the same web
-  frontend with a native window, file dialogs, and system menu.
-- **Plugin registry** — add a tool by dropping one proto + one Go
-  package; no UI changes.
-- **WebP encoding** — re-enabled once a pure-Go encoder is available
-  (or CGO is accepted).
-- **`pdfcpu` import** — replace shelled-out PDF ops with the pure-Go
-  library.
+- **Browser-upload web converter** — today the web UI takes server-side
+  paths; a multipart upload API will let a plain browser convert files
+  through the `htoolsd` backend.
+- **Chrome extension** — a browser front-end that sends files to a local
+  or hosted `htoolsd` via the upload API.
+- **`pdfcpu` for the remaining shelled-out PDF ops** — merge and split are
+  already pure-Go; page render still uses Poppler.
 
 ## Install
 
@@ -135,10 +125,10 @@ Each release also publishes a `*_source.tar.gz` and a `checksums.txt`.
 
 ### Optional system dependencies
 
-Handy Tools is a single Go binary. A few features shell out to small external
-programs when present; without them, the affected actions are disabled with a
-clear inline hint instead of a crash. Run `htools doctor` to see exactly which
-binaries are installed and what each unlocks.
+The Handy Tools binaries are self-contained Go programs. A few features shell
+out to small external programs when present; without them, the affected actions
+are disabled with a clear inline hint instead of a crash. Run `htools doctor` to
+see exactly which binaries are installed and what each unlocks.
 
 | Feature                | Required tool        | Debian/Ubuntu                | macOS (Homebrew)           |
 | ---------------------- | -------------------- | ---------------------------- | -------------------------- |
@@ -146,7 +136,7 @@ binaries are installed and what each unlocks.
 | 7z multi-part          | `7z` (p7zip)         | `apt install p7zip-full`     | `brew install p7zip`       |
 | PDF → image            | `pdftoppm` (Poppler) | `apt install poppler-utils`  | `brew install poppler`     |
 | PDF → text             | `pdftotext`          | `apt install poppler-utils`  | `brew install poppler`     |
-| HEIC images            | `magick`             | `apt install imagemagick`    | `brew install imagemagick` |
+| WebP / HEIC encoding   | `magick`             | `apt install imagemagick`    | `brew install imagemagick` |
 
 CI exercises these tools on Linux, and each published release is smoke-tested
 on Ubuntu 22.04/24.04 and macOS before it goes out.
@@ -221,9 +211,11 @@ The queue panel starts empty and fills from the shared job registry
 (`internal/queue`): pressing **Run** on a tool enqueues a job, and each row
 shows live progress, a status pill, and an expandable stderr log.
 
-And the per-tool detail page (Convert images), with the **WebP** override on
-row 3 visibly diverging from the JPEG default and the run summary on the
-bottom reflecting the mixed targets:
+And the per-tool detail page (Convert images) once a few files have been
+added — with the **WebP** override on row 3 visibly diverging from the JPEG
+default and the run summary on the bottom reflecting the mixed targets. A
+freshly opened tool page starts with an empty file list; you add real input
+via the dropzone or by pressing **b**:
 
 ```text
   ⚙ settings    ◤ HANDY TOOLS / htools › Convert images                                                              v0.1.0 ●
@@ -247,7 +239,7 @@ bottom reflecting the mixed targets:
   OUTPUT DESTINATION  ─────────────────────────────────────────────────────────────────
     (●)  Default location — ./out                                  RECOMMENDED
     ( )  Alongside input — write next to each source file
-    ( )  Custom path — [ /Users/me/converted ]
+    ( )  Custom path — [ ./converted ]
 
   OPTIONS  ──────────────────────────────────────────────────────────────
     JPEG/WebP quality    ▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱  90
@@ -369,6 +361,14 @@ In short:
 - Open PRs against the `test` branch, **never** `main`.
 - Follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/).
 - CI must be green.
+
+## Acknowledgements
+
+Handy Tools binds several third-party libraries directly — Bubble Tea and
+Lip Gloss for the TUI, pdfcpu for PDF operations, klauspost/compress and
+dsnet/compress for archives, `golang.org/x/image`, Wails for the desktop
+shell, gRPC, and Svelte/Tailwind for the web UI. Every one is credited with
+its copyright and license in [NOTICE](NOTICE).
 
 ## License
 

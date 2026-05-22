@@ -1,0 +1,85 @@
+Handy Tools — Third-Party Attribution
+=====================================
+
+Handy Tools is released under the MIT License (see the LICENSE file).
+
+It does not use a plugin system: each tool is either written in-house or
+binds a third-party library directly. The libraries below are credited to
+their authors, with the license each is distributed under (SPDX identifier).
+Every dependency ships its own full license text in its source module
+(Go module cache, or web/node_modules); consult those for the complete terms.
+
+Go libraries (linked into htools, htoolsd and htools-gui)
+---------------------------------------------------------
+
+- github.com/charmbracelet/bubbletea — MIT
+  Copyright (c) 2020-2025 Charmbracelet, Inc.
+  Terminal UI framework powering the htools TUI.
+
+- github.com/charmbracelet/lipgloss — MIT
+  Copyright (c) 2021-2023 Charmbracelet, Inc.
+  Terminal styling and layout for the TUI.
+
+- github.com/pdfcpu/pdfcpu — Apache-2.0
+  Copyright the pdfcpu Authors.
+  Pure-Go PDF merge and split.
+
+- github.com/klauspost/compress — BSD-3-Clause
+  Copyright (c) 2012 The Go Authors; Copyright (c) 2019 Klaus Post.
+  zstd and deflate compression for the archive tool.
+
+- github.com/dsnet/compress — BSD-3-Clause
+  Copyright (c) 2015 Joe Tsai and The Go Authors.
+  bzip2 compression for the archive tool.
+
+- golang.org/x/image — BSD-3-Clause
+  Copyright 2009 The Go Authors.
+  WebP/BMP/TIFF image decoding and scaling.
+
+- github.com/wailsapp/wails/v2 — MIT
+  Copyright (c) 2018-Present Lea Anthony.
+  Native desktop shell for htools-gui.
+
+- google.golang.org/grpc — Apache-2.0
+  Copyright the gRPC Authors.
+  gRPC transport for htoolsd.
+
+- google.golang.org/protobuf — BSD-3-Clause
+  Copyright (c) 2018 The Go Authors.
+  Protocol Buffers runtime for the generated API types.
+
+- gopkg.in/yaml.v3 — MIT and Apache-2.0
+  Copyright the yaml.v3 authors (Canonical Ltd. and Kirill Simonov).
+  YAML decoding for the on-disk config.
+
+Web frontend libraries (bundled into the embedded SPA)
+------------------------------------------------------
+
+- svelte — MIT
+  Copyright (c) 2016-2025 Svelte contributors.
+  Component framework for the web UI.
+
+- svelte-spa-router — MIT
+  Copyright (c) Alessandro Segala and contributors.
+  Hash-based client-side routing.
+
+- tailwindcss — MIT
+  Copyright (c) Tailwind Labs, Inc.
+  Utility CSS; its generated stylesheet ships in the bundle.
+
+The web build toolchain (Vite, Vitest, TypeScript, PostCSS, Autoprefixer,
+svelte-check) is used to build the project and is not redistributed.
+
+Optional system binaries
+------------------------
+
+Handy Tools can call these external programs at runtime when present; they
+are detected, not bundled or redistributed, so no license text is reproduced
+here. Each remains under its own license:
+
+  - ImageMagick (`magick`) — HEIC/WebP encode, HEIC decode
+  - Poppler (`pdftoppm`, `pdftotext`) — PDF render and text extraction
+  - unrar — RAR extraction
+  - 7-Zip (`7z`) — 7z archives
+
+Adding a dependency? Add it to this file with its copyright and license.

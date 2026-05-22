@@ -13,7 +13,10 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"image/png"
+	"math"
 	"net"
 	"time"
 
@@ -25,6 +28,7 @@ import (
 	"github.com/furkandedizkan/handy-tools/internal/tools"
 	"github.com/furkandedizkan/handy-tools/internal/tools/archive"
 	"github.com/furkandedizkan/handy-tools/internal/tools/image"
+	"github.com/furkandedizkan/handy-tools/internal/tools/pdf"
 )
 
 // Server bundles the handlers + the gRPC server.
@@ -152,6 +156,29 @@ func (g *grpcImageServer) Convert(req *handytoolsv1.ConvertRequest, stream handy
 		})
 }
 
+// Preview renders a single downscaled thumbnail and returns the PNG bytes
+// inline — no queue, no disk, no streaming.
+func (g *grpcImageServer) Preview(_ context.Context, req *handytoolsv1.ImagePreviewRequest) (*handytoolsv1.ImagePreviewResponse, error) {
+	src, err := g.h.Opts.CheckPath(req.GetSource().GetPath())
+	if err != nil {
+		return nil, err
+	}
+	res, err := image.Preview(image.PreviewRequest{
+		Source:    src,
+		MaxWidth:  int(req.GetMaxWidth()),
+		MaxHeight: int(req.GetMaxHeight()),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &handytoolsv1.ImagePreviewResponse{
+		Image:  res.PNG,
+		Width:  clampInt32(res.Width),
+		Height: clampInt32(res.Height),
+		Format: handytoolsv1.ImageFormat_IMAGE_FORMAT_PNG,
+	}, nil
+}
+
 type grpcArchiveServer struct {
 	handytoolsv1.UnimplementedArchiveServiceServer
 	h *ArchiveHandler
@@ -260,6 +287,56 @@ func (g *grpcPDFServer) Merge(req *handytoolsv1.PdfMergeRequest, stream handytoo
 				return nil
 			})
 		})
+}
+
+// Preview streams page thumbnails for the web gallery — one
+// PdfPreviewResponse per page across the requested range (an empty range
+// renders every page).
+func (g *grpcPDFServer) Preview(req *handytoolsv1.PdfPreviewRequest, stream grpc.ServerStreamingServer[handytoolsv1.PdfPreviewResponse]) error {
+	src, err := g.h.Opts.CheckPath(req.GetSource().GetPath())
+	if err != nil {
+		return err
+	}
+	res, err := pdf.Preview(stream.Context(), src, pdf.Range{
+		From: int(req.GetPages().GetFrom()),
+		To:   int(req.GetPages().GetTo()),
+	})
+	if err != nil {
+		return err
+	}
+	for _, page := range res.Pages {
+		w, h := pngBounds(page.PNG)
+		if err := stream.Send(&handytoolsv1.PdfPreviewResponse{
+			Page:   clampInt32(page.Page),
+			Image:  page.PNG,
+			Width:  clampInt32(w),
+			Height: clampInt32(h),
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// pngBounds reads a PNG's dimensions from its header without decoding pixels.
+func pngBounds(b []byte) (width, height int) {
+	cfg, err := png.DecodeConfig(bytes.NewReader(b))
+	if err != nil {
+		return 0, 0
+	}
+	return cfg.Width, cfg.Height
+}
+
+// clampInt32 narrows a (small, non-negative) pixel dimension into int32,
+// guarding the overflow case so the conversion is provably safe.
+func clampInt32(n int) int32 {
+	if n < 0 {
+		return 0
+	}
+	if n > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	return int32(n)
 }
 
 // ---- proto <-> domain ------------------------------------------------------
