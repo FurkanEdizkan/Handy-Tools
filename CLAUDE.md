@@ -47,7 +47,9 @@ Optional system binaries (`unrar`, `7z`, `pdftoppm`, `pdftotext`, `magick`) are 
 
 ## Server invariant: AllowRoots
 
-`htoolsd` refuses to start without `server.allow_roots` (config or `--allow-roots` flag). Every `FileRef.path` is run through `Options.CheckPath` before any tool is called. The default behavior on empty roots is **fail closed** (reject everything), not "serve cwd" — preserve this when editing [internal/server/server.go](internal/server/server.go).
+`htoolsd` starts without `server.allow_roots` (config or `--allow-roots` flag) **only** when HTTP is enabled — the browser-upload converter then provides a sandboxed, server-owned workspace root (see below). With HTTP disabled and no roots it still refuses to start. Every `FileRef.path` is run through `Options.CheckPath` before any tool is called. The default behavior on empty effective roots is **fail closed** (reject everything), not "serve cwd" — preserve this when editing [internal/server/server.go](internal/server/server.go).
+
+The browser-upload file converter ([internal/upload](internal/upload/upload.go)) stages multipart uploads into per-request temp workspaces under a base directory (`server.upload_dir`, default `{tmpdir}/handy-uploads`). `cmd/htoolsd` appends that base to the effective `AllowRoots` so staged files pass the same `CheckPath`; the HTTP layer exposes `POST /v1/uploads`, `GET /v1/uploads/{id}/download` and `DELETE /v1/uploads/{id}`, and a TTL reaper deletes abandoned workspaces. The desktop (Wails) build passes a `nil` upload Manager — it has native paths and needs no staging.
 
 ## Config
 
