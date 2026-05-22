@@ -52,10 +52,9 @@ the TUI, the server, and the desktop app. The architecture is on one page in
 [Bubble Tea]: https://github.com/charmbracelet/bubbletea
 
 > **Status:** pre-1.0, calver pre-releases. The TUI, the `htoolsd` server
-> (gRPC + HTTP/SSE), the embedded Svelte web UI, and the Wails desktop app all
-> run real image/archive/PDF jobs through a shared `internal/queue/`. The
-> current focus is a Phase-1 hardening pass toward "a fully working tool";
-> a browser-upload web converter and a Chrome extension are the next phases.
+> (gRPC + HTTP/SSE), the embedded Svelte web UI, the Wails desktop app, the
+> browser-upload converter, and the Chrome extension all run real
+> image/archive/PDF jobs through a shared `internal/queue/`.
 > See [Project #14](https://github.com/users/FurkanEdizkan/projects/14) for
 > live status and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap) for the
 > longer-horizon roadmap.
@@ -77,14 +76,11 @@ the TUI, the server, and the desktop app. The architecture is on one page in
 | **HTTP/SSE** | REST endpoints mirroring gRPC, `tools.Progress` streamed as Server-Sent Events.            | —                    |
 | **Web UI**   | Svelte + Tailwind SPA embedded into `htoolsd`; thumbnails, PDF previews, drag-and-drop.     | —                    |
 | **Desktop**  | `htools-gui` — the web UI in a native Wails window with file dialogs.                      | —                    |
+| **Browser**  | In-browser file converter — uploads bytes to `htoolsd`, no server-side paths needed.       | —                    |
+| **Extension**| Chrome MV3 extension (`extension/`) — convert files against a local or hosted `htoolsd`.   | —                    |
 
 ### What's coming
 
-- **Browser-upload web converter** — today the web UI takes server-side
-  paths; a multipart upload API will let a plain browser convert files
-  through the `htoolsd` backend.
-- **Chrome extension** — a browser front-end that sends files to a local
-  or hosted `htoolsd` via the upload API.
 - **`pdfcpu` for the remaining shelled-out PDF ops** — merge and split are
   already pure-Go; page render still uses Poppler.
 
@@ -170,6 +166,27 @@ grpcurl -plaintext localhost:7777 \
   handytools.v1.ArchiveService/Inspect \
   <<<'{"source":{"path":"/srv/uploads/foo.7z.001"}}'
 ```
+
+### Browser extension
+
+A Chrome (Manifest V3) extension under [`extension/`](extension/) converts
+images, PDFs and archives straight from the browser — it is a thin client over
+`htoolsd`'s upload API. Run the server with the HTTP transport enabled:
+
+```sh
+htoolsd --http :8080        # no --allow-roots needed; uploads are sandboxed
+```
+
+then build and load the extension:
+
+```sh
+make extension                       # → extension/dist
+# chrome://extensions → Developer mode → Load unpacked → extension/dist
+```
+
+The endpoint is configurable on the extension's Settings page (default
+`http://127.0.0.1:8080`; a hosted `https://` server is supported). See
+[`extension/README.md`](extension/README.md) for details.
 
 ### What it looks like
 

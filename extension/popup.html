@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Handy Tools</title>
+    <link rel="stylesheet" href="/src/popup/popup.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <img src="/icons/icon-32.png" alt="" width="20" height="20" />
+      <span class="title">Handy Tools</span>
+      <span id="health" class="health" title="Server status">●</span>
+    </header>
+
+    <nav class="tabs" id="tabs">
+      <button class="tab" data-family="image" aria-selected="true">Image</button>
+      <button class="tab" data-family="pdf" aria-selected="false">PDF</button>
+      <button class="tab" data-family="archive" aria-selected="false">Archive</button>
+    </nav>
+
+    <main>
+      <!-- Image -->
+      <section class="pane" data-family="image">
+        <input type="file" id="image-files" multiple accept="image/*" />
+        <label>Convert to
+          <select id="image-format">
+            <option>JPEG</option><option>PNG</option><option>WEBP</option>
+            <option>GIF</option><option>BMP</option><option>TIFF</option>
+          </select>
+        </label>
+        <label>Quality <input type="range" id="image-quality" min="1" max="100" value="90" /></label>
+      </section>
+
+      <!-- PDF -->
+      <section class="pane" data-family="pdf" hidden>
+        <input type="file" id="pdf-files" multiple accept="application/pdf,.pdf" />
+        <label>Operation
+          <select id="pdf-op">
+            <option value="render">Pages → image</option>
+            <option value="text">Extract text</option>
+            <option value="merge">Merge</option>
+            <option value="split">Split</option>
+          </select>
+        </label>
+        <label data-pdf-op="render">DPI <input type="number" id="pdf-dpi" min="72" max="600" value="150" /></label>
+        <label data-pdf-op="split">Every N pages <input type="number" id="pdf-every" min="1" max="100" value="10" /></label>
+      </section>
+
+      <!-- Archive -->
+      <section class="pane" data-family="archive" hidden>
+        <input type="file" id="archive-files" multiple />
+        <label>Operation
+          <select id="archive-op">
+            <option value="pack">Pack</option>
+            <option value="extract">Extract</option>
+          </select>
+        </label>
+        <label data-archive-op="pack">Format
+          <select id="archive-format">
+            <option value="zip">zip</option><option value="tar.gz">tar.gz</option>
+            <option value="tar.bz2">tar.bz2</option><option value="tar.zst">tar.zst</option>
+            <option value="7z">7z</option>
+          </select>
+        </label>
+      </section>
+
+      <button id="run" class="run">Run</button>
+
+      <div id="status" class="status" hidden>
+        <div class="progress"><i id="bar"></i></div>
+        <p id="message"></p>
+        <a id="download" class="download" hidden download>⤓ Download result</a>
+      </div>
+    </main>
+
+    <footer class="bar foot">
+      <span id="endpoint" class="endpoint"></span>
+      <a id="open-options" href="#">Settings</a>
+    </footer>
+
+    <script type="module" src="/src/popup/main.ts"></script>
+  </body>
+</html>

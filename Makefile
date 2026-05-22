@@ -39,6 +39,10 @@ web: ## Build the Svelte frontend into web/dist (embedded by htoolsd)
 web-dev: ## Run Vite dev server with HMR (point it at a running htoolsd)
 	cd web && npm run dev
 
+.PHONY: extension
+extension: ## Build the Chrome MV3 extension into extension/dist
+	cd extension && npm ci && npm run build
+
 .PHONY: tui
 tui: ## Run the TUI
 	$(GO) run ./cmd/htools
@@ -77,4 +81,5 @@ tidy: ## go mod tidy
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR) dist coverage.out coverage.html
 	rm -rf web/dist/assets web/dist/index.html
+	rm -rf extension/dist
 	@# Keep web/dist/.gitkeep (committed) and web/placeholder.html.

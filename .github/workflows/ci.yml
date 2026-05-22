@@ -136,6 +136,38 @@ jobs:
           path: web/dist
           retention-days: 7
 
+  extension-build:
+    name: Extension (Chrome MV3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Require extension/ scaffold
+        shell: bash
+        run: |
+          # The Chrome MV3 extension (#192) is a separate npm project under
+          # extension/. Fail loudly if its scaffold goes missing.
+          if [ ! -f extension/package.json ]; then
+            echo "::error::extension/package.json is missing — the extension scaffold is expected to exist." >&2
+            exit 1
+          fi
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - name: Install + build + test
+        working-directory: extension
+        run: |
+          npm ci
+          npm run build
+          npm test
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: extension-dist
+          path: extension/dist
+          retention-days: 7
+
   # ---------------------------------------------------------------------------
   # ASSEMBLY
   # ---------------------------------------------------------------------------
