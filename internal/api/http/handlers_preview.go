@@ -114,11 +114,15 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 func renderPreview(ctx context.Context, path string, maxW, maxH int) ([]byte, error) {
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".pdf":
-		res, err := pdf.Preview(ctx, path)
+		// The gallery thumbnail is the first page only.
+		res, err := pdf.Preview(ctx, path, pdf.Range{From: 1, To: 1})
 		if err != nil {
 			return nil, err
 		}
-		return res.PNG, nil
+		if len(res.Pages) == 0 {
+			return nil, &tools.Error{Code: tools.CodeIO, Message: "preview: PDF produced no pages"}
+		}
+		return res.Pages[0].PNG, nil
 	case ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".heif":
 		res, err := image.Preview(image.PreviewRequest{Source: path, MaxWidth: maxW, MaxHeight: maxH})
 		if err != nil {

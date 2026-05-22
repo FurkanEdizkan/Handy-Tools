@@ -289,24 +289,33 @@ func (g *grpcPDFServer) Merge(req *handytoolsv1.PdfMergeRequest, stream handytoo
 		})
 }
 
-// Preview streams page thumbnails for the web gallery. The pdf tool renders
-// the first page; a multi-page stream is a future enhancement (#174).
+// Preview streams page thumbnails for the web gallery — one
+// PdfPreviewResponse per page across the requested range (an empty range
+// renders every page).
 func (g *grpcPDFServer) Preview(req *handytoolsv1.PdfPreviewRequest, stream grpc.ServerStreamingServer[handytoolsv1.PdfPreviewResponse]) error {
 	src, err := g.h.Opts.CheckPath(req.GetSource().GetPath())
 	if err != nil {
 		return err
 	}
-	res, err := pdf.Preview(stream.Context(), src)
+	res, err := pdf.Preview(stream.Context(), src, pdf.Range{
+		From: int(req.GetPages().GetFrom()),
+		To:   int(req.GetPages().GetTo()),
+	})
 	if err != nil {
 		return err
 	}
-	w, h := pngBounds(res.PNG)
-	return stream.Send(&handytoolsv1.PdfPreviewResponse{
-		Page:   1,
-		Image:  res.PNG,
-		Width:  clampInt32(w),
-		Height: clampInt32(h),
-	})
+	for _, page := range res.Pages {
+		w, h := pngBounds(page.PNG)
+		if err := stream.Send(&handytoolsv1.PdfPreviewResponse{
+			Page:   clampInt32(page.Page),
+			Image:  page.PNG,
+			Width:  clampInt32(w),
+			Height: clampInt32(h),
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // pngBounds reads a PNG's dimensions from its header without decoding pixels.
