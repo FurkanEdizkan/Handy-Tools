@@ -1,45 +1,142 @@
 <script lang="ts">
-  import { currentTheme, setTheme, THEMES, type ThemeName } from '../stores/theme';
+  import {
+    currentTheme,
+    setTheme,
+    THEMES,
+    currentDensity,
+    setDensity,
+    DENSITIES,
+    mascotCharacter,
+    mascotEnabled,
+    type ThemeName,
+    type Density,
+    type MascotCharacter,
+  } from '../stores/theme';
 </script>
 
-<section>
-  <header class="mb-6">
-    <h1 class="text-xl font-semibold tracking-tight">Settings</h1>
-    <p class="text-sm text-text-dim">Appearance and runtime preferences.</p>
-  </header>
-
-  <div class="rounded-lg border border-border bg-surface p-4 max-w-xl">
-    <div class="text-[10px] font-semibold uppercase tracking-wider text-text-dim mb-2">
-      Theme
-    </div>
-    <div class="flex gap-1">
-      {#each THEMES as t}
-        <button
-          type="button"
-          class="px-3 py-1.5 rounded-md text-xs font-mono border transition-colors"
-          class:active={$currentTheme === t}
-          on:click={() => setTheme(t as ThemeName)}
-        >
-          {t}
-        </button>
-      {/each}
+<div class="page-header">
+  <div class="icon-block">⚙</div>
+  <div style="flex:1">
+    <h1>Settings</h1>
+    <div class="desc">
+      Stored at <span style="font-family:var(--mono);color:var(--text)">~/.config/handy-tools/config.yaml</span>
     </div>
   </div>
-</section>
+</div>
 
-<style>
-  button {
-    color: var(--color-text-dim);
-    border-color: var(--color-border);
-    background: var(--color-bg);
-  }
-  button:hover {
-    color: var(--color-text);
-    border-color: var(--color-accent);
-  }
-  button.active {
-    color: var(--color-accent);
-    border-color: var(--color-accent);
-    background: color-mix(in oklch, var(--color-accent) 12%, transparent);
-  }
-</style>
+<div class="setting-section">
+  <div class="s-head">
+    Appearance
+    <div class="desc">Theme and density preferences for this device.</div>
+  </div>
+  <div class="setting-row">
+    <div class="lbl-block">
+      <div class="lbl">Theme</div>
+      <div class="sub">Forge ships orange-on-dark; Snow swaps the accent cyan; Ember runs warm.</div>
+    </div>
+    <div class="control">
+      <div class="seg">
+        {#each THEMES as t (t)}
+          <button class={$currentTheme === t ? 'on' : ''} onclick={() => setTheme(t as ThemeName)}>{t}</button>
+        {/each}
+      </div>
+    </div>
+  </div>
+  <div class="setting-row">
+    <div class="lbl-block">
+      <div class="lbl">Density</div>
+      <div class="sub">Adjusts the header and dock heights for cramped windows.</div>
+    </div>
+    <div class="control">
+      <div class="seg">
+        {#each DENSITIES as d (d)}
+          <button class={$currentDensity === d ? 'on' : ''} onclick={() => setDensity(d as Density)}>{d}</button>
+        {/each}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="setting-section">
+  <div class="s-head">
+    Mascot
+    <div class="desc">The companion in the sidebar — toggle it off or pick an alternate sprite.</div>
+  </div>
+  <div class="setting-row">
+    <div class="lbl-block">
+      <div class="lbl">Character</div>
+      <div class="sub">Wrenly is the orange panda; Hopper is the lilac rabbit alternate.</div>
+    </div>
+    <div class="control">
+      <div class="seg">
+        {#each ['wrenly', 'hopper'] as c (c)}
+          <button
+            class={$mascotCharacter === c ? 'on' : ''}
+            onclick={() => mascotCharacter.set(c as MascotCharacter)}>{c}</button>
+        {/each}
+      </div>
+    </div>
+  </div>
+  <div class="setting-row">
+    <div class="lbl-block">
+      <div class="lbl">Show in sidebar</div>
+      <div class="sub">When off, the sidebar shows only the brand mark.</div>
+    </div>
+    <div class="control">
+      <button
+        class="toggle {$mascotEnabled ? 'on' : ''}"
+        aria-label="Show mascot in sidebar"
+        onclick={() => mascotEnabled.set(!$mascotEnabled)}
+      ></button>
+    </div>
+  </div>
+</div>
+
+<div class="setting-section">
+  <div class="s-head">
+    Server &amp; safety
+    <div class="desc">
+      Used when running against htoolsd. The desktop build embeds a loopback server with these
+      same roots.
+    </div>
+  </div>
+  <div class="setting-row">
+    <div class="lbl-block">
+      <div class="lbl">htoolsd address</div>
+      <div class="sub">Where the GUI connects when served over the network.</div>
+    </div>
+    <div class="control">
+      <input class="text-input" value="localhost:7777" readonly />
+    </div>
+  </div>
+  <div class="setting-row">
+    <div class="lbl-block">
+      <div class="lbl">Allow-roots</div>
+      <div class="sub">Paths the server accepts inputs from. Empty = reject everything (fail-closed).</div>
+    </div>
+    <div class="control stretch">
+      <div class="allow-roots">
+        <span class="root">~/Desktop</span>
+        <span class="root">~/Documents</span>
+      </div>
+    </div>
+  </div>
+  <div class="setting-row">
+    <div class="lbl-block">
+      <div class="lbl">Default JPEG quality</div>
+      <div class="sub">Used when a tool page doesn't override it.</div>
+    </div>
+    <div class="control">
+      <input class="text-input" style="width:80px;text-align:right" value="90" readonly />
+    </div>
+  </div>
+  <div class="setting-row">
+    <div class="lbl-block">
+      <div class="lbl">Default PDF DPI</div>
+      <div class="sub">Used when rendering PDF pages to images.</div>
+    </div>
+    <div class="control">
+      <input class="text-input" style="width:80px;text-align:right" value="150" readonly />
+    </div>
+  </div>
+</div>
