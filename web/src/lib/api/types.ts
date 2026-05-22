@@ -113,6 +113,24 @@ export interface JobResponse {
   jobId: string;
 }
 
+/** One staged file in an UploadCreateResponse. */
+export interface UploadedFile {
+  name: string;
+  /** Server-side absolute path — passed back as a FileRef.path. */
+  path: string;
+}
+
+/**
+ * POST /v1/uploads response. The browser feeds files[].path as tool sources
+ * and outputDir as the tool output directory, then downloads the result from
+ * /v1/uploads/{uploadId}/download.
+ */
+export interface UploadCreateResponse {
+  uploadId: string;
+  files: UploadedFile[];
+  outputDir: string;
+}
+
 export type JobStatusWire = 'queued' | 'running' | 'done' | 'failed';
 
 /**

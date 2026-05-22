@@ -1,9 +1,15 @@
 <script lang="ts">
-  import { Dropzone, OptionRow, Toast, Thumbnail, type RadioOption } from '../components';
+  import {
+    Dropzone,
+    OptionRow,
+    Toast,
+    Thumbnail,
+    DownloadResult,
+    type RadioOption,
+  } from '../components';
   import { IMAGE_FORMATS, imageSummary, imageFormReady, type ImageFile } from './toolform';
-  import { api, type ImageTargetFormat } from '../api';
-  import { isDesktop } from '../native';
-  import { runJob, dirOf } from './run';
+  import { ApiError, api, type ImageTargetFormat } from '../api';
+  import { runJob, resolveSources } from './run';
 
   let files = $state<ImageFile[]>([]);
   let quality = $state(90);
@@ -15,7 +21,10 @@
   let toastMsg = $state('');
   let toastTone = $state<'info' | 'error'>('info');
 
-  const desktop = isDesktop();
+  // Set after a successful browser run so the result can be downloaded.
+  let lastUploadId = $state('');
+  let lastJobIds = $state<string[]>([]);
+
   const outOptions: RadioOption[] = [
     { label: 'Default folder', value: 'default' },
     { label: 'Alongside source', value: 'alongside' },
@@ -26,26 +35,39 @@
   let ready = $derived(imageFormReady(files));
 
   function addFiles(dropped: File[] | string[]): void {
-    const names = dropped.map((f) => (typeof f === 'string' ? f : f.name));
-    files = [...files, ...names.map((name) => ({ name, target: 'JPEG' as const }))];
+    const picked: ImageFile[] = dropped.map((d) =>
+      typeof d === 'string'
+        ? { name: d, path: d, target: 'JPEG' }
+        : { name: d.name, file: d, target: 'JPEG' },
+    );
+    files = [...files, ...picked];
   }
 
   function removeFile(index: number): void {
     files = files.filter((_, i) => i !== index);
   }
 
-  // One job per file so each row's target format is honored. Output lands
-  // alongside the source.
+  // One job per file so each row's target format is honored. In a browser the
+  // files are uploaded first; either way output lands in resolved.outputDir.
   async function run(): Promise<void> {
-    if (!ready || !desktop) return;
+    if (!ready) return;
+    let resolved;
+    try {
+      resolved = await resolveSources(files);
+    } catch (e) {
+      toastMsg = e instanceof ApiError ? e.message : 'Upload failed.';
+      toastTone = 'error';
+      toastVisible = true;
+      return;
+    }
     const outcome = await runJob(() =>
       Promise.all(
-        files.map((f) =>
+        resolved.sources.map((src, i) =>
           api.imageConvert({
-            source: { path: f.name },
-            targetFormat: f.target.toUpperCase() as ImageTargetFormat,
+            source: { path: src.path },
+            targetFormat: files[i].target.toUpperCase() as ImageTargetFormat,
             options: { quality, maxWidth: 0, maxHeight: 0, stripMetadata },
-            output: { directory: dirOf(f.name), overwrite },
+            output: { directory: resolved.outputDir, overwrite },
           }),
         ),
       ),
@@ -53,6 +75,10 @@
     toastMsg = outcome.message;
     toastTone = outcome.ok ? 'info' : 'error';
     toastVisible = true;
+    if (outcome.ok && resolved.uploadId) {
+      lastUploadId = resolved.uploadId;
+      lastJobIds = outcome.jobIds;
+    }
   }
 </script>
 
@@ -67,7 +93,7 @@
       <ul class="space-y-1.5">
         {#each files as f, i (f.name + i)}
           <li class="flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2">
-            <Thumbnail path={f.name} />
+            <Thumbnail path={f.path} file={f.file} />
             <span class="flex-1 truncate text-sm">{f.name}</span>
             <select
               bind:value={f.target}
@@ -106,16 +132,20 @@
   </section>
 
   <div class="flex items-center justify-between border-t border-border pt-4">
-    <span class="text-xs text-text-dim">
-      {summary}{#if !desktop} · running needs the desktop app{/if}
-    </span>
+    <span class="text-xs text-text-dim">{summary}</span>
     <button
       type="button"
       class="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-bg disabled:opacity-40 disabled:cursor-not-allowed"
-      disabled={!ready || !desktop}
+      disabled={!ready}
       onclick={run}
     >Run</button>
   </div>
+
+  {#if lastUploadId}
+    <div class="flex justify-end">
+      <DownloadResult uploadId={lastUploadId} jobIds={lastJobIds} />
+    </div>
+  {/if}
 </div>
 
 <Toast message={toastMsg} tone={toastTone} bind:visible={toastVisible} duration={2600} />
