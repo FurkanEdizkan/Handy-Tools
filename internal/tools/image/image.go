@@ -130,9 +130,7 @@ func Convert(ctx context.Context, req ConvertRequest) <-chan tools.Progress {
 		emit(tools.Progress{Level: tools.SeverityInfo, Message: "encoding " + filepath.Base(outPath), Fraction: 0.5})
 
 		if err := encode(outPath, img, req.TargetFormat, req.Opts); err != nil {
-			emit(tools.Progress{Completed: true, Level: tools.SeverityError, Err: &tools.Error{
-				Code: tools.CodeIO, Message: "encode failed", Detail: err.Error(),
-			}})
+			emit(tools.Progress{Completed: true, Level: tools.SeverityError, Err: encodeError(err)})
 			return
 		}
 
@@ -248,7 +246,7 @@ func convertOne(req ConvertRequest) (outPath string, terr *tools.Error) {
 		}
 	}
 	if err := encode(outPath, img, req.TargetFormat, req.Opts); err != nil {
-		return "", &tools.Error{Code: tools.CodeIO, Message: "encode failed", Detail: err.Error()}
+		return "", encodeError(err)
 	}
 	return outPath, nil
 }
@@ -327,19 +325,37 @@ func encode(path string, img image.Image, f Format, opts Options) error {
 	case FormatTIFF:
 		return tiff.Encode(out, img, nil)
 	case FormatWebP:
-		return errors.New("webp encoding is not implemented in pure Go yet; convert to PNG/JPEG instead")
+		// No pure-Go WebP encoder exists; delegate to the optional magick
+		// binary — the same path HEIC uses.
+		return encodeViaMagick(path, img)
 	case FormatHEIC:
 		return encodeViaMagick(path, img)
 	}
 	return fmt.Errorf("unsupported target format")
 }
 
+// encodeError normalizes an encode failure: a structured *tools.Error (e.g.
+// MISSING_BINARY from the magick delegation) is preserved as-is so its code
+// and install hint reach the caller; anything else collapses to IO_ERROR.
+func encodeError(err error) *tools.Error {
+	var te *tools.Error
+	if errors.As(err, &te) {
+		return te
+	}
+	return &tools.Error{Code: tools.CodeIO, Message: "encode failed", Detail: err.Error()}
+}
+
 // encodeViaMagick writes a PNG to a temp file, then asks magick to convert it
-// to the final path. Used for HEIC where there is no pure-Go encoder.
+// to the final path — magick infers the target format from the path's
+// extension. Used for HEIC and WebP, which have no pure-Go encoder.
 func encodeViaMagick(path string, img image.Image) error {
 	r := sysdep.Lookup("magick")
 	if !r.Found {
-		return &tools.Error{Code: tools.CodeMissingBinary, Message: "HEIC encoding requires ImageMagick"}
+		return &tools.Error{
+			Code:    tools.CodeMissingBinary,
+			Message: "encoding to this format requires ImageMagick",
+			Detail:  "install with: " + r.Tool.InstallHint["linux"],
+		}
 	}
 	tmp, err := os.CreateTemp("", "handy-tools-encode-*.png")
 	if err != nil {
