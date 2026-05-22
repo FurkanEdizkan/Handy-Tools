@@ -7,9 +7,22 @@
 export const IMAGE_FORMATS = ['JPEG', 'PNG', 'WebP', 'GIF', 'BMP', 'TIFF'] as const;
 export type ImageFormat = (typeof IMAGE_FORMATS)[number];
 
-/** One image queued for conversion, with its chosen target format. */
-export interface ImageFile {
+/**
+ * A file the user picked for a tool. The desktop build supplies a real
+ * absolute `path`; a plain browser supplies the `File` object itself, which
+ * the Run flow uploads (see resolveSources in run.ts). Exactly one of the two
+ * is set; `name` is always the display label.
+ */
+export interface PickedFile {
   name: string;
+  /** Browser mode — the File blob to upload. */
+  file?: File;
+  /** Desktop mode — the native absolute path. */
+  path?: string;
+}
+
+/** One image queued for conversion, with its chosen target format. */
+export interface ImageFile extends PickedFile {
   target: ImageFormat;
 }
 

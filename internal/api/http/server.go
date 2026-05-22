@@ -11,6 +11,7 @@ import (
 	"github.com/furkandedizkan/handy-tools/internal/queue"
 	"github.com/furkandedizkan/handy-tools/internal/server"
 	"github.com/furkandedizkan/handy-tools/internal/tools"
+	"github.com/furkandedizkan/handy-tools/internal/upload"
 )
 
 // Server is the HTTP/SSE transport. It owns its own *http.Server and shares
@@ -37,6 +38,12 @@ type Server struct {
 	// previews is a small LRU of rendered thumbnails for GET /v1/preview.
 	previews *previewCache
 
+	// uploads stages browser-uploaded files into per-request temp
+	// workspaces. It is nil when the deployment runs path-only (e.g. the
+	// Wails desktop build), in which case the /v1/uploads routes are not
+	// registered.
+	uploads *upload.Manager
+
 	mux       *http.ServeMux
 	http      *http.Server
 	startedAt time.Time // captured in New(), reported by GET /v1/health
@@ -45,8 +52,11 @@ type Server struct {
 // New builds a Server with handlers wired against the same options the gRPC
 // transport uses. The caller passes a server.Options containing AllowRoots so
 // path safety stays centralised in one place, and the shared *queue.Queue so
-// jobs are visible across both the HTTP and gRPC transports.
-func New(opts server.Options, q *queue.Queue) *Server {
+// jobs are visible across both the HTTP and gRPC transports. uploads enables
+// the browser-upload file converter; pass nil to run path-only without the
+// /v1/uploads routes. When non-nil, the caller must have included
+// uploads.Base in opts.AllowRoots so staged files pass CheckPath.
+func New(opts server.Options, q *queue.Queue, uploads *upload.Manager) *Server {
 	s := &Server{
 		Opts:      opts,
 		Image:     &server.ImageHandler{Opts: opts},
@@ -54,6 +64,7 @@ func New(opts server.Options, q *queue.Queue) *Server {
 		PDF:       &server.PDFHandler{Opts: opts},
 		Queue:     q,
 		previews:  newPreviewCache(previewMaxEntries),
+		uploads:   uploads,
 		startedAt: time.Now(),
 	}
 	s.mux = s.routes()
@@ -106,6 +117,11 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /v1/health", s.handleHealth)
 	mux.HandleFunc("GET /v1/config", s.handleConfigGet)
 	mux.HandleFunc("PATCH /v1/config", s.handleConfigPatch)
+	if s.uploads != nil {
+		mux.HandleFunc("POST /v1/uploads", s.handleUploadCreate)
+		mux.HandleFunc("GET /v1/uploads/{id}/download", s.handleUploadDownload)
+		mux.HandleFunc("DELETE /v1/uploads/{id}", s.handleUploadDelete)
+	}
 	return mux
 }
 

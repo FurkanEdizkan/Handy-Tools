@@ -1,28 +1,55 @@
 <script lang="ts">
   /**
-   * A small preview thumbnail for an input file, sourced from the backend
-   * GET /v1/preview endpoint (#59). It only renders an image in the Wails
-   * desktop build, where files carry real absolute paths; in a plain browser,
-   * or if the preview can't be rendered (non-previewable type, pdftoppm
-   * missing), it falls back to a neutral placeholder glyph.
+   * A small preview thumbnail for an input file.
+   *
+   * - Desktop build: files carry a real absolute `path`, rendered through the
+   *   backend GET /v1/preview endpoint (#59).
+   * - Plain browser (#191): files carry a `File` blob; an image is previewed
+   *   client-side via URL.createObjectURL — no server round-trip, and it works
+   *   before the file is ever uploaded.
+   *
+   * Anything that can't be previewed (non-image type, missing pdftoppm, a
+   * browser non-image) falls back to a neutral placeholder glyph.
    */
   import { isDesktop } from '../native';
 
   interface Props {
     /** Absolute file path — only resolvable in the desktop build. */
-    path: string;
+    path?: string;
+    /** Picked File blob — used for client-side previews in a browser. */
+    file?: File;
     size?: number;
   }
-  let { path, size = 44 }: Props = $props();
+  let { path, file, size = 44 }: Props = $props();
 
   let failed = $state(false);
-  // Request at 2× for crisp thumbnails on hi-dpi displays.
-  const src = $derived(
-    `/v1/preview?path=${encodeURIComponent(path)}&w=${size * 2}&h=${size * 2}`,
+
+  // Client-side object URL for a browser-picked image; revoked on change /
+  // unmount by the effect cleanup so blobs don't leak.
+  let objectUrl = $state<string | null>(null);
+  $effect(() => {
+    if (file && file.type.startsWith('image/')) {
+      const url = URL.createObjectURL(file);
+      objectUrl = url;
+      return () => {
+        URL.revokeObjectURL(url);
+        objectUrl = null;
+      };
+    }
+    objectUrl = null;
+    return undefined;
+  });
+
+  // Request server previews at 2× for crisp thumbnails on hi-dpi displays.
+  const serverSrc = $derived(
+    path
+      ? `/v1/preview?path=${encodeURIComponent(path)}&w=${size * 2}&h=${size * 2}`
+      : '',
   );
+  const src = $derived(objectUrl ?? (isDesktop() && path ? serverSrc : ''));
 </script>
 
-{#if isDesktop() && !failed}
+{#if src && !failed}
   <img
     {src}
     alt=""

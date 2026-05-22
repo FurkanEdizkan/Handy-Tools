@@ -1,11 +1,15 @@
 <script lang="ts">
-  import { Dropzone, OptionRow, Toast } from '../components';
-  import { ARCHIVE_FORMATS, archivePackReady, archivePackSummary } from './toolform';
-  import { api } from '../api';
-  import { isDesktop } from '../native';
-  import { runJob, dirOf } from './run';
+  import { Dropzone, OptionRow, Toast, DownloadResult } from '../components';
+  import {
+    ARCHIVE_FORMATS,
+    archivePackReady,
+    archivePackSummary,
+    type PickedFile,
+  } from './toolform';
+  import { ApiError, api } from '../api';
+  import { runJob, resolveSources } from './run';
 
-  let files = $state<string[]>([]);
+  let files = $state<PickedFile[]>([]);
   let format = $state<(typeof ARCHIVE_FORMATS)[number]>('zip');
   let output = $state('archive.zip');
   let level = $state(6);
@@ -14,28 +18,41 @@
   let toastMsg = $state('');
   let toastTone = $state<'info' | 'error'>('info');
 
-  const desktop = isDesktop();
+  // Set after a successful browser run so the result can be downloaded.
+  let lastUploadId = $state('');
+  let lastJobIds = $state<string[]>([]);
 
   let summary = $derived(archivePackSummary(files.length, format, output));
   let ready = $derived(archivePackReady(files.length, output));
 
   function addFiles(dropped: File[] | string[]): void {
-    const names = dropped.map((f) => (typeof f === 'string' ? f : f.name));
-    files = [...files, ...names];
+    const picked: PickedFile[] = dropped.map((d) =>
+      typeof d === 'string' ? { name: d, path: d } : { name: d.name, file: d },
+    );
+    files = [...files, ...picked];
   }
 
   function removeFile(index: number): void {
     files = files.filter((_, i) => i !== index);
   }
 
-  // The archive is written next to the first input; format is inferred from
+  // The archive is written into resolved.outputDir; format is inferred from
   // the output filename's extension.
   async function run(): Promise<void> {
-    if (!ready || !desktop) return;
+    if (!ready) return;
+    let resolved;
+    try {
+      resolved = await resolveSources(files);
+    } catch (e) {
+      toastMsg = e instanceof ApiError ? e.message : 'Upload failed.';
+      toastTone = 'error';
+      toastVisible = true;
+      return;
+    }
     const outcome = await runJob(() =>
       api.archiveCompress({
-        sources: files.map((p) => ({ path: p })),
-        destination: { file: `${dirOf(files[0])}/${output}`, overwrite },
+        sources: resolved.sources.map((s) => ({ path: s.path })),
+        destination: { file: `${resolved.outputDir}/${output}`, overwrite },
         format: '',
         compressionLevel: level,
       }),
@@ -43,6 +60,10 @@
     toastMsg = outcome.message;
     toastTone = outcome.ok ? 'info' : 'error';
     toastVisible = true;
+    if (outcome.ok && resolved.uploadId) {
+      lastUploadId = resolved.uploadId;
+      lastJobIds = outcome.jobIds;
+    }
   }
 </script>
 
@@ -55,13 +76,13 @@
         Files · {files.length} to pack
       </h2>
       <ul class="space-y-1.5">
-        {#each files as name, i (name + i)}
+        {#each files as f, i (f.name + i)}
           <li class="flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2">
-            <span class="flex-1 truncate text-sm">{name}</span>
+            <span class="flex-1 truncate text-sm">{f.name}</span>
             <button
               type="button"
               class="text-text-dim hover:text-error text-sm"
-              aria-label={`Remove ${name}`}
+              aria-label={`Remove ${f.name}`}
               onclick={() => removeFile(i)}
             >✕</button>
           </li>
@@ -104,16 +125,20 @@
   </section>
 
   <div class="flex items-center justify-between border-t border-border pt-4">
-    <span class="text-xs text-text-dim">
-      {summary}{#if !desktop} · running needs the desktop app{/if}
-    </span>
+    <span class="text-xs text-text-dim">{summary}</span>
     <button
       type="button"
       class="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-bg disabled:opacity-40 disabled:cursor-not-allowed"
-      disabled={!ready || !desktop}
+      disabled={!ready}
       onclick={run}
     >Run</button>
   </div>
+
+  {#if lastUploadId}
+    <div class="flex justify-end">
+      <DownloadResult uploadId={lastUploadId} jobIds={lastJobIds} />
+    </div>
+  {/if}
 </div>
 
 <Toast message={toastMsg} tone={toastTone} bind:visible={toastVisible} duration={2600} />

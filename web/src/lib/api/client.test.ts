@@ -67,6 +67,57 @@ describe('ApiClient.requestJSON happy path', () => {
   });
 });
 
+describe('ApiClient.uploadFiles', () => {
+  it('posts a multipart FormData body with no content-type header', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.url;
+      expect(url).toBe('/v1/uploads');
+      expect(init?.method).toBe('POST');
+      expect(init?.body).toBeInstanceOf(FormData);
+      // The browser must set the multipart boundary itself — the client must
+      // not pin content-type.
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      expect(headers['content-type']).toBeUndefined();
+      return jsonResponse(200, {
+        upload_id: 'up_1',
+        files: [{ name: 'photo.png', path: '/tmp/handy-uploads/up_1/in/photo.png' }],
+        output_dir: '/tmp/handy-uploads/up_1/out',
+      });
+    });
+
+    const client = new ApiClient({ fetch: fetchMock as typeof fetch });
+    const file = new File([new Uint8Array([1, 2, 3])], 'photo.png', { type: 'image/png' });
+    const res = await client.uploadFiles([file]);
+    expect(res).toEqual({
+      uploadId: 'up_1',
+      files: [{ name: 'photo.png', path: '/tmp/handy-uploads/up_1/in/photo.png' }],
+      outputDir: '/tmp/handy-uploads/up_1/out',
+    });
+  });
+
+  it('throws ApiError on a non-2xx upload response', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        jsonResponse(413, {
+          error: { code: 'BAD_REQUEST', message: 'upload exceeds size limit' },
+        }) as Response,
+    );
+    const client = new ApiClient({ fetch: fetchMock as typeof fetch });
+    const file = new File(['x'], 'big.bin');
+    await expect(client.uploadFiles([file])).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 413,
+    });
+  });
+});
+
+describe('ApiClient.uploadDownloadUrl', () => {
+  it('builds an encoded download URL', () => {
+    const client = new ApiClient();
+    expect(client.uploadDownloadUrl('up 1')).toBe('/v1/uploads/up%201/download');
+  });
+});
+
 describe('ApiClient error envelope', () => {
   it('throws ApiError carrying the unwrapped envelope on non-2xx', async () => {
     const fetchMock = vi.fn(
