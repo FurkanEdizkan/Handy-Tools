@@ -1,0 +1,20 @@
+{
+  "name": "handy-tools-extension",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Handy Tools Chrome MV3 extension — convert images, PDFs and archives via a local or hosted htoolsd.",
+  "scripts": {
+    "dev": "vite build --watch --mode development",
+    "build": "tsc --noEmit && vite build",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.42",
+    "typescript": "^5.6.3",
+    "vite": "^8.0.0",
+    "vitest": "^4.1.7"
+  }
+}
