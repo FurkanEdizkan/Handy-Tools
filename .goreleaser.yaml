@@ -9,6 +9,9 @@ before:
     # Build the Svelte frontend so htoolsd and htools-gui embed the real SPA
     # (web/webfs.go go:embed) instead of the committed placeholder.
     - sh -c "cd web && npm ci && npm run build"
+    # Build the Chrome MV3 extension so its dist/ can be zipped as a release
+    # asset (see the `extension` archive below).
+    - sh -c "cd extension && npm ci && npm run build"
 
 builds:
   - id: htools
@@ -82,6 +85,20 @@ archives:
     files:
       - LICENSE
       - README.md
+
+  # The Chrome MV3 extension is static assets, not a Go binary, so it uses a
+  # build-less `meta` archive. `strip_parent` drops the fixed extension/dist/
+  # prefix while keeping the wildcard structure, so the zip is a directly
+  # loadable unpacked extension (manifest.json + icons/ + assets/ at the root).
+  - id: extension
+    meta: true
+    name_template: "{{ .ProjectName }}-extension_{{ .Version }}"
+    formats: [zip]
+    files:
+      - src: extension/dist/**/*
+        dst: .
+        strip_parent: true
+      - LICENSE
 
 source:
   enabled: true
