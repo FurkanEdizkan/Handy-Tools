@@ -221,9 +221,11 @@ The queue panel starts empty and fills from the shared job registry
 (`internal/queue`): pressing **Run** on a tool enqueues a job, and each row
 shows live progress, a status pill, and an expandable stderr log.
 
-And the per-tool detail page (Convert images), with the **WebP** override on
-row 3 visibly diverging from the JPEG default and the run summary on the
-bottom reflecting the mixed targets:
+And the per-tool detail page (Convert images) once a few files have been
+added — with the **WebP** override on row 3 visibly diverging from the JPEG
+default and the run summary on the bottom reflecting the mixed targets. A
+freshly opened tool page starts with an empty file list; you add real input
+via the dropzone or by pressing **b**:
 
 ```text
   ⚙ settings    ◤ HANDY TOOLS / htools › Convert images                                                              v0.1.0 ●
@@ -247,7 +249,7 @@ bottom reflecting the mixed targets:
   OUTPUT DESTINATION  ─────────────────────────────────────────────────────────────────
     (●)  Default location — ./out                                  RECOMMENDED
     ( )  Alongside input — write next to each source file
-    ( )  Custom path — [ /Users/me/converted ]
+    ( )  Custom path — [ ./converted ]
 
   OPTIONS  ──────────────────────────────────────────────────────────────
     JPEG/WebP quality    ▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱  90
