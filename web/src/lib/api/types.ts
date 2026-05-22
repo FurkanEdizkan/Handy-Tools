@@ -4,8 +4,8 @@
  * stays snake_case — the client layer is responsible for the mapping at the
  * boundary (see client.ts).
  *
- * Keep this file hand-mirrored for now; a proto→TS generator is a later
- * optimization (#89 / Track D).
+ * Keep this file hand-mirrored for now; a proto→TS generator is a possible
+ * later optimization.
  */
 
 export interface FileRef {
@@ -183,8 +183,8 @@ export interface HealthResponse {
 }
 
 /**
- * /v1/config response. Not yet on the wire (#65). Optional fields cover the
- * forward-compat case where the server omits keys we don't care about yet.
+ * GET /v1/config response. Optional fields cover the forward-compat case
+ * where the server omits keys we don't care about yet.
  */
 export interface ConfigResponse {
   theme?: 'forge' | 'snow' | 'ember';

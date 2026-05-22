@@ -10,9 +10,9 @@
   }
   let { params }: Props = $props();
 
-  // Dispatch on the :id route param. ToolImage + ToolPdf land here (#130);
-  // the archive forms (#131) and Doctor (#132) still fall through to the
-  // placeholder until those sub-issues land.
+  // Dispatch on the :id route param. The four conversion tools render their
+  // form here; Doctor has its own top-level route (#/doctor), so Home links
+  // straight to it rather than through this page.
   let tool = $derived(toolById(params?.id ?? ''));
 </script>
 
@@ -35,8 +35,8 @@
     {:else}
       <p class="text-sm text-text-dim">{tool.desc}</p>
       <p class="mt-4 text-sm text-text-dim">
-        The tool form for <code class="text-accent">{tool.id}</code> arrives in
-        #132.
+        Open <a class="text-accent underline" href="#/{tool.id}">{tool.label}</a>
+        from its own page.
       </p>
     {/if}
   {:else}

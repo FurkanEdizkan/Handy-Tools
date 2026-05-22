@@ -4,14 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project shape
 
-Handy Tools is a single Go module that produces two binaries from one core:
+Handy Tools is a single Go module that produces three binaries from one core:
 
 - `cmd/htools` — Bubble Tea TUI (`make tui` / `go run ./cmd/htools`)
-- `cmd/htoolsd` — gRPC server exposing the same tools (`make serve` / `go run ./cmd/htoolsd`)
+- `cmd/htoolsd` — gRPC + HTTP/SSE server exposing the same tools (`make serve` / `go run ./cmd/htoolsd`)
+- `cmd/htools-gui` — Wails v2 desktop app, gated behind the `wails` build tag (CGO + webkit2gtk, linux/amd64); without the tag a stub stands in so the other jobs stay CGO-free
 
-Both depend on `internal/tools/<feature>/` (image, archive, pdf), which is the **only** layer allowed to touch files, run external binaries, or know about formats. `internal/ui/` and `internal/server/` are thin adapters — never put tool logic in either. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+All three depend on `internal/tools/<feature>/` (image, archive, pdf), which is the **only** layer allowed to touch files, run external binaries, or know about formats. `internal/ui/` and `internal/server/` are thin adapters — never put tool logic in either. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-A third entry point, `cmd/snapshot`, is a developer-only helper that renders the TUI views into `docs/screenshots/htools-*.txt` so the README previews stay in sync. It is **excluded** from release builds (not listed under `builds:` in `.goreleaser.yaml`). Re-run `go run ./cmd/snapshot` after any UI-shaping change.
+A fourth entry point, `cmd/snapshot`, is a developer-only helper that renders the TUI views into `docs/screenshots/htools-*.txt` so the README previews stay in sync. It is **excluded** from release builds (not listed under `builds:` in `.goreleaser.yaml`). Re-run `go run ./cmd/snapshot` after any UI-shaping change.
 
 ## Common commands
 
