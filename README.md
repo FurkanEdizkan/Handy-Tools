@@ -52,9 +52,8 @@ the TUI, the server, and the desktop app. The architecture is on one page in
 [Bubble Tea]: https://github.com/charmbracelet/bubbletea
 
 > **Status:** pre-1.0, calver pre-releases. The TUI, the `htoolsd` server
-> (gRPC + HTTP/SSE), the embedded Svelte web UI, the Wails desktop app, the
-> browser-upload converter, and the Chrome extension all run real
-> image/archive/PDF jobs through a shared `internal/queue/`.
+> (gRPC + HTTP/SSE), the embedded Svelte web UI, and the Wails desktop app all
+> run real image/archive/PDF jobs through a shared `internal/queue/`.
 > See [Project #14](https://github.com/users/FurkanEdizkan/projects/14) for
 > live status and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap) for the
 > longer-horizon roadmap.
@@ -76,8 +75,6 @@ the TUI, the server, and the desktop app. The architecture is on one page in
 | **HTTP/SSE** | REST endpoints mirroring gRPC, `tools.Progress` streamed as Server-Sent Events.            | —                    |
 | **Web UI**   | Svelte + Tailwind SPA embedded into `htoolsd`; thumbnails, PDF previews, drag-and-drop.     | —                    |
 | **Desktop**  | `htools-gui` — the web UI in a native Wails window with file dialogs.                      | —                    |
-| **Browser**  | In-browser file converter — uploads bytes to `htoolsd`, no server-side paths needed.       | —                    |
-| **Extension**| Chrome MV3 extension (`extension/`) — convert files against a local or hosted `htoolsd`.   | —                    |
 
 ### What's coming
 
@@ -166,27 +163,6 @@ grpcurl -plaintext localhost:7777 \
   handytools.v1.ArchiveService/Inspect \
   <<<'{"source":{"path":"/srv/uploads/foo.7z.001"}}'
 ```
-
-### Browser extension
-
-A Chrome (Manifest V3) extension under [`extension/`](extension/) converts
-images, PDFs and archives straight from the browser — it is a thin client over
-`htoolsd`'s upload API. Run the server with the HTTP transport enabled:
-
-```sh
-htoolsd --http :8080        # no --allow-roots needed; uploads are sandboxed
-```
-
-then build and load the extension:
-
-```sh
-make extension                       # → extension/dist
-# chrome://extensions → Developer mode → Load unpacked → extension/dist
-```
-
-The endpoint is configurable on the extension's Settings page (default
-`http://127.0.0.1:8080`; a hosted `https://` server is supported). See
-[`extension/README.md`](extension/README.md) for details.
 
 ### What it looks like
 
@@ -324,6 +300,8 @@ make proto       # generate Go bindings under gen/ from api/proto (run once afte
 make build       # builds bin/htools and bin/htoolsd
 make tui         # runs the TUI
 make serve       # runs the gRPC server on the address from config (default :7777)
+make gui         # builds the web UI and runs the Wails desktop app
+make gui-build   # builds bin/htools-gui
 make test        # go test -race -count=1 ./...
 make fuzz        # 20s fuzz pass over the config YAML decoder
 make lint        # golangci-lint + buf lint
@@ -332,6 +310,25 @@ make cover       # coverage.out + coverage.html
 
 CI uses Go 1.25 and `golangci-lint v2.12.2` — match locally or lint output may
 diverge.
+
+### Desktop app (`htools-gui`)
+
+The Wails desktop build needs CGO and the GTK/webkit dev headers. Install them
+once, then `make gui`:
+
+```sh
+# Ubuntu 24.04+ (webkit2gtk-4.1):
+sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev
+# Ubuntu 22.04 (webkit2gtk-4.0):
+sudo apt install libgtk-3-dev libwebkit2gtk-4.0-dev
+
+make gui          # build the embedded UI + run the app
+```
+
+`make gui` detects the installed webkit version with `pkg-config` and selects
+the matching Wails build tag (`webkit2_41` for 4.1), so the same command works
+on both. The other Go binaries stay CGO-free — only `htools-gui` needs this
+toolchain.
 
 ## Releasing
 

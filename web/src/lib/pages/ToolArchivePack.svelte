@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Dropzone, OptionRow, Toast, DownloadResult } from '../components';
+  import { Dropzone, OptionRow, Toast } from '../components';
   import {
     ARCHIVE_FORMATS,
     archivePackReady,
@@ -17,10 +17,6 @@
   let toastVisible = $state(false);
   let toastMsg = $state('');
   let toastTone = $state<'info' | 'error'>('info');
-
-  // Set after a successful browser run so the result can be downloaded.
-  let lastUploadId = $state('');
-  let lastJobIds = $state<string[]>([]);
 
   let summary = $derived(archivePackSummary(files.length, format, output));
   let ready = $derived(archivePackReady(files.length, output));
@@ -42,9 +38,9 @@
     if (!ready) return;
     let resolved;
     try {
-      resolved = await resolveSources(files);
+      resolved = resolveSources(files);
     } catch (e) {
-      toastMsg = e instanceof ApiError ? e.message : 'Upload failed.';
+      toastMsg = e instanceof ApiError ? e.message : 'Could not start the job.';
       toastTone = 'error';
       toastVisible = true;
       return;
@@ -60,10 +56,6 @@
     toastMsg = outcome.message;
     toastTone = outcome.ok ? 'info' : 'error';
     toastVisible = true;
-    if (outcome.ok && resolved.uploadId) {
-      lastUploadId = resolved.uploadId;
-      lastJobIds = outcome.jobIds;
-    }
   }
 </script>
 
@@ -133,12 +125,6 @@
       onclick={run}
     >Run</button>
   </div>
-
-  {#if lastUploadId}
-    <div class="flex justify-end">
-      <DownloadResult uploadId={lastUploadId} jobIds={lastJobIds} />
-    </div>
-  {/if}
 </div>
 
 <Toast message={toastMsg} tone={toastTone} bind:visible={toastVisible} duration={2600} />

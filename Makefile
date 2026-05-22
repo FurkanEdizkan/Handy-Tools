@@ -4,11 +4,19 @@ MODULE      := github.com/furkandedizkan/handy-tools
 BIN_DIR     := bin
 TUI_BIN     := $(BIN_DIR)/htools
 SERVER_BIN  := $(BIN_DIR)/htoolsd
+GUI_BIN     := $(BIN_DIR)/htools-gui
 
 GO          ?= go
 GOFLAGS     ?=
 LDFLAGS     ?= -s -w
 PKGS        := ./...
+
+# The Wails desktop build needs three tags: `wails` (this repo's own — selects
+# the real app over the CGO-free stub), `production` (Wails' own — without it
+# the binary aborts at startup with "will not build without the correct build
+# tags"), and `webkit2_41` on systems with only webkit2gtk-4.1 (Ubuntu 24.04+).
+# The last is detected via pkg-config so one command builds on 4.0 and 4.1.
+WAILS_TAGS  := wails production$(if $(shell pkg-config --exists webkit2gtk-4.1 2>/dev/null && echo y), webkit2_41,)
 
 .DEFAULT_GOAL := help
 
@@ -39,10 +47,6 @@ web: ## Build the Svelte frontend into web/dist (embedded by htoolsd)
 web-dev: ## Run Vite dev server with HMR (point it at a running htoolsd)
 	cd web && npm run dev
 
-.PHONY: extension
-extension: ## Build the Chrome MV3 extension into extension/dist
-	cd extension && npm ci && npm run build
-
 .PHONY: tui
 tui: ## Run the TUI
 	$(GO) run ./cmd/htools
@@ -50,6 +54,15 @@ tui: ## Run the TUI
 .PHONY: serve
 serve: ## Run the gRPC server
 	$(GO) run ./cmd/htoolsd
+
+.PHONY: gui
+gui: web ## Build the web UI and run the Wails desktop app
+	$(GO) run -tags '$(WAILS_TAGS)' ./cmd/htools-gui
+
+.PHONY: gui-build
+gui-build: web ## Build the Wails desktop app into bin/htools-gui
+	@mkdir -p $(BIN_DIR)
+	$(GO) build $(GOFLAGS) -tags '$(WAILS_TAGS)' -ldflags '$(LDFLAGS)' -o $(GUI_BIN) ./cmd/htools-gui
 
 .PHONY: test
 test: ## Run unit tests
@@ -81,5 +94,4 @@ tidy: ## go mod tidy
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR) dist coverage.out coverage.html
 	rm -rf web/dist/assets web/dist/index.html
-	rm -rf extension/dist
 	@# Keep web/dist/.gitkeep (committed) and web/placeholder.html.

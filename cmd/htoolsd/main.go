@@ -18,7 +18,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -27,14 +26,12 @@ import (
 	"github.com/furkandedizkan/handy-tools/internal/config"
 	"github.com/furkandedizkan/handy-tools/internal/queue"
 	"github.com/furkandedizkan/handy-tools/internal/server"
-	"github.com/furkandedizkan/handy-tools/internal/upload"
 )
 
 func main() {
 	listen := flag.String("listen", "", "gRPC address to listen on (overrides config)")
 	httpListen := flag.String("http", "", "HTTP+SSE address to listen on (overrides config; empty = disabled)")
 	allow := flag.String("allow-roots", "", "comma-separated allow-list of filesystem roots; overrides config")
-	corsOrigins := flag.String("cors-origins", "", "comma-separated browser origins allowed cross-origin; overrides config")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 	if *showVersion {
@@ -64,65 +61,22 @@ func main() {
 			"refusing to start: both gRPC (--listen) and HTTP (--http) are disabled.")
 		os.Exit(2)
 	}
-	// The HTTP transport hosts the browser-upload file converter, which stages
-	// uploads into a sandboxed, server-owned workspace. So HTTP alone is a
-	// valid way to do work — a deployment may legitimately run with no user
-	// allow_roots. Refuse only when there is no way to do anything at all.
-	uploadsEnabled := httpAddr != ""
-	if len(roots) == 0 && !uploadsEnabled {
+	// Both transports run every FileRef path through Options.CheckPath, which
+	// fails closed on an empty allow-list. Without roots there is nothing the
+	// server can act on, so refuse to start rather than serve a dead surface.
+	if len(roots) == 0 {
 		fmt.Fprintln(os.Stderr,
-			"refusing to start: no allow_roots configured and HTTP is disabled. "+
-				"Set --allow-roots / server.allow_roots, or enable HTTP with --http.")
+			"refusing to start: no allow_roots configured. "+
+				"Set --allow-roots or server.allow_roots.")
 		os.Exit(2)
 	}
 
-	// effectiveRoots is what CheckPath enforces. The upload workspace base is
-	// appended so files staged by the upload API pass the same path check the
-	// JSON path API uses — see internal/upload. With empty roots and uploads
-	// off, effectiveRoots stays empty and CheckPath still rejects everything.
-	var uploads *upload.Manager
-	effectiveRoots := append([]string(nil), roots...)
-	if uploadsEnabled {
-		uploadDir := cfg.Server.UploadDir
-		if uploadDir == "" {
-			uploadDir = filepath.Join(os.TempDir(), "handy-uploads")
-		}
-		maxBytes := cfg.Server.UploadMaxBytes
-		if maxBytes <= 0 {
-			maxBytes = 256 << 20
-		}
-		ttl := time.Duration(cfg.Server.UploadTTLSecs) * time.Second
-		if ttl <= 0 {
-			ttl = time.Hour
-		}
-		uploads, err = upload.NewManager(uploadDir, maxBytes, ttl)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "upload:", err)
-			os.Exit(1)
-		}
-		effectiveRoots = append(effectiveRoots, uploads.Base)
-	}
-
-	corsList := cfg.Server.CORSOrigins
-	if *corsOrigins != "" {
-		corsList = splitCSV(*corsOrigins)
-	}
-
-	opts := server.Options{AllowRoots: effectiveRoots, CORSOrigins: corsList}
+	opts := server.Options{AllowRoots: roots}
 	// One shared queue drives both transports, so a job started over gRPC is
 	// visible to an HTTP/SSE subscriber and vice versa.
 	q := queue.New()
 	grpcSrv := server.New(opts, q)
-	httpSrv := httpapi.New(opts, q, uploads)
-
-	// The reaper deletes abandoned upload workspaces on a TTL; it stops when
-	// reaperCtx is cancelled in the shutdown goroutine below.
-	reaperCtx, reaperCancel := context.WithCancel(context.Background())
-	if uploads != nil {
-		uploads.StartReaper(reaperCtx)
-		log.Printf("htoolsd uploads staged under %s (max %d bytes, ttl %s)",
-			uploads.Base, uploads.MaxBytes, uploads.TTL)
-	}
+	httpSrv := httpapi.New(opts, q)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
@@ -136,7 +90,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "grpc listen:", err)
 			os.Exit(1)
 		}
-		log.Printf("htoolsd gRPC listening on %s; roots=%v", grpcAddr, effectiveRoots)
+		log.Printf("htoolsd gRPC listening on %s; roots=%v", grpcAddr, roots)
 		go func() { errCh <- grpcSrv.Serve(grpcLis) }()
 	}
 
@@ -147,14 +101,13 @@ func main() {
 			fmt.Fprintln(os.Stderr, "http listen:", err)
 			os.Exit(1)
 		}
-		log.Printf("htoolsd HTTP listening on %s; roots=%v", httpAddr, effectiveRoots)
+		log.Printf("htoolsd HTTP listening on %s; roots=%v", httpAddr, roots)
 		go func() { errCh <- httpSrv.Serve(httpLis) }()
 	}
 
 	go func() {
 		<-stop
 		log.Println("shutting down")
-		reaperCancel()
 		grpcSrv.Stop()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()

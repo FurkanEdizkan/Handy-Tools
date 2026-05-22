@@ -65,22 +65,7 @@ type PDF struct {
 type Server struct {
 	Listen     string   `yaml:"listen"      json:"listen"`      // gRPC, ":7777"
 	HTTPListen string   `yaml:"http_listen" json:"http_listen"` // HTTP/SSE, e.g. ":8080"; empty -> disabled
-	AllowRoots []string `yaml:"allow_roots" json:"allow_roots"` // empty -> CWD only
-
-	// Upload settings govern the browser-upload file converter on the HTTP
-	// transport. UploadDir is the base directory for per-request temp
-	// workspaces; empty -> {os.TempDir()}/handy-uploads. UploadMaxBytes caps a
-	// single upload request body; 0 -> 256 MiB. UploadTTLSecs is the idle
-	// lifetime of a workspace before the reaper deletes it; 0 -> 3600s.
-	UploadDir      string `yaml:"upload_dir"       json:"upload_dir"`
-	UploadMaxBytes int64  `yaml:"upload_max_bytes" json:"upload_max_bytes"`
-	UploadTTLSecs  int    `yaml:"upload_ttl_secs"  json:"upload_ttl_secs"`
-
-	// CORSOrigins lists the browser origins allowed to call the HTTP API
-	// cross-origin (the Chrome extension, a hosted web client). Empty -> a
-	// built-in safe default: localhost / 127.0.0.1 on any port plus any
-	// chrome-extension:// origin. A non-empty list replaces that default.
-	CORSOrigins []string `yaml:"cors_origins" json:"cors_origins"`
+	AllowRoots []string `yaml:"allow_roots" json:"allow_roots"` // empty -> fail closed
 }
 
 // Defaults returns a freshly-populated Config.
@@ -95,9 +80,7 @@ func Defaults() Config {
 		Image: Image{DefaultJPEGQuality: 90},
 		PDF:   PDF{DefaultDPI: 150},
 		Server: Server{
-			Listen:         ":7777",
-			UploadMaxBytes: 256 << 20,
-			UploadTTLSecs:  3600,
+			Listen: ":7777",
 		},
 	}
 }

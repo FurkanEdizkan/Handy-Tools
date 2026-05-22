@@ -4,7 +4,6 @@
     OptionRow,
     Toast,
     Thumbnail,
-    DownloadResult,
     type RadioOption,
   } from '../components';
   import { IMAGE_FORMATS, imageSummary, imageFormReady, type ImageFile } from './toolform';
@@ -20,10 +19,6 @@
   let toastVisible = $state(false);
   let toastMsg = $state('');
   let toastTone = $state<'info' | 'error'>('info');
-
-  // Set after a successful browser run so the result can be downloaded.
-  let lastUploadId = $state('');
-  let lastJobIds = $state<string[]>([]);
 
   const outOptions: RadioOption[] = [
     { label: 'Default folder', value: 'default' },
@@ -47,15 +42,15 @@
     files = files.filter((_, i) => i !== index);
   }
 
-  // One job per file so each row's target format is honored. In a browser the
-  // files are uploaded first; either way output lands in resolved.outputDir.
+  // One job per file so each row's target format is honored; output lands in
+  // resolved.outputDir.
   async function run(): Promise<void> {
     if (!ready) return;
     let resolved;
     try {
-      resolved = await resolveSources(files);
+      resolved = resolveSources(files);
     } catch (e) {
-      toastMsg = e instanceof ApiError ? e.message : 'Upload failed.';
+      toastMsg = e instanceof ApiError ? e.message : 'Could not start the job.';
       toastTone = 'error';
       toastVisible = true;
       return;
@@ -75,15 +70,11 @@
     toastMsg = outcome.message;
     toastTone = outcome.ok ? 'info' : 'error';
     toastVisible = true;
-    if (outcome.ok && resolved.uploadId) {
-      lastUploadId = resolved.uploadId;
-      lastJobIds = outcome.jobIds;
-    }
   }
 </script>
 
 <div class="space-y-6">
-  <Dropzone accept="image/*" label="Drop images here" hint="or click to browse" onfiles={addFiles} />
+  <Dropzone label="Drop images here" hint="or click to browse" onfiles={addFiles} />
 
   {#if files.length > 0}
     <section>
@@ -93,7 +84,7 @@
       <ul class="space-y-1.5">
         {#each files as f, i (f.name + i)}
           <li class="flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2">
-            <Thumbnail path={f.path} file={f.file} />
+            <Thumbnail path={f.path} />
             <span class="flex-1 truncate text-sm">{f.name}</span>
             <select
               bind:value={f.target}
@@ -140,12 +131,6 @@
       onclick={run}
     >Run</button>
   </div>
-
-  {#if lastUploadId}
-    <div class="flex justify-end">
-      <DownloadResult uploadId={lastUploadId} jobIds={lastJobIds} />
-    </div>
-  {/if}
 </div>
 
 <Toast message={toastMsg} tone={toastTone} bind:visible={toastVisible} duration={2600} />
