@@ -63,8 +63,8 @@ var Known = []Tool{
 	{
 		Name:        "magick",
 		Aliases:     []string{"convert"},
-		Description: "Decode HEIC/HEIF images.",
-		Features:    []string{"image: decode HEIC"},
+		Description: "Decode HEIC/HEIF images; encode HEIC and WebP.",
+		Features:    []string{"image: decode HEIC", "image: encode HEIC + WebP"},
 		InstallHint: map[string]string{
 			"linux":  "apt install imagemagick",
 			"darwin": "brew install imagemagick",
