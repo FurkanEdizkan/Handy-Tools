@@ -370,6 +370,14 @@ In short:
 - Follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/).
 - CI must be green.
 
+## Acknowledgements
+
+Handy Tools binds several third-party libraries directly — Bubble Tea and
+Lip Gloss for the TUI, pdfcpu for PDF operations, klauspost/compress and
+dsnet/compress for archives, `golang.org/x/image`, Wails for the desktop
+shell, gRPC, and Svelte/Tailwind for the web UI. Every one is credited with
+its copyright and license in [NOTICE](NOTICE).
+
 ## License
 
 [MIT](LICENSE).
