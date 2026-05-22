@@ -1,41 +1,46 @@
 <script lang="ts">
-  import { Dropzone, OptionRow, Toast } from '../components';
-  import {
-    ARCHIVE_FORMATS,
-    archivePackReady,
-    archivePackSummary,
-    type PickedFile,
-  } from './toolform';
+  import Dropzone from '../components/Dropzone.svelte';
+  import Toast from '../components/Toast.svelte';
+  import { ARCHIVE_FORMATS, archivePackReady, archivePackSummary, type ArchiveFormat, type PickedFile } from './toolform';
   import { ApiError, api } from '../api';
   import { runJob, resolveSources } from './run';
 
   let files = $state<PickedFile[]>([]);
-  let format = $state<(typeof ARCHIVE_FORMATS)[number]>('zip');
+  let format = $state<ArchiveFormat>('zip');
   let output = $state('archive.zip');
   let level = $state(6);
   let overwrite = $state(false);
+  let running = $state(false);
   let toastVisible = $state(false);
   let toastMsg = $state('');
   let toastTone = $state<'info' | 'error'>('info');
 
-  let summary = $derived(archivePackSummary(files.length, format, output));
-  let ready = $derived(archivePackReady(files.length, output));
+  const summary = $derived(archivePackSummary(files.length, format, output));
+  const ready = $derived(archivePackReady(files.length, output));
 
   function addFiles(dropped: File[] | string[]): void {
-    const picked: PickedFile[] = dropped.map((d) =>
-      typeof d === 'string' ? { name: d, path: d } : { name: d.name, file: d },
-    );
-    files = [...files, ...picked];
+    files = [
+      ...files,
+      ...dropped.map((d) =>
+        typeof d === 'string'
+          ? { name: d.split(/[/\\]/).pop() ?? d, path: d }
+          : { name: d.name, file: d },
+      ),
+    ];
   }
-
   function removeFile(index: number): void {
     files = files.filter((_, i) => i !== index);
   }
 
-  // The archive is written into resolved.outputDir; format is inferred from
-  // the output filename's extension.
+  function pickFormat(fmt: ArchiveFormat): void {
+    format = fmt;
+    // Keep the output filename's extension aligned with the chosen format.
+    const stem = output.replace(/\.(zip|tar\.gz|tar\.bz2|tar\.zst|7z)$/i, '') || 'archive';
+    output = `${stem}.${fmt}`;
+  }
+
   async function run(): Promise<void> {
-    if (!ready) return;
+    if (!ready || running) return;
     let resolved;
     try {
       resolved = resolveSources(files);
@@ -45,6 +50,7 @@
       toastVisible = true;
       return;
     }
+    running = true;
     const outcome = await runJob(() =>
       api.archiveCompress({
         sources: resolved.sources.map((s) => ({ path: s.path })),
@@ -53,77 +59,87 @@
         compressionLevel: level,
       }),
     );
+    running = false;
     toastMsg = outcome.message;
     toastTone = outcome.ok ? 'info' : 'error';
     toastVisible = true;
   }
 </script>
 
-<div class="space-y-6">
-  <Dropzone label="Drop files to pack" hint="or click to browse" onfiles={addFiles} />
+<div class="page-header">
+  <div class="icon-block">▢</div>
+  <div style="flex:1">
+    <h1>Pack into archive</h1>
+    <div class="desc">Bundle files and folders into a single archive.</div>
+  </div>
+</div>
 
-  {#if files.length > 0}
-    <section>
-      <h2 class="text-xs font-semibold uppercase tracking-wide text-text-dim mb-2">
-        Files · {files.length} to pack
-      </h2>
-      <ul class="space-y-1.5">
-        {#each files as f, i (f.name + i)}
-          <li class="flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2">
-            <span class="flex-1 truncate text-sm">{f.name}</span>
-            <button
-              type="button"
-              class="text-text-dim hover:text-error text-sm"
-              aria-label={`Remove ${f.name}`}
-              onclick={() => removeFile(i)}
-            >✕</button>
-          </li>
-        {/each}
-      </ul>
-    </section>
-  {/if}
+<div class="conv-grid">
+  <div class="panel">
+    <div class="panel-head"><span>Input</span></div>
+    <div class="panel-body">
+      <Dropzone label="Drop files or a folder to pack" hint="Browse files" onfiles={addFiles} />
+    </div>
+    <div class="files-head">
+      <span class="ttl">Files</span>
+      <span class="meta">({files.length})</span>
+    </div>
+    {#if files.length === 0}
+      <div class="empty-note">No files yet. Drop something into the box above.</div>
+    {:else}
+      {#each files as f, i (f.name + i)}
+        <div class="file-row">
+          <div class="thumb archive">{i + 1}</div>
+          <div class="file-name">
+            {f.name}
+            {#if f.path}<span class="dim">{f.path}</span>{/if}
+          </div>
+          <span></span>
+          <span></span>
+          <span></span>
+          <button class="file-x" onclick={() => removeFile(i)} title="remove" aria-label="Remove {f.name}">×</button>
+        </div>
+      {/each}
+    {/if}
+  </div>
 
-  <section class="space-y-3">
-    <h2 class="text-xs font-semibold uppercase tracking-wide text-text-dim">Output</h2>
-    <label class="flex items-center gap-3 text-sm">
-      <span class="w-28 text-text-dim">Archive format</span>
-      <select
-        bind:value={format}
-        class="rounded border border-border bg-surface text-sm px-2 py-1"
-        aria-label="Archive format"
-      >
-        {#each ARCHIVE_FORMATS as fmt (fmt)}
-          <option value={fmt}>{fmt}</option>
-        {/each}
-      </select>
-    </label>
-    <label class="flex items-center gap-3 text-sm">
-      <span class="w-28 text-text-dim">Output file</span>
-      <input
-        bind:value={output}
-        class="flex-1 rounded border border-border bg-surface text-sm px-2 py-1"
-        placeholder="archive.zip"
-        aria-label="Output file name"
-      />
-    </label>
-  </section>
+  <div class="conv-col">
+    <div class="panel">
+      <div class="panel-head"><span>Output</span></div>
+      <div class="panel-body">
+        <div class="opt-label">Archive format</div>
+        <div class="seg wide">
+          {#each ARCHIVE_FORMATS as fmt (fmt)}
+            <button class={format === fmt ? 'on' : ''} onclick={() => pickFormat(fmt)}>{fmt}</button>
+          {/each}
+        </div>
+        <div class="opt-label" style="margin-top:12px">Output file</div>
+        <input class="text-input" style="width:100%" bind:value={output} placeholder="archive.zip" />
+      </div>
+    </div>
 
-  <section class="space-y-1">
-    <h2 class="text-xs font-semibold uppercase tracking-wide text-text-dim mb-2">
-      Compression options
-    </h2>
-    <OptionRow type="slider" label="Compression level (0 = store, 9 = max)" bind:value={level} min={0} max={9} />
-    <OptionRow type="checkbox" label="Overwrite if the archive exists" bind:value={overwrite} />
-  </section>
+    <div class="panel">
+      <div class="panel-head"><span>Options</span></div>
+      <div class="panel-body">
+        <div class="slider-row">
+          <span class="lbl">Compression level</span>
+          <span class="val">{level}</span>
+          <input type="range" min="0" max="9" bind:value={level} />
+        </div>
+        <div class="toggle-row">
+          <div class="lbl"><span>Overwrite existing</span><span class="sub">Replace the archive if it exists</span></div>
+          <button class="toggle {overwrite ? 'on' : ''}" aria-label="Overwrite existing" onclick={() => (overwrite = !overwrite)}></button>
+        </div>
+      </div>
+    </div>
 
-  <div class="flex items-center justify-between border-t border-border pt-4">
-    <span class="text-xs text-text-dim">{summary}</span>
-    <button
-      type="button"
-      class="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-bg disabled:opacity-40 disabled:cursor-not-allowed"
-      disabled={!ready}
-      onclick={run}
-    >Run</button>
+    <div class="run-summary">{summary}</div>
+
+    <div class="run-btn-block">
+      <button class="btn primary" disabled={!ready || running} onclick={run}>
+        {running ? 'Running…' : '▸ Pack archive'}
+      </button>
+    </div>
   </div>
 </div>
 

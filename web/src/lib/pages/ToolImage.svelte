@@ -1,39 +1,43 @@
 <script lang="ts">
-  import {
-    Dropzone,
-    OptionRow,
-    Toast,
-    Thumbnail,
-    type RadioOption,
-  } from '../components';
-  import { IMAGE_FORMATS, imageSummary, imageFormReady, type ImageFile } from './toolform';
+  import Dropzone from '../components/Dropzone.svelte';
+  import Toast from '../components/Toast.svelte';
+  import { IMAGE_FORMATS, type ImageFile, type ImageFormat } from './toolform';
   import { ApiError, api, type ImageTargetFormat } from '../api';
   import { runJob, resolveSources } from './run';
 
   let files = $state<ImageFile[]>([]);
+  let defaultFmt = $state<ImageFormat>('JPEG');
+  let outMode = $state<'default' | 'alongside' | 'custom'>('default');
+  let customPath = $state('');
   let quality = $state(90);
   let overwrite = $state(false);
   let stripMetadata = $state(false);
   let recurse = $state(true);
-  let outDest = $state('default');
   let toastVisible = $state(false);
   let toastMsg = $state('');
   let toastTone = $state<'info' | 'error'>('info');
+  let running = $state(false);
 
-  const outOptions: RadioOption[] = [
-    { label: 'Default folder', value: 'default' },
-    { label: 'Alongside source', value: 'alongside' },
-    { label: 'Custom…', value: 'custom' },
-  ];
+  const summary = $derived.by(() => {
+    const counts = new Map<string, number>();
+    for (const f of files) counts.set(f.target, (counts.get(f.target) ?? 0) + 1);
+    return {
+      count: files.length,
+      parts: IMAGE_FORMATS.filter((fmt) => counts.has(fmt)).map((fmt) => `${counts.get(fmt)} → ${fmt}`),
+    };
+  });
+  const ready = $derived(files.length > 0);
 
-  let summary = $derived(imageSummary(files));
-  let ready = $derived(imageFormReady(files));
+  function extOf(name: string): string {
+    const dot = name.lastIndexOf('.');
+    return dot >= 0 ? name.slice(dot + 1).toLowerCase() : '';
+  }
 
   function addFiles(dropped: File[] | string[]): void {
     const picked: ImageFile[] = dropped.map((d) =>
       typeof d === 'string'
-        ? { name: d, path: d, target: 'JPEG' }
-        : { name: d.name, file: d, target: 'JPEG' },
+        ? { name: d.split(/[/\\]/).pop() ?? d, path: d, target: defaultFmt }
+        : { name: d.name, file: d, target: defaultFmt },
     );
     files = [...files, ...picked];
   }
@@ -42,10 +46,25 @@
     files = files.filter((_, i) => i !== index);
   }
 
-  // One job per file so each row's target format is honored; output lands in
-  // resolved.outputDir.
+  function cycleFormat(index: number): void {
+    files = files.map((f, i) => {
+      if (i !== index) return f;
+      const next = IMAGE_FORMATS[(IMAGE_FORMATS.indexOf(f.target) + 1) % IMAGE_FORMATS.length];
+      return { ...f, target: next };
+    });
+  }
+
+  function applyDefaultToAll(): void {
+    files = files.map((f) => ({ ...f, target: defaultFmt }));
+  }
+
+  function changeDefault(fmt: ImageFormat): void {
+    defaultFmt = fmt;
+    applyDefaultToAll();
+  }
+
   async function run(): Promise<void> {
-    if (!ready) return;
+    if (!ready || running) return;
     let resolved;
     try {
       resolved = resolveSources(files);
@@ -55,6 +74,8 @@
       toastVisible = true;
       return;
     }
+    const outDir = outMode === 'custom' && customPath.trim() ? customPath.trim() : resolved.outputDir;
+    running = true;
     const outcome = await runJob(() =>
       Promise.all(
         resolved.sources.map((src, i) =>
@@ -62,74 +83,168 @@
             source: { path: src.path },
             targetFormat: files[i].target.toUpperCase() as ImageTargetFormat,
             options: { quality, maxWidth: 0, maxHeight: 0, stripMetadata },
-            output: { directory: resolved.outputDir, overwrite },
+            output: { directory: outDir, overwrite },
           }),
         ),
       ),
     );
+    running = false;
     toastMsg = outcome.message;
     toastTone = outcome.ok ? 'info' : 'error';
     toastVisible = true;
   }
 </script>
 
-<div class="space-y-6">
-  <Dropzone label="Drop images here" hint="or click to browse" onfiles={addFiles} />
+<div class="page-header">
+  <div class="icon-block">◇</div>
+  <div style="flex:1">
+    <h1>Convert images</h1>
+    <div class="desc">Reencode between PNG · JPEG · WebP · GIF · BMP · TIFF · HEIC.</div>
+  </div>
+</div>
 
-  {#if files.length > 0}
-    <section>
-      <h2 class="text-xs font-semibold uppercase tracking-wide text-text-dim mb-2">
-        Files · convert each to
-      </h2>
-      <ul class="space-y-1.5">
-        {#each files as f, i (f.name + i)}
-          <li class="flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2">
-            <Thumbnail path={f.path} />
-            <span class="flex-1 truncate text-sm">{f.name}</span>
-            <select
-              bind:value={f.target}
-              class="rounded border border-border bg-surface text-xs px-2 py-1"
-              aria-label={`Target format for ${f.name}`}
-            >
-              {#each IMAGE_FORMATS as fmt (fmt)}
-                <option value={fmt}>{fmt}</option>
-              {/each}
-            </select>
-            <button
-              type="button"
-              class="text-text-dim hover:text-error text-sm"
-              aria-label={`Remove ${f.name}`}
-              onclick={() => removeFile(i)}
-            >✕</button>
-          </li>
-        {/each}
-      </ul>
-    </section>
-  {/if}
+<div class="conv-grid">
+  <!-- LEFT: input + files -->
+  <div class="panel">
+    <div class="panel-head">
+      <span>Input</span>
+      <span class="right">accepts PNG · JPEG · GIF · BMP · TIFF · WebP · HEIC</span>
+    </div>
+    <div class="panel-body">
+      <Dropzone label="Drop images or a folder here" hint="Browse files" onfiles={addFiles} />
+    </div>
 
-  <section>
-    <h2 class="text-xs font-semibold uppercase tracking-wide text-text-dim mb-2">
-      Output destination
-    </h2>
-    <OptionRow type="radio" label="Where to write converted images" bind:value={outDest} options={outOptions} />
-  </section>
+    <div class="files-head">
+      <span class="ttl">Files</span>
+      <span class="meta">({files.length})</span>
+      <span class="meta">· default → {defaultFmt}</span>
+      <span class="spacer"></span>
+      <span class="hint"><span class="kbd">click</span> a format to cycle</span>
+    </div>
 
-  <section class="space-y-1">
-    <h2 class="text-xs font-semibold uppercase tracking-wide text-text-dim mb-2">Options</h2>
-    <OptionRow type="slider" label="JPEG / WebP quality" bind:value={quality} min={1} max={100} />
-    <OptionRow type="checkbox" label="Overwrite existing files" bind:value={overwrite} />
-    <OptionRow type="checkbox" label="Strip metadata (EXIF)" bind:value={stripMetadata} />
-    <OptionRow type="checkbox" label="Recurse into dropped folders" bind:value={recurse} />
-  </section>
+    {#if files.length === 0}
+      <div class="empty-note">No files yet. Drop something into the box above.</div>
+    {:else}
+      {#each files as f, i (f.name + i)}
+        <div class="file-row {f.target !== defaultFmt ? 'diverged' : ''}">
+          <div class="thumb {extOf(f.name)}">{extOf(f.name).toUpperCase() || 'IMG'}</div>
+          <div class="file-name">
+            {f.name}
+            {#if f.path}<span class="dim">{f.path}</span>{/if}
+          </div>
+          <span class="fmt-pill from">{extOf(f.name).toUpperCase() || '—'}</span>
+          <span style="color:var(--text-dim)">→</span>
+          <button class="fmt-pill" onclick={() => cycleFormat(i)} title="click to cycle format">
+            {f.target} <span class="arrow">▾</span>
+          </button>
+          <button class="file-x" onclick={() => removeFile(i)} title="remove" aria-label="Remove {f.name}">×</button>
+        </div>
+      {/each}
+    {/if}
+  </div>
 
-  <div class="flex items-center justify-between border-t border-border pt-4">
-    <span class="text-xs text-text-dim">{summary}</span>
-    <button
-      type="button"
-      class="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-bg disabled:opacity-40 disabled:cursor-not-allowed"
-      disabled={!ready}
-      onclick={run}
-    >Run</button>
+  <!-- RIGHT: format default + output + options + run -->
+  <div class="conv-col">
+    <div class="panel">
+      <div class="panel-head"><span>Format default</span></div>
+      <div class="panel-body">
+        <div class="seg wide">
+          {#each IMAGE_FORMATS as fmt (fmt)}
+            <button class={defaultFmt === fmt ? 'on' : ''} onclick={() => changeDefault(fmt)}>{fmt}</button>
+          {/each}
+        </div>
+        <button
+          class="btn ghost"
+          style="margin-top:10px;width:100%;justify-content:center;font-size:12px"
+          onclick={applyDefaultToAll}
+        >
+          Apply to all files
+        </button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><span>Output destination</span></div>
+      <div class="panel-body">
+        <div class="radio-list">
+          <div
+            class="radio-opt {outMode === 'default' ? 'on' : ''}"
+            role="radio"
+            aria-checked={outMode === 'default'}
+            tabindex="0"
+            onclick={() => (outMode = 'default')}
+            onkeydown={(e) => e.key === 'Enter' && (outMode = 'default')}
+          >
+            <span class="ring"></span>
+            <span class="lbl">Default location<span class="sub mono">./out</span></span>
+            <span class="tag reco">RECO</span>
+          </div>
+          <div
+            class="radio-opt {outMode === 'alongside' ? 'on' : ''}"
+            role="radio"
+            aria-checked={outMode === 'alongside'}
+            tabindex="0"
+            onclick={() => (outMode = 'alongside')}
+            onkeydown={(e) => e.key === 'Enter' && (outMode = 'alongside')}
+          >
+            <span class="ring"></span>
+            <span class="lbl">Alongside input<span class="sub">Write next to each source file</span></span>
+            <span></span>
+          </div>
+          <div
+            class="radio-opt {outMode === 'custom' ? 'on' : ''}"
+            role="radio"
+            aria-checked={outMode === 'custom'}
+            tabindex="0"
+            onclick={() => (outMode = 'custom')}
+            onkeydown={(e) => e.key === 'Enter' && (outMode = 'custom')}
+          >
+            <span class="ring"></span>
+            <span class="lbl">Custom path</span>
+            <span></span>
+            {#if outMode === 'custom'}
+              <input class="path-input" bind:value={customPath} placeholder="/path/to/output" />
+            {/if}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><span>Options</span></div>
+      <div class="panel-body">
+        <div class="slider-row">
+          <span class="lbl">JPEG / WebP quality</span>
+          <span class="val">{quality}</span>
+          <input type="range" min="1" max="100" bind:value={quality} />
+        </div>
+        <div class="toggle-row">
+          <div class="lbl"><span>Overwrite existing</span><span class="sub">Replace files at the output path</span></div>
+          <button class="toggle {overwrite ? 'on' : ''}" aria-label="Overwrite existing" onclick={() => (overwrite = !overwrite)}></button>
+        </div>
+        <div class="toggle-row">
+          <div class="lbl"><span>Strip metadata</span><span class="sub">Drop EXIF and colour profiles</span></div>
+          <button class="toggle {stripMetadata ? 'on' : ''}" aria-label="Strip metadata" onclick={() => (stripMetadata = !stripMetadata)}></button>
+        </div>
+        <div class="toggle-row">
+          <div class="lbl"><span>Recurse subfolders</span><span class="sub">When the input is a folder</span></div>
+          <button class="toggle {recurse ? 'on' : ''}" aria-label="Recurse subfolders" onclick={() => (recurse = !recurse)}></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="run-summary">
+      <b>{summary.count}</b> input{summary.count === 1 ? '' : 's'}
+      {#each summary.parts as p (p)}
+        · <span class="accent">{p}</span>
+      {/each}
+    </div>
+
+    <div class="run-btn-block">
+      <button class="btn primary" disabled={!ready || running} onclick={run}>
+        {running ? 'Running…' : '▸ Run conversion'}
+      </button>
+    </div>
   </div>
 </div>
 

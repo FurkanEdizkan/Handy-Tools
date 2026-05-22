@@ -1,52 +1,112 @@
 /*
- * Theme palettes ported from internal/ui/theme/theme.go.
- * Keep these values in sync with the Go palettes — the names ("forge",
- * "snow", "ember") and hex values are the single source of truth shared
- * between TUI and web.
+ * Theme tokens for the htools-gui design.
+ *
+ * The three theme NAMES — forge / snow / ember — are kept in sync with
+ * internal/ui/theme/theme.go and the backend config, but the web palette is
+ * its own thing: forge carries the design's "Graphite" values, snow the cool
+ * variant, ember a warm variant. `data-theme` / `data-density` are set on
+ * <html> by lib/stores/theme.ts.
+ *
+ * Each theme exposes the design tokens (--bg, --accent, …) plus legacy
+ * --color-* aliases so Tailwind utilities and the shared mascot art keep
+ * resolving.
  */
 
+:root {
+  /* Layout */
+  --sidebar-w: 232px;
+  --header-h: 56px;
+  --dock-h: 56px;
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  --shadow-lg: 0 24px 60px -20px rgba(0, 0, 0, 0.7);
+
+  /* Type */
+  --sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+
+  /* Legacy --color-* aliases (Tailwind utilities, shared mascot helpers) */
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-text: var(--text);
+  --color-text-dim: var(--text-dim);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+}
+
+/* ---- forge — the default "Graphite" dark palette --------------------- */
 :root,
-[data-theme="forge"] {
-  --color-bg: #0a0807;
-  --color-surface: #141110;
-  --color-border: #3a2a1f;
-  --color-accent: #ff8c1a;
-  --color-accent-soft: #a35a14;
-  --color-text: #f5ece2;
-  --color-text-dim: #9a877a;
-  --color-success: #9bdc8a;
-  --color-warning: #f0c674;
-  --color-error: #e57373;
+[data-theme='forge'] {
+  --bg: #0c0d10;
+  --surface: #141519;
+  --surface-2: #1a1c21;
+  --surface-3: #21232a;
+  --border: #26282f;
+  --border-strong: #34363f;
+  --accent: #ff8c1a;
+  --accent-2: #ffa54a;
+  --accent-soft: rgba(255, 140, 26, 0.14);
+  --text: #ecedef;
+  --text-dim: #9296a0;
+  --text-mute: #5f636d;
+  --success: #4ade80;
+  --warning: #facc15;
+  --error: #f87171;
+  --info: #60a5fa;
+
   --color-mascot-fur: #ff8c1a;
   --color-mascot-eye: #1a0f08;
 }
 
-[data-theme="snow"] {
-  --color-bg: #0b0f14;
-  --color-surface: #11161d;
-  --color-border: #1f2630;
-  --color-accent: #7ad7f0;
-  --color-accent-soft: #3a6f7e;
-  --color-text: #e6ecf2;
-  --color-text-dim: #8a94a3;
-  --color-success: #9bdc8a;
-  --color-warning: #f0c674;
-  --color-error: #e57373;
+/* ---- snow — cooler neutrals, cyan accent ----------------------------- */
+[data-theme='snow'] {
+  --bg: #0a0d12;
+  --surface: #11151b;
+  --surface-2: #161b22;
+  --surface-3: #1c222b;
+  --border: #232934;
+  --border-strong: #2f3744;
+  --accent: #7ad7f0;
+  --accent-2: #a8e6f5;
+  --accent-soft: rgba(122, 215, 240, 0.14);
+
   --color-mascot-fur: #f1f5fa;
   --color-mascot-eye: #7ad7f0;
 }
 
-[data-theme="ember"] {
-  --color-bg: #140d0a;
-  --color-surface: #1d1410;
-  --color-border: #3a2a22;
-  --color-accent: #f0a05a;
-  --color-accent-soft: #7e4a30;
-  --color-text: #f4ece4;
-  --color-text-dim: #a39084;
-  --color-success: #9bdc8a;
-  --color-warning: #f0c674;
-  --color-error: #e57373;
+/* ---- ember — warm variant ------------------------------------------- */
+[data-theme='ember'] {
+  --bg: #100c0a;
+  --surface: #181311;
+  --surface-2: #1f1815;
+  --surface-3: #271e1a;
+  --border: #2f2620;
+  --border-strong: #3d3128;
+  --accent: #f0a05a;
+  --accent-2: #f6b97e;
+  --accent-soft: rgba(240, 160, 90, 0.14);
+
   --color-mascot-fur: #f4ece4;
   --color-mascot-eye: #f0a05a;
+}
+
+/* ---- density --------------------------------------------------------- */
+[data-density='compact'] {
+  --header-h: 48px;
+  --dock-h: 48px;
+}
+[data-density='comfy'] {
+  --header-h: 64px;
+  --dock-h: 64px;
 }

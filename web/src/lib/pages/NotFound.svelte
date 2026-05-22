@@ -1,8 +1,10 @@
 <script lang="ts"></script>
 
-<section class="text-center py-12">
-  <div class="text-3xl font-semibold text-text-dim font-mono">404</div>
-  <p class="text-sm text-text-dim mt-2">
-    Page not found. <a href="#/" class="text-accent">Go home</a>.
-  </p>
-</section>
+<div class="page-header">
+  <div class="icon-block">⚠</div>
+  <div style="flex:1">
+    <h1>Page not found</h1>
+    <div class="desc">That route doesn't exist.</div>
+  </div>
+  <div class="actions"><a class="btn ghost" href="#/">← Home</a></div>
+</div>

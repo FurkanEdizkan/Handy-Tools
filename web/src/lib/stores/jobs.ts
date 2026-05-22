@@ -108,8 +108,8 @@ export async function loadJobs(client: ApiClient = api): Promise<void> {
 }
 
 /**
- * startJobsFeed wires the QueuePanel to the live backend: it opens the
- * all-jobs SSE stream, then loads the initial /v1/jobs snapshot. Subscribing
+ * startJobsFeed wires the dock and Jobs page to the live backend: it opens
+ * the all-jobs SSE stream, then loads the initial /v1/jobs snapshot. Subscribing
  * first means no lifecycle event is missed in the gap between the two calls —
  * both paths fold by job id, so an overlap is deduped. Returns an
  * AbortController; the caller aborts it on teardown.
