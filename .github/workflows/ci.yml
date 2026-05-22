@@ -191,3 +191,30 @@ jobs:
         run: buf generate
       - name: Build htools-gui
         run: go build -tags wails -o /tmp/htools-gui ./cmd/htools-gui
+
+  # Compile-only smoke check for the non-Linux release targets. The full
+  # test suite stays Linux-only (the project targets Linux primarily, #106);
+  # this just catches a build break on darwin/windows cheaply. htools-gui is
+  # excluded — it is CGO + webkit, linux-only (see gui-build above).
+  compat-build:
+    name: Compile check (macOS / Windows)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache: true
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate proto bindings
+        run: buf generate
+      - name: Cross-compile htools + htoolsd
+        run: |
+          for os in darwin windows; do
+            for arch in amd64 arm64; do
+              echo "== $os/$arch =="
+              GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build ./cmd/htools ./cmd/htoolsd
+            done
+          done
