@@ -272,7 +272,7 @@ needed_for() {
     7z)        echo "7z multi-part extraction" ;;
     pdftoppm)  echo "render PDF pages to images" ;;
     pdftotext) echo "extract text from PDFs" ;;
-    magick)    echo "decode HEIC/HEIF images" ;;
+    magick)    echo "decode HEIC/HEIF images; encode HEIC and WebP" ;;
     *)         echo "" ;;
   esac
 }

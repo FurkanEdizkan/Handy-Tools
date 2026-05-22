@@ -132,4 +132,4 @@ Full checklist in [docs/PR_GUIDELINES.md](docs/PR_GUIDELINES.md).
 
 - The `.gitignore` ignores `/htools` and `/htoolsd` at repo root (ad-hoc `go build` outputs). It used to be too broad and accidentally excluded `cmd/handy/` sources — if you add new top-level files or directories whose name starts with `htools` or `handy`, double-check they aren't ignored.
 - Tests should use real fixtures under `testdata/`, not mocks, when verifying file-format behavior. Keep fixtures tiny (a 4-pixel PNG, a 3-byte file in a zip).
-- WebP encoding is intentionally disabled — there is no pure-Go encoder and the project hasn't accepted CGO yet.
+- WebP and HEIC encoding have no pure-Go encoder (and the project hasn't accepted CGO), so both are delegated to the optional `magick` binary via `encodeViaMagick` in [internal/tools/image/image.go](internal/tools/image/image.go). Without `magick` on `PATH` a WebP/HEIC convert surfaces a `MISSING_BINARY` error — it never panics. Decoding WebP is pure-Go (`golang.org/x/image/webp`).

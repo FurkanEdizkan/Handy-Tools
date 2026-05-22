@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/furkandedizkan/handy-tools/internal/tools"
+	"github.com/furkandedizkan/handy-tools/internal/tools/sysdep"
 )
 
 func writeTinyPNG(t *testing.T, dir string) string {
@@ -109,7 +110,12 @@ func TestConvertRefusesOverwriteByDefault(t *testing.T) {
 	}
 }
 
-func TestWebPEncodeNotImplemented(t *testing.T) {
+// TestWebPEncodeViaMagick verifies WebP encoding is delegated to ImageMagick
+// (#18): when magick is on PATH the conversion succeeds and writes the file;
+// when it is absent the job fails with a MISSING_BINARY error rather than
+// silently producing nothing.
+func TestWebPEncodeViaMagick(t *testing.T) {
+	sysdep.Reset()
 	dir := t.TempDir()
 	src := writeTinyPNG(t, dir)
 	dst := filepath.Join(dir, "out.webp")
@@ -119,8 +125,17 @@ func TestWebPEncodeNotImplemented(t *testing.T) {
 		TargetFormat: FormatWebP,
 		Output:       dst,
 	}))
-	if last := progress[len(progress)-1]; last.Err == nil {
-		t.Fatalf("expected error for webp encode")
+	last := progress[len(progress)-1]
+
+	if sysdep.Lookup("magick").Found {
+		if last.Err != nil {
+			t.Fatalf("webp encode via magick failed: %+v", last.Err)
+		}
+		if _, err := os.Stat(dst); err != nil {
+			t.Fatalf("expected %s to be written: %v", dst, err)
+		}
+	} else if last.Err == nil || last.Err.Code != tools.CodeMissingBinary {
+		t.Fatalf("without magick, webp encode should fail MISSING_BINARY, got %+v", last)
 	}
 }
 
