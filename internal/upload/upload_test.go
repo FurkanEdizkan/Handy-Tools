@@ -67,6 +67,37 @@ func TestSaveWritesContent(t *testing.T) {
 	}
 }
 
+func TestSaveDeduplicatesNames(t *testing.T) {
+	m := newTestManager(t)
+	ws, err := m.Create()
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	a, err := m.Save(ws, "photo.png", strings.NewReader("FIRST"))
+	if err != nil {
+		t.Fatalf("Save A: %v", err)
+	}
+	b, err := m.Save(ws, "photo.png", strings.NewReader("SECOND"))
+	if err != nil {
+		t.Fatalf("Save B: %v", err)
+	}
+	if a.Path == b.Path {
+		t.Fatalf("two same-named uploads collided on %q", a.Path)
+	}
+	if b.Name != "photo-1.png" {
+		t.Errorf("second name = %q, want photo-1.png", b.Name)
+	}
+	for path, want := range map[string]string{a.Path: "FIRST", b.Path: "SECOND"} {
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("ReadFile %s: %v", path, err)
+		}
+		if string(got) != want {
+			t.Errorf("content at %s = %q, want %q", path, got, want)
+		}
+	}
+}
+
 func TestSaveSanitizesTraversal(t *testing.T) {
 	m := newTestManager(t)
 	ws, err := m.Create()

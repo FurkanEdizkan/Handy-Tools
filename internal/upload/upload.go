@@ -113,17 +113,22 @@ func (m *Manager) Get(id string) (*Workspace, bool) {
 	return ws, ok
 }
 
-// Save copies r into the workspace in/ directory under a sanitized form of
-// name and records it on the workspace. The resolved path is asserted to stay
-// inside InDir as defense-in-depth on top of SanitizeFilename.
+// Save copies r into the workspace in/ directory under a sanitized, collision-
+// free form of name and records it on the workspace. The resolved path is
+// asserted to stay inside InDir as defense-in-depth on top of
+// SanitizeFilename. Two uploads sharing a basename (e.g. a "photo.png" from
+// two folders) get distinct names — the second becomes "photo-1.png" — so
+// neither file is lost.
 func (m *Manager) Save(ws *Workspace, name string, r io.Reader) (StoredFile, error) {
-	clean := SanitizeFilename(name)
+	clean := uniqueName(ws.InDir, SanitizeFilename(name))
 	dst := filepath.Join(ws.InDir, clean)
 	if !strings.HasPrefix(filepath.Clean(dst)+string(filepath.Separator),
 		filepath.Clean(ws.InDir)+string(filepath.Separator)) {
 		return StoredFile{}, fmt.Errorf("upload: refusing path outside workspace: %q", name)
 	}
-	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	// O_EXCL: uniqueName already guaranteed a free name, so a collision here
+	// would mean a logic error rather than something to silently truncate.
+	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
 	if err != nil {
 		return StoredFile{}, fmt.Errorf("upload: create staged file: %w", err)
 	}
@@ -206,6 +211,23 @@ func SanitizeFilename(name string) string {
 		return "upload"
 	}
 	return base
+}
+
+// uniqueName returns name if dir/name is free, otherwise the first free
+// "stem-N.ext" variant. Callers stage files sequentially within one request,
+// so a plain stat loop is race-free here.
+func uniqueName(dir, name string) string {
+	if _, err := os.Stat(filepath.Join(dir, name)); errors.Is(err, os.ErrNotExist) {
+		return name
+	}
+	ext := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	for i := 1; ; i++ {
+		cand := fmt.Sprintf("%s-%d%s", stem, i, ext)
+		if _, err := os.Stat(filepath.Join(dir, cand)); errors.Is(err, os.ErrNotExist) {
+			return cand
+		}
+	}
 }
 
 // randomID returns a 16-byte crypto-random, lowercase base32 identifier with
