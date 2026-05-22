@@ -74,7 +74,7 @@
   <article class="demo">
     <h2>Dropzone</h2>
     <div class="narrow">
-      <Dropzone accept="image/*" {onfiles} hint="or click to browse — images only" />
+      <Dropzone {onfiles} hint="or click to browse — images only" />
     </div>
     {#if dropped.length > 0}
       <p class="note">Received: <code>{dropped.join(', ')}</code></p>

@@ -15,7 +15,10 @@ import (
 
 func main() {
 	fmt.Fprintln(os.Stderr,
-		"htools-gui is the Wails desktop build — compile it with: "+
-			"go build -tags wails ./cmd/htools-gui  (needs CGO + libwebkit2gtk-4.0-dev + libgtk-3-dev)")
+		"htools-gui is the Wails desktop build — build and run it with:  make gui\n"+
+			"It needs CGO plus the GTK/webkit dev headers:\n"+
+			"  Ubuntu 24.04+:  sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev\n"+
+			"  Ubuntu 22.04:   sudo apt install libgtk-3-dev libwebkit2gtk-4.0-dev\n"+
+			"make gui picks the matching webkit build tag automatically.")
 	os.Exit(1)
 }

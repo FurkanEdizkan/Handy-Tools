@@ -15,18 +15,10 @@ import (
 
 // Options control common server behavior. AllowRoots is a list of filesystem
 // roots that incoming FileRef paths must reside under. An empty AllowRoots
-// means the server only serves files under its current working directory at
-// startup time. Callers compose Options once at startup; handlers consult it
-// on every request.
-//
-// CORSOrigins is consulted only by the HTTP transport: it lists the browser
-// origins allowed to call the API cross-origin (the Chrome extension and any
-// hosted web client). An empty list means the HTTP layer falls back to a
-// built-in localhost + chrome-extension default. The gRPC transport ignores
-// it.
+// fails closed — every path is rejected. Callers compose Options once at
+// startup; handlers consult it on every request.
 type Options struct {
-	AllowRoots  []string
-	CORSOrigins []string
+	AllowRoots []string
 }
 
 // CheckPath verifies that p resolves to an absolute path inside one of the

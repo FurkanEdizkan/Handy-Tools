@@ -1,15 +1,12 @@
 <script lang="ts">
   /**
-   * Drag-and-drop file input. In the Wails desktop build clicking the zone
-   * opens the native OS picker (#80/#81), which yields real absolute paths as
-   * `string[]`; in a plain browser it falls back to a `<input type=file>`,
-   * which yields `File[]`. Both arrive through the same `onfiles` callback.
+   * Drag-and-drop file input. Clicking the zone opens the native OS picker
+   * (#80/#81), which yields real absolute paths as `string[]`; a drag-and-drop
+   * yields `File[]`. Both arrive through the same `onfiles` callback.
    */
-  import { isDesktop, pickFiles } from '../native';
+  import { pickFiles } from '../native';
 
   interface Props {
-    /** `accept` attribute for the file picker (e.g. "image/*,.zip"). */
-    accept?: string;
     multiple?: boolean;
     disabled?: boolean;
     label?: string;
@@ -18,7 +15,6 @@
   }
 
   let {
-    accept,
     multiple = true,
     disabled = false,
     label = 'Drop files here',
@@ -27,7 +23,6 @@
   }: Props = $props();
 
   let dragging = $state(false);
-  let input: HTMLInputElement;
 
   function emit(list: FileList | null): void {
     if (!list || list.length === 0) return;
@@ -53,13 +48,9 @@
 
   async function browse(): Promise<void> {
     if (disabled) return;
-    // Desktop: the native picker returns real absolute paths.
-    if (isDesktop()) {
-      const paths = await pickFiles();
-      if (paths.length > 0) onfiles?.(multiple ? paths : paths.slice(0, 1));
-      return;
-    }
-    input.click();
+    // The native picker returns real absolute paths.
+    const paths = await pickFiles();
+    if (paths.length > 0) onfiles?.(multiple ? paths : paths.slice(0, 1));
   }
 
   function onKey(ev: KeyboardEvent): void {
@@ -87,17 +78,6 @@
   <span class="icon" aria-hidden="true">⇪</span>
   <span class="label">{label}</span>
   <span class="hint">{hint}</span>
-
-  <input
-    bind:this={input}
-    type="file"
-    {accept}
-    {multiple}
-    {disabled}
-    class="sr-only"
-    tabindex="-1"
-    onchange={(ev) => emit((ev.currentTarget as HTMLInputElement).files)}
-  />
 </div>
 
 <style>
@@ -143,17 +123,5 @@
   }
   .hint {
     font-size: 11px;
-  }
-
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
   }
 </style>
