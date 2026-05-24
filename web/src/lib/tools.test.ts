@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { defaultTools, toolById } from './tools';
 
 describe('defaultTools', () => {
-  it('lists exactly the five catalog tools, mirroring internal/ui/home.go', () => {
+  it('lists exactly the five catalog tools', () => {
     expect(defaultTools.map((t) => t.id)).toEqual([
       'convert-image',
       'zip-pack',

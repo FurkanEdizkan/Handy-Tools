@@ -1,9 +1,9 @@
 /**
  * The canonical tool catalog for the web UI.
  *
- * `defaultTools` mirrors `defaultTools` in internal/ui/home.go so the web Home
- * page and the Bubble Tea TUI offer the same five tools with the same ids,
- * glyphs and copy. Keep the two lists in sync when either changes.
+ * `defaultTools` pins the catalog used by `web/src/lib/pages/Home.svelte`
+ * (the home grid) and `web/src/lib/routes.ts` (the sidebar). Keep all three
+ * in sync when either changes.
  */
 
 export interface ToolDef {
