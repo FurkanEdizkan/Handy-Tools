@@ -118,7 +118,7 @@ func listFiles(dir string, recurse bool) ([]string, error) {
 	}
 	var out []string
 	if !recurse {
-		entries, err := os.ReadDir(dir)
+		entries, err := os.ReadDir(dir) //nolint:gosec // dir comes from the user's CLI invocation
 		if err != nil {
 			return nil, err
 		}
@@ -130,7 +130,7 @@ func listFiles(dir string, recurse bool) ([]string, error) {
 		}
 		return out, nil
 	}
-	err = filepath.WalkDir(dir, func(path string, d os.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(dir, func(path string, d os.DirEntry, walkErr error) error { //nolint:gosec // dir comes from the user's CLI invocation
 		if walkErr != nil {
 			return walkErr
 		}
