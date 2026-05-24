@@ -35,6 +35,14 @@ Commands:
                        --overwrite
                        --quiet --json
 
+  inspect <archive>  Show archive metadata (format, entry count, size). With
+                     --grep <regex>, stream <path>:<line>:<text> matches by
+                     reading entries without extracting them. Pure-Go formats
+                     only for --grep (zip / tar / tar.gz / tar.bz2 / tar.zst).
+                       --grep REGEX           search inside text entries
+                       --max-bytes N          skip entries larger than N (default 1 MiB)
+                       --quiet --json
+
   pdf merge <files>... --out FILE
   pdf split <src>      --pages FROM-TO --out DIR       (or --every N)
   pdf render <src>     --pages FROM-TO --dpi N [--jpeg] --out DIR
