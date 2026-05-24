@@ -56,6 +56,11 @@ Commands:
                        --dry-run              print the plan, do not move
                        --quiet --json
 
+  hash <files>...    Compute file digests (sha256sum-format output).
+                       --algo md5|sha256|blake3  default sha256
+                       --check MANIFEST       verify a manifest instead of hashing
+                       --quiet --json
+
   doctor             List optional system binaries Handy Tools can use and
                      whether each one is on PATH.
 
