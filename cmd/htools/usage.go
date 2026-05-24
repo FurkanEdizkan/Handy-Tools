@@ -40,6 +40,14 @@ Commands:
   pdf render <src>     --pages FROM-TO --dpi N [--jpeg] --out DIR
   pdf text <src>       --pages FROM-TO [--layout] --out FILE
 
+  rename <dir>       Batch-rename files whose basename matches a regex.
+                       --pattern REGEX        matched against each basename (required)
+                       --replace TEMPLATE     Go regexp template, $1..$9 (required)
+                       --recurse              descend into subdirectories
+                       --on-collision MODE    error|skip|suffix (default error)
+                       --dry-run              print the plan, do not move
+                       --quiet --json
+
   doctor             List optional system binaries Handy Tools can use and
                      whether each one is on PATH.
 
