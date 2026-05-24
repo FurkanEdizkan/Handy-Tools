@@ -78,14 +78,31 @@ After install it lists missing optional system tools. Pass `--install-deps`
 (and optionally `--yes`) to have it run the matching `apt-get` / `dnf` /
 `pacman` / `brew` command.
 
+### Uninstall
+
+Same script, `--uninstall` flag:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/install.sh | sh -s -- --uninstall
+```
+
+The uninstaller removes the `htools`, `htoolsd`, `htools-gui` binaries from
+the install dir; the config dir (`$HANDY_TOOLS_CONFIG` parent, or
+`$XDG_CONFIG_HOME/handy-tools`, or `~/.config/handy-tools`); and the cache
+dir (`$XDG_CACHE_HOME/handy-tools` or `~/.cache/handy-tools`). It prompts
+once before deleting; pass `--yes` to skip the prompt. User-created output
+files are never touched. `--dir PATH` overrides the binary location the same
+way it does for install.
+
 ### Tuning the installer
 
-| Flag / env var                                | Effect                                          |
-| --------------------------------------------- | ----------------------------------------------- |
-| `--version 0.2.0` / `HANDY_TOOLS_VERSION`     | Pin a specific version (default: latest).       |
-| `--dir PATH` / `HANDY_TOOLS_INSTALL_DIR`      | Override the install directory.                 |
-| `--install-deps` / `HANDY_TOOLS_INSTALL_DEPS` | Also install the optional system tools.         |
-| `--yes`                                       | Skip the `[y/N]` prompt before installing deps. |
+| Flag / env var                                | Effect                                                |
+| --------------------------------------------- | ----------------------------------------------------- |
+| `--version 0.2.0` / `HANDY_TOOLS_VERSION`     | Pin a specific version (default: latest).             |
+| `--dir PATH` / `HANDY_TOOLS_INSTALL_DIR`      | Override the install/uninstall directory.             |
+| `--install-deps` / `HANDY_TOOLS_INSTALL_DEPS` | Also install the optional system tools.               |
+| `--uninstall` / `HANDY_TOOLS_UNINSTALL`       | Remove binaries + config + cache, then exit.          |
+| `--yes`                                       | Skip the `[y/N]` prompt (deps install and uninstall). |
 
 ### Manual install
 

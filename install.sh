@@ -5,12 +5,16 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/install.sh | sh
 #
+# Symmetric uninstall path:
+#   curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/install.sh | sh -s -- --uninstall
+#
 # Knobs (env or flag):
 #   HANDY_TOOLS_VERSION=0.2.0          # pin a specific version (default: latest)
 #   HANDY_TOOLS_INSTALL_DIR=$HOME/...  # where to put binaries (default: $HOME/.local/bin)
 #   HANDY_TOOLS_INSTALL_DEPS=1         # also install optional system tools (apt/dnf/pacman/brew)
+#   HANDY_TOOLS_UNINSTALL=1            # remove binaries + config + cache and exit
 #   NO_COLOR=1                         # disable ANSI colors
-#   --version 0.2.0 / --dir PATH / --install-deps / --yes / --no-color / --help
+#   --version 0.2.0 / --dir PATH / --install-deps / --uninstall / --yes / --no-color / --help
 #
 # This script is POSIX sh. It targets Linux and macOS. Windows is not yet
 # supported.
@@ -24,6 +28,7 @@ DEFAULT_INSTALL_DIR="${HOME}/.local/bin"
 VERSION="${HANDY_TOOLS_VERSION:-}"
 INSTALL_DIR="${HANDY_TOOLS_INSTALL_DIR:-}"
 INSTALL_DEPS="${HANDY_TOOLS_INSTALL_DEPS:-0}"
+UNINSTALL="${HANDY_TOOLS_UNINSTALL:-0}"
 ASSUME_YES=0
 USE_COLOR=1
 
@@ -69,13 +74,21 @@ verifies the checksum, drops `htools` and `htoolsd` into an install dir, and
 optionally installs the small set of optional system tools Handy Tools uses.
 
   curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/install.sh | sh
+  curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/install.sh | sh -s -- --uninstall
 
 Knobs (env or flag):
   HANDY_TOOLS_VERSION=0.2.0          # pin a specific version (default: latest)
   HANDY_TOOLS_INSTALL_DIR=$HOME/...  # where to put binaries (default: $HOME/.local/bin)
   HANDY_TOOLS_INSTALL_DEPS=1         # also install optional system tools (apt/dnf/pacman/brew)
+  HANDY_TOOLS_UNINSTALL=1            # remove binaries + config + cache, then exit
   NO_COLOR=1                         # disable ANSI colors
-  --version 0.2.0 / --dir PATH / --install-deps / --yes / --no-color / --help
+  --version 0.2.0 / --dir PATH / --install-deps / --uninstall / --yes / --no-color / --help
+
+Uninstall removes the htools, htoolsd, htools-gui binaries from the install
+dir (default $HOME/.local/bin or --dir), the config dir ($HANDY_TOOLS_CONFIG
+parent or $XDG_CONFIG_HOME/handy-tools or ~/.config/handy-tools), and the
+cache dir ($XDG_CACHE_HOME/handy-tools or ~/.cache/handy-tools). User-created
+output files are never touched. Prompts before deleting unless --yes is set.
 
 Targets Linux and macOS. Windows is not yet supported.
 EOF
@@ -89,6 +102,7 @@ while [ $# -gt 0 ]; do
     --dir) INSTALL_DIR="$2"; shift 2 ;;
     --dir=*) INSTALL_DIR="${1#--dir=}"; shift ;;
     --install-deps) INSTALL_DEPS=1; shift ;;
+    --uninstall) UNINSTALL=1; shift ;;
     --yes|-y) ASSUME_YES=1; shift ;;
     --no-color) USE_COLOR=0; shift ;;
     --help|-h) usage ;;
@@ -103,7 +117,90 @@ warn() { printf '%s %s\n' "$(amber 'warn:')" "$*" >&2; }
 die()  { printf '%s %s\n' "$(red 'error:')" "$*" >&2; exit 1; }
 ok()   { printf '%s %s\n' "$(green ' ok ')" "$*"; }
 
+# resolve_config_dir prints the directory Handy Tools persists settings into,
+# using the same lookup order as internal/config/config.go Path():
+#   1. dirname($HANDY_TOOLS_CONFIG) if set
+#   2. $XDG_CONFIG_HOME/handy-tools if set
+#   3. $HOME/.config/handy-tools
+resolve_config_dir() {
+  if [ -n "${HANDY_TOOLS_CONFIG:-}" ]; then
+    dirname "$HANDY_TOOLS_CONFIG"
+  elif [ -n "${XDG_CONFIG_HOME:-}" ]; then
+    printf '%s/handy-tools' "$XDG_CONFIG_HOME"
+  else
+    printf '%s/.config/handy-tools' "$HOME"
+  fi
+}
+
+# resolve_cache_dir prints the directory Handy Tools may keep transient state
+# in. Currently nothing writes here but we clean it defensively so a future
+# cache addition has nothing stale to inherit on re-install.
+resolve_cache_dir() {
+  if [ -n "${XDG_CACHE_HOME:-}" ]; then
+    printf '%s/handy-tools' "$XDG_CACHE_HOME"
+  else
+    printf '%s/.cache/handy-tools' "$HOME"
+  fi
+}
+
+# do_uninstall removes installed binaries + config + cache and exits. It is
+# called before the network-touching install path so an uninstall never tries
+# to look up the latest release. User-created output files (./out, ./converted,
+# etc.) are never touched.
+do_uninstall() {
+  cfg_dir=$(resolve_config_dir)
+  cache_dir=$(resolve_cache_dir)
+  bins="$INSTALL_DIR/htools $INSTALL_DIR/htoolsd $INSTALL_DIR/htools-gui"
+
+  log "uninstall plan"
+  for b in $bins; do
+    if [ -e "$b" ]; then
+      printf '  %s remove %s\n' "$(dim '-')" "$b"
+    else
+      printf '  %s skip   %s %s\n' "$(dim '-')" "$b" "$(dim '(not present)')"
+    fi
+  done
+  if [ -d "$cfg_dir" ]; then
+    printf '  %s remove %s\n' "$(dim '-')" "$cfg_dir"
+  else
+    printf '  %s skip   %s %s\n' "$(dim '-')" "$cfg_dir" "$(dim '(not present)')"
+  fi
+  if [ -d "$cache_dir" ]; then
+    printf '  %s remove %s\n' "$(dim '-')" "$cache_dir"
+  else
+    printf '  %s skip   %s %s\n' "$(dim '-')" "$cache_dir" "$(dim '(not present)')"
+  fi
+
+  if [ "$ASSUME_YES" != "1" ]; then
+    printf '%s ' "$(amber 'Proceed? [y/N]')"
+    read -r reply || reply=""
+    case "$reply" in
+      y|Y|yes|YES) ;;
+      *) die "aborted by user" ;;
+    esac
+  fi
+
+  removed=0
+  for b in $bins; do
+    if [ -e "$b" ]; then
+      rm -f "$b" && { ok "removed $b"; removed=$((removed+1)); }
+    fi
+  done
+  if [ -d "$cfg_dir" ]; then
+    rm -rf "$cfg_dir" && { ok "removed $cfg_dir"; removed=$((removed+1)); }
+  fi
+  if [ -d "$cache_dir" ]; then
+    rm -rf "$cache_dir" && { ok "removed $cache_dir"; removed=$((removed+1)); }
+  fi
+  log "done. removed $removed path(s)."
+}
+
 banner
+
+if [ "$UNINSTALL" = "1" ]; then
+  do_uninstall
+  exit 0
+fi
 
 require() {
   command -v "$1" >/dev/null 2>&1 || die "missing required tool: $1"
