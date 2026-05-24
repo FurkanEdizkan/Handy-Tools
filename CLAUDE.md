@@ -6,19 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Handy Tools is a single Go module that produces three binaries from one core:
 
-- `cmd/htools` — Bubble Tea TUI (`make tui` / `go run ./cmd/htools`)
-- `cmd/htoolsd` — gRPC + HTTP/SSE server exposing the same tools (`make serve` / `go run ./cmd/htoolsd`)
-- `cmd/htools-gui` — Wails v2 desktop app (`make gui` / `make gui-build`), gated behind the `wails` build tag (CGO + webkit2gtk, linux/amd64); without the tag a stub stands in so the other jobs stay CGO-free. `make gui` also adds the `webkit2_41` tag when `pkg-config` finds webkit2gtk-4.1 (Ubuntu 24.04+), so one command builds against either webkit 4.0 or 4.1
+- `cmd/htools` — non-interactive subcommand CLI (`make build && ./bin/htools --help`). Each invocation runs exactly one operation (`convert`, `pack`, `extract`, `pdf merge|split|render|text`, `doctor`, `version`) using stdlib `flag`.
+- `cmd/htoolsd` — gRPC + HTTP/SSE server exposing the same tools (`make serve` / `go run ./cmd/htoolsd`).
+- `cmd/htools-gui` — Wails v2 desktop app (`make gui` / `make gui-build`), gated behind the `wails` build tag (CGO + webkit2gtk, linux/amd64); without the tag a stub stands in so the other jobs stay CGO-free. `make gui` also adds the `webkit2_41` tag when `pkg-config` finds webkit2gtk-4.1 (Ubuntu 24.04+), so one command builds against either webkit 4.0 or 4.1.
 
-All three depend on `internal/tools/<feature>/` (image, archive, pdf), which is the **only** layer allowed to touch files, run external binaries, or know about formats. `internal/ui/` and `internal/server/` are thin adapters — never put tool logic in either. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-A fourth entry point, `cmd/snapshot`, is a developer-only helper that renders the TUI views into `docs/screenshots/htools-*.txt` so the README previews stay in sync. It is **excluded** from release builds (not listed under `builds:` in `.goreleaser.yaml`). Re-run `go run ./cmd/snapshot` after any UI-shaping change.
+All three depend on `internal/tools/<feature>/` (image, archive, pdf), which is the **only** layer allowed to touch files, run external binaries, or know about formats. `cmd/htools/`, `internal/server/`, and `internal/api/http/` are thin adapters — never put tool logic in any of them. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Common commands
 
 ```sh
 make proto      # regenerate Go bindings into gen/ from api/proto (run once after clone)
 make build      # bin/htools + bin/htoolsd
+make cli        # print the CLI help (sanity check)
 make gui        # build the web UI + run the Wails desktop app (needs GTK/webkit dev headers)
 make test       # go test -race -count=1 ./...
 make fuzz       # short fuzz over the config YAML decoder
@@ -42,13 +41,13 @@ Every tool package under `internal/tools/<feature>/` exposes:
 - a function returning a progress channel of `tools.Progress` (see [internal/tools/tools.go](internal/tools/tools.go)),
 - an `Inspect()` for preflight (e.g. multi-part archive detection) so callers can confirm before destructive work.
 
-Errors are structured `*tools.Error` with stable codes (`MISSING_BINARY`, `UNSUPPORTED_INPUT`, `BAD_REQUEST`, `IO_ERROR`, `ABORTED`). The TUI and server both translate these — don't invent new codes without updating both layers.
+Errors are structured `*tools.Error` with stable codes (`MISSING_BINARY`, `UNSUPPORTED_INPUT`, `BAD_REQUEST`, `IO_ERROR`, `ABORTED`). The CLI maps these to process exit codes (`progress.go:exitCode`); the server translates them to gRPC/HTTP status — don't invent new codes without updating both layers.
 
-Optional system binaries (`unrar`, `7z`, `pdftoppm`, `pdftotext`, `magick`) are detected at request time via [internal/tools/sysdep](internal/tools/sysdep/sysdep.go). Missing binaries must surface a `MISSING_BINARY` error with an install hint — never panic, never crash the TUI. New optional tools must be added to `sysdep.Known` so `htools doctor` lists them.
+Optional system binaries (`unrar`, `7z`, `pdftoppm`, `pdftotext`, `magick`) are detected at request time via [internal/tools/sysdep](internal/tools/sysdep/sysdep.go). Missing binaries must surface a `MISSING_BINARY` error with an install hint — never panic. New optional tools must be added to `sysdep.Known` so `htools doctor` lists them.
 
 ## Server invariant: AllowRoots
 
-`htoolsd` **refuses to start without `server.allow_roots`** (config or `--allow-roots` flag) — with no roots there is nothing it can safely act on. Every `FileRef.path` is run through `Options.CheckPath` before any tool is called. The default behavior on empty roots is **fail closed** (reject everything), not "serve cwd" — preserve this when editing [internal/server/server.go](internal/server/server.go). The desktop (Wails) build runs on the user's own machine and so passes `AllowRoots: ["/"]`; the TUI calls the tool packages directly and has no path sandbox at all.
+`htoolsd` **refuses to start without `server.allow_roots`** (config or `--allow-roots` flag) — with no roots there is nothing it can safely act on. Every `FileRef.path` is run through `Options.CheckPath` before any tool is called. The default behavior on empty roots is **fail closed** (reject everything), not "serve cwd" — preserve this when editing [internal/server/server.go](internal/server/server.go). The desktop (Wails) build runs on the user's own machine and so passes `AllowRoots: ["/"]`; the CLI calls the tool packages directly and has no path sandbox at all.
 
 ## Config
 
@@ -56,7 +55,7 @@ Settings live at `$HANDY_TOOLS_CONFIG` → `$XDG_CONFIG_HOME/handy-tools/config.
 
 ## Installer script
 
-[install.sh](install.sh) at repo root is the supported install path for end users (`curl -fsSL ... | sh`). It detects OS/arch, downloads the matching tarball from the latest GitHub release, verifies it against `checksums.txt`, and lists missing optional system tools — with a `--install-deps` flag to run the appropriate `apt`/`dnf`/`pacman`/`brew` command. The installer renders an orange/black mascot banner when stdout is a TTY, `NO_COLOR` is unset, and `TERM` isn't `dumb`.
+[install.sh](install.sh) at repo root is the supported install path for end users (`curl -fsSL ... | sh`). It detects OS/arch, downloads the matching tarball from the latest GitHub release, verifies it against `checksums.txt`, and lists missing optional system tools — with a `--install-deps` flag to run the appropriate `apt`/`dnf`/`pacman`/`brew` command.
 
 Two duplications to keep in sync:
 
@@ -98,30 +97,24 @@ There is no OS matrix while the project is pre-1.0; non-Linux coverage is releas
 
 ## Branding
 
-Display brand is **Handy Tools**. Binary names are `htools` and `htoolsd`. The proto package is `handytools.v1`. The companion mascot is **Wrenly** — an orange panda. The TUI renders Wrenly (or **Hopper**, the lilac rabbit alternate) as a 15×14 dot-grid sprite in [internal/ui/mascot/mascot.go](internal/ui/mascot/mascot.go); per-state expressions (idle / thinking / watching / stressed / tired / happy / worried) tint the fur and swap the eye glyph + a one-row overlay (thought dots, sparkles, sweat, huff marks). The brand mark on every non-TUI surface is the **same sprite** rendered through `mascot.Sprite(character)` with the design's plain glyphs (`●` fur/stripe, `○` cream, `▪` mouth) — `cmd/snapshot` writes the rendered art to [docs/brand/wrenly.txt](docs/brand/wrenly.txt) and [docs/brand/hopper.txt](docs/brand/hopper.txt), and those exact glyph lines are pasted into the [README.md](README.md) hero and the [install.sh](install.sh) banner. Don't hand-edit those blocks — re-run `go run ./cmd/snapshot` if the sprite changes. The vector form at [docs/brand/wrenly.svg](docs/brand/wrenly.svg) is the matching colored mark (rasterize to PNG for web surfaces). The default theme `forge` is orange-and-black; `snow` (cyan) and `ember` (warm orange) remain as alternative palettes.
+Display brand is **Handy Tools**. Binary names are `htools`, `htoolsd`, and `htools-gui`. The proto package is `handytools.v1`. The vector mark at [docs/brand/wrenly.svg](docs/brand/wrenly.svg) is the project logo; rasterize to PNG for web surfaces. (The earlier ASCII mascot banner and the per-state TUI sprites were retired with the TUI.)
 
-## TUI layout
+## CLI structure
 
-The TUI is a two-pane layout owned by [internal/ui/router.go](internal/ui/router.go):
+The `cmd/htools/` binary is a stdlib-`flag` subcommand dispatcher:
 
-- **Left column (fixed)**: `mascot.Model` → state block (current task + progress) → queue panel with expandable per-job stderr logs.
-- **Right column**: either the **Home** menu (tool catalog in [internal/ui/home.go](internal/ui/home.go)) or a **Tool detail page** ([internal/ui/toolpage.go](internal/ui/toolpage.go)) with input dropzone, file list with per-file format override, output destination radio, options grid, and a run button.
+- [main.go](cmd/htools/main.go) — entry + `dispatch()` switch over the verb.
+- [convert.go](cmd/htools/convert.go), [pack.go](cmd/htools/pack.go), [extract.go](cmd/htools/extract.go), [pdf.go](cmd/htools/pdf.go), [doctor.go](cmd/htools/doctor.go) — one file per top-level verb; each owns its own `flag.FlagSet`.
+- [progress.go](cmd/htools/progress.go) — `streamProgress(ch, opts)` drains a tool's `<-chan tools.Progress`, handles `--quiet` / `--json`, and maps the terminal `tools.Error.Code` to a process exit code.
+- [usage.go](cmd/htools/usage.go) — `printUsage(w)` for `--help` / unknown-command paths.
 
-Pages don't reach into each other — every navigation/state change is a `tea.Msg` (`OpenTool`, `GoHome`, `RunJob`, `MascotMsg`). The router holds the shared state (mascot, queue, progress, toast) and re-renders the active page.
-
-Adding a tool to the TUI means: append to `defaultTools` in `home.go`, add a `speechFor` case, and extend `toolpage.go` to handle the new `toolMode`. The queue, state block, and mascot already work for every tool — no changes there.
-
-When you change the TUI in any visible way, regenerate the README previews:
-
-```sh
-go run ./cmd/snapshot
-```
+Adding a new top-level subcommand means: new `cmd/htools/<verb>.go` with a `cmd<Verb>(ctx, cfg, args) int` function, a case in `dispatch()` in main.go, and a block in the `usage` string. Tool logic still lives under `internal/tools/<feature>/` — the verb file is a thin flag-parser + request-builder.
 
 ## Branching & PR workflow
 
 - **Never open PRs against `main`.** All contributor PRs target `test`. A scheduled workflow promotes `test` → `main` automatically when CI is green.
 - Branch prefixes: `feat/`, `fix/`, `docs/`, `refactor/`, `chore/`, `ci/`, `test/`.
-- PR titles **must** be Conventional Commits (validated by the commitlint workflow). Common scopes: `image`, `archive`, `pdf`, `ui`, `server`, `api`, `config`, `mascot`, `ci`, `release`.
+- PR titles **must** be Conventional Commits (validated by the commitlint workflow). Common scopes: `image`, `archive`, `pdf`, `cli`, `server`, `api`, `config`, `web`, `gui`, `ci`, `release`.
 - PRs are merged with **merge commits** — never squash — so every commit is
   preserved on `test` and `main` and the branch graph stays intact. The PR
   title (a Conventional Commit) becomes the merge commit message; keep the
