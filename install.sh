@@ -51,25 +51,14 @@ red()    { color '31'       "$*"; }
 
 # ---- banner ---------------------------------------------------------------
 banner() {
-  [ "$USE_COLOR" = "1" ] || { printf 'Handy Tools installer\n\n'; return; }
-  cat <<EOF
-
-$(orange '  ●                       ●  ')   $(bold "$(orange 'Handy Tools')")  $(dim 'one-line installer')
-$(orange '● ● ●                   ● ● ●')   $(dim "$REPO")
-$(orange '● ○ ○ ●               ● ○ ○ ●')
-$(orange '● ● ● ● ● ● ● ● ● ● ● ● ● ● ●')
-$(orange '● ● ● ● ● ● ● ● ● ● ● ● ● ● ●')
-$(orange '● ○ ○ ● ● ● ● ● ● ● ● ● ○ ○ ●')
-$(orange '● ○ ○ ● ')$(amber '•')$(orange ' ● ○ ● ○ ● ')$(amber '•')$(orange ' ● ○ ○ ●')
-$(orange '● ○ ● ○ ○ ○ ○ ● ○ ○ ○ ○ ● ○ ●')
-$(orange '● ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ●')
-$(orange '● ○ ○ ○ ○ ○ ')$(amber '● ● ●')$(orange ' ○ ○ ○ ○ ○ ●')
-$(orange '● ○ ○ ○ ○ ○ ● ')$(amber '▪')$(orange ' ● ○ ○ ○ ○ ○ ●')
-$(orange '  ● ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ●  ')
-$(orange '    ● ● ○ ○ ○ ○ ○ ○ ○ ● ●    ')
-$(orange '          ● ● ● ● ●          ')
-
-EOF
+  if [ "$USE_COLOR" = "1" ]; then
+    printf '\n%s  %s\n  %s\n\n' \
+      "$(bold "$(orange 'Handy Tools')")" \
+      "$(dim 'one-line installer')" \
+      "$(dim "$REPO")"
+  else
+    printf '\nHandy Tools — one-line installer\n  %s\n\n' "$REPO"
+  fi
 }
 
 usage() {

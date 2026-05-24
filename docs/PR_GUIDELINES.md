@@ -26,8 +26,8 @@ will use it during review.
 ## Code
 
 - [ ] Follows the architecture: tool logic lives in `internal/tools/<x>/`, the
-  TUI and gRPC server are thin layers on top.
-- [ ] No tool logic in `internal/ui/` or `internal/server/`.
+  CLI, gRPC server, and HTTP transport are thin layers on top.
+- [ ] No tool logic in `cmd/htools/`, `internal/server/`, or `internal/api/http/`.
 - [ ] No new direct dependencies without a one-line justification in the PR.
 - [ ] System binaries (`unrar`, `7z`, `pdftoppm`, etc.) are detected at runtime
   and produce a clear error when missing — never panic.
@@ -43,9 +43,8 @@ will use it during review.
 - [ ] README updated if user-facing behavior or system deps changed.
 - [ ] `htools doctor` output reflects any new optional system tool.
 - [ ] If a new tool was added, `docs/ARCHITECTURE.md` mentions it.
-- [ ] If the TUI layout, keymap, home menu, or tool detail page changed,
-      re-run `go run ./cmd/snapshot` and commit the updated
-      `docs/screenshots/htools-*.txt` previews referenced from the README.
+- [ ] If a new top-level CLI subcommand was added, the `usage` string in
+      [cmd/htools/usage.go](../cmd/htools/usage.go) lists it.
 
 ## CI
 
