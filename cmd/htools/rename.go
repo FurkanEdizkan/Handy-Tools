@@ -109,7 +109,7 @@ func parseCollision(s string) (rename.Collision, bool) {
 // descends into subdirectories. Directories are never returned as source
 // paths (rename operates on files only).
 func listFiles(dir string, recurse bool) ([]string, error) {
-	info, err := os.Stat(dir)
+	info, err := os.Stat(dir) //nolint:gosec // dir comes from the user's CLI invocation
 	if err != nil {
 		return nil, err
 	}
