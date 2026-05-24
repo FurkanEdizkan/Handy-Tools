@@ -241,7 +241,7 @@ func grepTar(source string, open tarOpener, re *regexp.Regexp, maxBytes int64, q
 			fmt.Fprintf(os.Stderr, "inspect: tar advance: %v\n", nextErr)
 			return 2
 		}
-		if h.Typeflag != tar.TypeReg && h.Typeflag != tar.TypeRegA {
+		if h.Typeflag != tar.TypeReg {
 			continue
 		}
 		if h.Size > maxBytes {
