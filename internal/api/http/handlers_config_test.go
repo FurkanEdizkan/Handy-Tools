@@ -40,19 +40,19 @@ func TestConfigGetReturnsDefaults(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if cfg.Theme.Name != "forge" {
-		t.Errorf("theme.name = %q, want forge", cfg.Theme.Name)
-	}
 	if cfg.Image.DefaultJPEGQuality != 90 {
 		t.Errorf("image.default_jpeg_quality = %d, want 90", cfg.Image.DefaultJPEGQuality)
 	}
+	if cfg.PDF.DefaultDPI != 150 {
+		t.Errorf("pdf.default_dpi = %d, want 150", cfg.PDF.DefaultDPI)
+	}
 }
 
-func TestConfigPatchPersistsTheme(t *testing.T) {
+func TestConfigPatchPersistsImageQuality(t *testing.T) {
 	t.Setenv("HANDY_TOOLS_CONFIG", filepath.Join(t.TempDir(), "config.yaml"))
 	ts := newTestServer(t, t.TempDir())
 
-	resp := patchConfig(t, ts.URL+"/v1/config", `{"theme":{"name":"snow"}}`)
+	resp := patchConfig(t, ts.URL+"/v1/config", `{"image":{"default_jpeg_quality":75}}`)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
@@ -62,12 +62,12 @@ func TestConfigPatchPersistsTheme(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if got.Theme.Name != "snow" {
-		t.Errorf("response theme.name = %q, want snow", got.Theme.Name)
+	if got.Image.DefaultJPEGQuality != 75 {
+		t.Errorf("response image.default_jpeg_quality = %d, want 75", got.Image.DefaultJPEGQuality)
 	}
 	// Unmentioned fields keep their defaults — this is a deep merge, not a replace.
-	if got.Image.DefaultJPEGQuality != 90 {
-		t.Errorf("image.default_jpeg_quality = %d, want 90 (untouched)", got.Image.DefaultJPEGQuality)
+	if got.PDF.DefaultDPI != 150 {
+		t.Errorf("pdf.default_dpi = %d, want 150 (untouched)", got.PDF.DefaultDPI)
 	}
 
 	// And it persisted to disk.
@@ -75,8 +75,8 @@ func TestConfigPatchPersistsTheme(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
-	if reloaded.Theme.Name != "snow" {
-		t.Errorf("persisted theme.name = %q, want snow", reloaded.Theme.Name)
+	if reloaded.Image.DefaultJPEGQuality != 75 {
+		t.Errorf("persisted image.default_jpeg_quality = %d, want 75", reloaded.Image.DefaultJPEGQuality)
 	}
 }
 
@@ -88,17 +88,6 @@ func TestConfigPatchRejectsServerWrites(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400 (server.* is not writable)", resp.StatusCode)
-	}
-}
-
-func TestConfigPatchRejectsInvalidTheme(t *testing.T) {
-	t.Setenv("HANDY_TOOLS_CONFIG", filepath.Join(t.TempDir(), "config.yaml"))
-	ts := newTestServer(t, t.TempDir())
-
-	resp := patchConfig(t, ts.URL+"/v1/config", `{"theme":{"name":"galaxy"}}`)
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400 (unknown theme)", resp.StatusCode)
 	}
 }
 

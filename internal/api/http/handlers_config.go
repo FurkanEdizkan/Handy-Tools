@@ -9,8 +9,6 @@ import (
 	"github.com/furkandedizkan/handy-tools/internal/tools"
 )
 
-// validThemes is the set of theme names a PATCH may set.
-var validThemes = map[string]bool{"forge": true, "snow": true, "ember": true}
 
 // handleConfigGet returns the full user config as JSON.
 func (s *Server) handleConfigGet(w http.ResponseWriter, _ *http.Request) {
@@ -91,13 +89,6 @@ func (s *Server) handleConfigPatch(w http.ResponseWriter, r *http.Request) {
 
 // validateConfig enforces the invariants a persisted config must satisfy.
 func validateConfig(c config.Config) error {
-	if c.Theme.Name != "" && !validThemes[c.Theme.Name] {
-		return &tools.Error{
-			Code:    tools.CodeBadRequest,
-			Message: "theme.name must be one of forge, snow, ember",
-			Detail:  c.Theme.Name,
-		}
-	}
 	if c.Image.DefaultJPEGQuality < 1 || c.Image.DefaultJPEGQuality > 100 {
 		return &tools.Error{
 			Code: tools.CodeBadRequest, Message: "image.default_jpeg_quality must be in [1,100]",
