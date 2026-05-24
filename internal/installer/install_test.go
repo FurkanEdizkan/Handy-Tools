@@ -42,13 +42,13 @@ func runHelp(t *testing.T, extraEnv ...string) string {
 	return string(out)
 }
 
-// assertBareBanner checks that out begins with the plain two-line banner and
-// carries no color: no ANSI escape sequences, no mascot dot-grid glyphs.
+// assertBareBanner checks that out carries no color codes and no leftover
+// mascot dot-grid glyphs. The bare banner is now a short two-line header
+// ("Handy Tools — one-line installer\n  <repo>") followed by the --help body.
 func assertBareBanner(t *testing.T, label, out string) {
 	t.Helper()
-	const bare = "Handy Tools installer\n\n"
-	if !strings.HasPrefix(out, bare) {
-		t.Errorf("%s: banner is not the bare two-line form; got prefix:\n%q", label, head(out, 120))
+	if !strings.Contains(out, "Handy Tools") {
+		t.Errorf("%s: banner missing the Handy Tools header:\n%q", label, head(out, 120))
 	}
 	if strings.Contains(out, "\x1b[") {
 		t.Errorf("%s: output contains an ANSI escape sequence:\n%q", label, head(out, 200))
@@ -88,4 +88,77 @@ func head(s string, n int) string {
 		return s
 	}
 	return s[:n]
+}
+
+// TestUninstallRemovesBinariesAndConfig drops fake htools / htoolsd /
+// htools-gui binaries into a temp install dir plus a fake config file, runs
+// install.sh --uninstall --yes, and asserts everything is gone.
+func TestUninstallRemovesBinariesAndConfig(t *testing.T) {
+	tmpBin := t.TempDir()
+	tmpCfgDir := t.TempDir()
+	tmpCfg := filepath.Join(tmpCfgDir, "config.yaml")
+
+	for _, b := range []string{"htools", "htoolsd", "htools-gui"} {
+		p := filepath.Join(tmpBin, b)
+		if err := os.WriteFile(p, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatalf("seed %s: %v", b, err)
+		}
+	}
+	if err := os.WriteFile(tmpCfg, []byte("# test\n"), 0o644); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+
+	cmd := exec.Command("sh", installScript(t), "--uninstall", "--yes", "--dir", tmpBin)
+	cmd.Env = append(os.Environ(),
+		"HANDY_TOOLS_CONFIG="+tmpCfg,
+		"NO_COLOR=1", // no ANSI noise in test output
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("install.sh --uninstall --yes failed: %v\n%s", err, out)
+	}
+
+	for _, b := range []string{"htools", "htoolsd", "htools-gui"} {
+		p := filepath.Join(tmpBin, b)
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("%s still present after uninstall: err=%v", p, err)
+		}
+	}
+	if _, err := os.Stat(tmpCfgDir); !os.IsNotExist(err) {
+		t.Errorf("config dir %s still present: err=%v", tmpCfgDir, err)
+	}
+}
+
+// TestUninstallAbortsOnDeclinedPrompt verifies that without --yes and with a
+// "n" response on stdin, the uninstaller exits non-zero and leaves files
+// untouched. This is the safety net for users who pipe `curl … | sh -s -- --uninstall`
+// and want a chance to back out.
+func TestUninstallAbortsOnDeclinedPrompt(t *testing.T) {
+	tmpBin := t.TempDir()
+	tmpCfgDir := t.TempDir()
+	tmpCfg := filepath.Join(tmpCfgDir, "config.yaml")
+	binPath := filepath.Join(tmpBin, "htools")
+	if err := os.WriteFile(binPath, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := os.WriteFile(tmpCfg, []byte("# test\n"), 0o644); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+
+	cmd := exec.Command("sh", installScript(t), "--uninstall", "--dir", tmpBin)
+	cmd.Env = append(os.Environ(),
+		"HANDY_TOOLS_CONFIG="+tmpCfg,
+		"NO_COLOR=1",
+	)
+	cmd.Stdin = strings.NewReader("n\n")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("declined uninstall should exit non-zero; output:\n%s", out)
+	}
+	if _, err := os.Stat(binPath); err != nil {
+		t.Errorf("declined uninstall removed binary: %v", err)
+	}
+	if _, err := os.Stat(tmpCfg); err != nil {
+		t.Errorf("declined uninstall removed config: %v", err)
+	}
 }

@@ -2,24 +2,7 @@
 
 # Handy Tools
 
-```text
-  ●                       ●
-● ● ●                   ● ● ●
-● ○ ○ ●               ● ○ ○ ●
-● ● ● ● ● ● ● ● ● ● ● ● ● ● ●
-● ● ● ● ● ● ● ● ● ● ● ● ● ● ●
-● ○ ○ ● ● ● ● ● ● ● ● ● ○ ○ ●
-● ○ ○ ● • ● ○ ● ○ ● • ● ○ ○ ●
-● ○ ● ○ ○ ○ ○ ● ○ ○ ○ ○ ● ○ ●
-● ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ●
-● ○ ○ ○ ○ ○ ● ● ● ○ ○ ○ ○ ○ ●
-● ○ ○ ○ ○ ○ ● ▪ ● ○ ○ ○ ○ ○ ●
-  ● ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ●
-    ● ● ○ ○ ○ ○ ○ ○ ○ ● ●
-          ● ● ● ● ●
-```
-
-**A friendly terminal toolbox for everyday file work**
+**A friendly toolbox for everyday file work**
 *Image conversion · Archive extraction · PDF utilities · and counting*
 
 [![CI](https://github.com/FurkanEdizkan/Handy-Tools/actions/workflows/ci.yml/badge.svg)](https://github.com/FurkanEdizkan/Handy-Tools/actions/workflows/ci.yml)
@@ -34,10 +17,10 @@
 
 Handy Tools is a small toolbox for the file work you do every day — converting
 images, extracting odd archive formats, slicing PDFs apart. Three binaries, one
-core, one mascot named **Wrenly** ([vector mark](docs/brand/wrenly.svg)).
+core.
 
-- **`htools`** — an interactive TUI (built with [Bubble Tea]) that lets you
-  pick files, choose an action, confirm, and watch progress live.
+- **`htools`** — a non-interactive subcommand CLI. One run, one operation,
+  scriptable: `htools convert in.png --format jpeg --out out.jpg`.
 - **`htoolsd`** — the same tools exposed over **gRPC** and **HTTP + SSE**, so
   you can run Handy Tools as a service and call its features from anywhere
   (web, CI, scripts). It also embeds and serves the Svelte web UI.
@@ -46,12 +29,10 @@ core, one mascot named **Wrenly** ([vector mark](docs/brand/wrenly.svg)).
   (CGO + webkit2gtk, linux/amd64).
 
 All three share one core: every tool is a plain Go package, used identically by
-the TUI, the server, and the desktop app. The architecture is on one page in
+the CLI, the server, and the desktop app. The architecture is on one page in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-[Bubble Tea]: https://github.com/charmbracelet/bubbletea
-
-> **Status:** pre-1.0, calver pre-releases. The TUI, the `htoolsd` server
+> **Status:** pre-1.0, calver pre-releases. The CLI, the `htoolsd` server
 > (gRPC + HTTP/SSE), the embedded Svelte web UI, and the Wails desktop app all
 > run real image/archive/PDF jobs through a shared `internal/queue/`.
 > See [Project #14](https://github.com/users/FurkanEdizkan/projects/14) for
@@ -70,10 +51,10 @@ the TUI, the server, and the desktop app. The architecture is on one page in
 | **Archives** | RAR (incl. multi-part `.partN.rar`) and 7z (incl. `.7z.001` parts).                        | Needs `unrar` / `7z` |
 | **PDF**      | Merge, split, metadata.                                                                    | Yes                  |
 | **PDF**      | Render pages to images, extract text, multi-page previews.                                 | Needs Poppler        |
-| **TUI**      | Home menu + per-tool detail page, live queue with expandable logs, three themes, mascot.   | —                    |
+| **CLI**      | Subcommand dispatch with `--quiet` / `--json` for scripting; stdlib `flag`, zero deps.     | Yes                  |
 | **gRPC**     | Streaming progress, allow-rooted path sandbox, reflection enabled.                         | —                    |
 | **HTTP/SSE** | REST endpoints mirroring gRPC, `tools.Progress` streamed as Server-Sent Events.            | —                    |
-| **Web UI**   | Svelte + Tailwind SPA embedded into `htoolsd`; thumbnails, PDF previews, drag-and-drop.     | —                    |
+| **Web UI**   | Svelte + Tailwind SPA embedded into `htoolsd`; thumbnails, PDF previews, drag-and-drop.    | —                    |
 | **Desktop**  | `htools-gui` — the web UI in a native Wails window with file dialogs.                      | —                    |
 
 ### What's coming
@@ -91,22 +72,37 @@ curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/inst
 
 The installer detects your OS/arch, downloads the matching release tarball,
 verifies it against `checksums.txt`, and drops `htools` and `htoolsd` into
-`$HOME/.local/bin`. In a color-capable terminal it renders an orange-and-black
-ASCII mascot banner; set `NO_COLOR=1` (or pass `--no-color`) to disable.
+`$HOME/.local/bin`.
 
 After install it lists missing optional system tools. Pass `--install-deps`
 (and optionally `--yes`) to have it run the matching `apt-get` / `dnf` /
 `pacman` / `brew` command.
 
+### Uninstall
+
+Same script, `--uninstall` flag:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/install.sh | sh -s -- --uninstall
+```
+
+The uninstaller removes the `htools`, `htoolsd`, `htools-gui` binaries from
+the install dir; the config dir (`$HANDY_TOOLS_CONFIG` parent, or
+`$XDG_CONFIG_HOME/handy-tools`, or `~/.config/handy-tools`); and the cache
+dir (`$XDG_CACHE_HOME/handy-tools` or `~/.cache/handy-tools`). It prompts
+once before deleting; pass `--yes` to skip the prompt. User-created output
+files are never touched. `--dir PATH` overrides the binary location the same
+way it does for install.
+
 ### Tuning the installer
 
-| Flag / env var                                | Effect                                          |
-| --------------------------------------------- | ----------------------------------------------- |
-| `--version 0.2.0` / `HANDY_TOOLS_VERSION`     | Pin a specific version (default: latest).       |
-| `--dir PATH` / `HANDY_TOOLS_INSTALL_DIR`      | Override the install directory.                 |
-| `--install-deps` / `HANDY_TOOLS_INSTALL_DEPS` | Also install the optional system tools.         |
-| `--yes`                                       | Skip the `[y/N]` prompt before installing deps. |
-| `--no-color` / `NO_COLOR`                     | Disable the ANSI banner.                        |
+| Flag / env var                                | Effect                                                |
+| --------------------------------------------- | ----------------------------------------------------- |
+| `--version 0.2.0` / `HANDY_TOOLS_VERSION`     | Pin a specific version (default: latest).             |
+| `--dir PATH` / `HANDY_TOOLS_INSTALL_DIR`      | Override the install/uninstall directory.             |
+| `--install-deps` / `HANDY_TOOLS_INSTALL_DEPS` | Also install the optional system tools.               |
+| `--uninstall` / `HANDY_TOOLS_UNINSTALL`       | Remove binaries + config + cache, then exit.          |
+| `--yes`                                       | Skip the `[y/N]` prompt (deps install and uninstall). |
 
 ### Manual install
 
@@ -120,8 +116,9 @@ Each release also publishes a `*_source.tar.gz` and a `checksums.txt`.
 
 The Handy Tools binaries are self-contained Go programs. A few features shell
 out to small external programs when present; without them, the affected actions
-are disabled with a clear inline hint instead of a crash. Run `htools doctor` to
-see exactly which binaries are installed and what each unlocks.
+fail with a structured `MISSING_BINARY` error and a clear install hint instead
+of a crash. Run `htools doctor` to see exactly which binaries are installed and
+what each unlocks.
 
 | Feature                | Required tool        | Debian/Ubuntu                | macOS (Homebrew)           |
 | ---------------------- | -------------------- | ---------------------------- | -------------------------- |
@@ -137,22 +134,32 @@ on Ubuntu 22.04/24.04 and macOS before it goes out.
 ## Quick tour
 
 ```sh
-# TUI:
-#   ↑↓ or j/k     move through the tool menu  (or focus rows on the tool page)
-#   enter         open the highlighted tool
-#   esc           back to home
-#   tab           cycle themes (forge / snow / ember)
-#   ,             toggle the settings popover
-#   1-5           jump to a tool by number
-#   r             run the configured tool (on the tool page)
-#   q             quit
-htools
+# Image conversion (single source, single output file):
+htools convert photo.png --format jpeg --quality 80 --out photo.jpg
+
+# Batch convert into a directory:
+htools convert a.png b.png c.png --format webp --out ./converted
+
+# Pack a zip:
+htools pack ./project --format zip --output project.zip
+
+# Extract any archive (zip / tar.gz / 7z / rar / …):
+htools extract bundle.tar.gz --out ./extracted
+
+# PDF operations:
+htools pdf merge a.pdf b.pdf --out merged.pdf
+htools pdf split big.pdf --pages 1-20 --out ./parts
+htools pdf render report.pdf --pages 1-3 --dpi 200 --out ./pages
+htools pdf text report.pdf --layout --out report.txt
 
 # Doctor: which optional tools are present, and what each one unlocks
 htools doctor
 
 # Version: semver, short commit, build date, GOOS/GOARCH
 htools --version
+
+# Help:
+htools --help
 
 # Service mode:
 htoolsd --listen :7777 --allow-roots /srv/uploads,/srv/output
@@ -164,92 +171,9 @@ grpcurl -plaintext localhost:7777 \
   <<<'{"source":{"path":"/srv/uploads/foo.7z.001"}}'
 ```
 
-### What it looks like
-
-Two-pane terminal layout: a fixed left column with the **Wrenly** mascot, a
-state block (current task + progress), and a live queue panel; a right column
-that swaps between the home menu and a per-tool detail page. Full plain-text
-snapshots live under [`docs/screenshots/`](docs/screenshots/) — here is the
-home view abridged:
-
-```text
-  ⚙ settings    ◤ HANDY TOOLS / htools › Home                                                                       v0.1.0 ●
-
-╭─────────────────────────────────╮    Welcome to Handy Tools — a friendly toolbox for everyday file work.
-│ wrenly · IDLE                   │    Pick a tool to set up an input, output and options.  ↑↓  /  ENTER
-│                                 │
-│    /\___/\                      │    AVAILABLE TOOLS  ────────────────────────────────────────────  1 / 5
-│   ( o . o )                     │
-│    \  v  /                      │    ╭──────────────────────────────────────────────────────────────────╮
-│     `---`                       │    │ ▸ ◇  Convert images — PNG · JPEG · WebP · GIF · BMP · TIFF    ↵ │
-│                                 │    ╰──────────────────────────────────────────────────────────────────╯
-│ Hi! I'm Wrenly.                 │       ▢  Pack into archive — zip · tar.gz · tar.bz2 · zstd · 7z
-│ Throw any image at me — I'll    │       ◰  Extract archive — zip · 7z · rar · tar · gz · bz2 · zst
-│ re-encode it.                   │       ◫  PDF utilities — merge · split · pages → image · text
-╰─────────────────────────────────╯       ◊  Doctor — check optional system tools
-
-╭───────────────────────────────────╮
-│ STATE  idle                       │
-│ CURRENT  — no active task —       │
-│ ░░░░░░░░░░░░░░░░░░░░░░░░░  0%     │
-╰───────────────────────────────────╯
-
-╭───────────────────────────────────╮
-│ QUEUE  0R 0D 0F 0Q                │
-│                                   │
-╰───────────────────────────────────╯
-```
-
-The queue panel starts empty and fills from the shared job registry
-(`internal/queue`): pressing **Run** on a tool enqueues a job, and each row
-shows live progress, a status pill, and an expandable stderr log.
-
-And the per-tool detail page (Convert images) once a few files have been
-added — with the **WebP** override on row 3 visibly diverging from the JPEG
-default and the run summary on the bottom reflecting the mixed targets. A
-freshly opened tool page starts with an empty file list; you add real input
-via the dropzone or by pressing **b**:
-
-```text
-  ⚙ settings    ◤ HANDY TOOLS / htools › Convert images                                                              v0.1.0 ●
-
-  ← back    Convert images
-            Reencode between PNG · JPEG · WebP · GIF · BMP · TIFF
-
-  INPUT  ────────────────────────────────────  accepts PNG · JPEG · WebP · GIF · BMP · TIFF · HEIC
-  ╭──────────────────────────────────────────────────────────────────────────╮
-  │                       Drop files or a folder here                         │
-  │                    ▸ Browse files     ▸ Browse folder                    │
-  │                       — or —  press  b  to browse                        │
-  ╰──────────────────────────────────────────────────────────────────────────╯
-
-  FILES (4)  ────────────────────────  default → JPEG   (f) cycle row · (F) apply to all
-    ▪ screenshot-2026-05-14.png                          PNG → [ JPEG ▾ ]   2.1 MB
-    ▪ logo-mark.png                                      PNG → [ JPEG ▾ ]   184 KB
-    ▪ export@2x.png                                      PNG → [ WebP ▾ ]   5.4 MB
-    ▪ cover-shot.jpg                                    JPEG → [ JPEG ▾ ]   1.8 MB
-
-  OUTPUT DESTINATION  ─────────────────────────────────────────────────────────────────
-    (●)  Default location — ./out                                  RECOMMENDED
-    ( )  Alongside input — write next to each source file
-    ( )  Custom path — [ ./converted ]
-
-  OPTIONS  ──────────────────────────────────────────────────────────────
-    JPEG/WebP quality    ▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱  90
-    Overwrite existing    [ ]
-    Preserve mtime        [●]
-    Recurse subfolders    [●]
-
-  ready: 4 inputs  ·  3 → JPEG · 1 → WebP        [   ▸ RUN   ]   press  r  or  ENTER
-```
-
-Re-generate the full-width previews after any TUI change with:
-
-```sh
-go run ./cmd/snapshot                 # writes docs/screenshots/htools-*.txt
-go run ./cmd/snapshot -stdout         # print to stdout instead
-go run ./cmd/snapshot -width 200      # render at a different terminal width
-```
+Every subcommand accepts `--quiet` (suppress per-event progress lines) and
+`--json` (emit one JSON object per progress event on stdout, for piping into
+other tooling).
 
 `htoolsd` refuses to start without `--allow-roots` (or `server.allow_roots`
 in the config). Every `FileRef.path` is run through `Options.CheckPath`
@@ -276,15 +200,13 @@ silently ignored so configs stay forward-compatible.
 A minimal config looks like:
 
 ```yaml
-theme:
-  name: forge        # forge (default), snow, ember
-mascot:
-  enabled: true
-  style: wrenly        # wrenly (default), hopper — selects the character
 image:
   default_jpeg_quality: 90
 pdf:
   default_dpi: 150
+archive:
+  auto_extract_multi_part: false
+  overwrite_by_default: false
 server:
   listen: ":7777"
   allow_roots:
@@ -298,7 +220,7 @@ recent: []
 ```sh
 make proto       # generate Go bindings under gen/ from api/proto (run once after clone)
 make build       # builds bin/htools and bin/htoolsd
-make tui         # runs the TUI
+make cli         # prints the CLI help (sanity check)
 make serve       # runs the gRPC server on the address from config (default :7777)
 make gui         # builds the web UI and runs the Wails desktop app
 make gui-build   # builds bin/htools-gui
@@ -356,7 +278,7 @@ End-to-end flow:
    commits are filtered out.
 
 `internal/buildinfo/version.txt` (`0.0.0-dev`) is a placeholder for
-local development only. `go run ./cmd/htools --version` shows it; the
+local development only. `htools --version` shows it; the
 release binaries have the real calver version baked in via
 `-ldflags -X buildinfo.Version=…` at release time.
 
@@ -378,11 +300,11 @@ In short:
 
 ## Acknowledgements
 
-Handy Tools binds several third-party libraries directly — Bubble Tea and
-Lip Gloss for the TUI, pdfcpu for PDF operations, klauspost/compress and
-dsnet/compress for archives, `golang.org/x/image`, Wails for the desktop
-shell, gRPC, and Svelte/Tailwind for the web UI. Every one is credited with
-its copyright and license in [NOTICE](NOTICE).
+Handy Tools binds several third-party libraries directly — pdfcpu for PDF
+operations, klauspost/compress and dsnet/compress for archives,
+`golang.org/x/image`, Wails for the desktop shell, gRPC, and Svelte/Tailwind
+for the web UI. Every one is credited with its copyright and license in
+[NOTICE](NOTICE).
 
 ## License
 

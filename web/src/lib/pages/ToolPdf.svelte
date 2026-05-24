@@ -1,59 +1,41 @@
 <script lang="ts">
-  import {
-    Dropzone,
-    OptionRow,
-    Toast,
-    Thumbnail,
-    type RadioOption,
-  } from '../components';
-  import {
-    PDF_OPS,
-    pdfFormReady,
-    pdfSummary,
-    type PdfOp,
-    type PickedFile,
-  } from './toolform';
+  import Dropzone from '../components/Dropzone.svelte';
+  import Toast from '../components/Toast.svelte';
+  import { PDF_OPS, pdfFormReady, pdfSummary, type PdfOp, type PickedFile } from './toolform';
   import { ApiError, api } from '../api';
   import { runJob, resolveSources, stemOf } from './run';
 
-  // `op` is a plain string so it binds cleanly to OptionRow's value prop;
-  // it only ever holds a PdfOp (the radio options are the PdfOp values).
-  let op = $state('merge');
+  let op = $state<PdfOp>('merge');
   let files = $state<PickedFile[]>([]);
+  let splitEvery = $state(10);
+  let dpi = $state(150);
+  let renderFormat = $state<'PNG' | 'JPEG'>('PNG');
+  let keepLayout = $state(true);
+  let running = $state(false);
   let toastVisible = $state(false);
   let toastMsg = $state('');
   let toastTone = $state<'info' | 'error'>('info');
 
-  // Per-operation options.
-  let splitEvery = $state(10); // Split: start a new file every N pages.
-  let dpi = $state(150); // Render: rasterisation resolution.
-  let renderFormat = $state('PNG'); // Render: output image format.
-  let keepLayout = $state(true); // Extract text: preserve visual layout.
-
-  const opOptions: RadioOption[] = PDF_OPS.map((o) => ({ label: o.label, value: o.value }));
-  const renderFormats: RadioOption[] = [
-    { label: 'PNG', value: 'PNG' },
-    { label: 'JPEG', value: 'JPEG' },
-  ];
-
-  let summary = $derived(pdfSummary(op as PdfOp, files.length));
-  let ready = $derived(pdfFormReady(op as PdfOp, files.length));
+  const summary = $derived(pdfSummary(op, files.length));
+  const ready = $derived(pdfFormReady(op, files.length));
+  const opLabel = $derived(PDF_OPS.find((o) => o.value === op)?.label ?? op);
 
   function addFiles(dropped: File[] | string[]): void {
-    const picked: PickedFile[] = dropped.map((d) =>
-      typeof d === 'string' ? { name: d, path: d } : { name: d.name, file: d },
-    );
-    files = [...files, ...picked];
+    files = [
+      ...files,
+      ...dropped.map((d) =>
+        typeof d === 'string'
+          ? { name: d.split(/[/\\]/).pop() ?? d, path: d }
+          : { name: d.name, file: d },
+      ),
+    ];
   }
-
   function removeFile(index: number): void {
     files = files.filter((_, i) => i !== index);
   }
 
-  // The chosen PDF operation maps to one job; output lands in
-  // resolved.outputDir.
   async function run(): Promise<void> {
-    if (!ready) return;
+    if (!ready || running) return;
     let resolved;
     try {
       resolved = resolveSources(files);
@@ -65,21 +47,17 @@
     }
     const first = resolved.sources[0].path;
     const dir = resolved.outputDir;
+    running = true;
     const outcome = await runJob(() => {
-      switch (op as PdfOp) {
+      switch (op) {
         case 'split':
-          return api.pdfSplit({
-            source: { path: first },
-            pageRanges: [],
-            everyN: splitEvery,
-            output: { directory: dir },
-          });
+          return api.pdfSplit({ source: { path: first }, pageRanges: [], everyN: splitEvery, output: { directory: dir } });
         case 'render':
           return api.pdfToImage({
             source: { path: first },
             pages: { from: 0, to: 0 },
             dpi,
-            targetFormat: renderFormat as 'PNG' | 'JPEG',
+            targetFormat: renderFormat,
             output: { directory: dir },
           });
         case 'text':
@@ -89,78 +67,115 @@
             layout: keepLayout,
             output: { file: `${dir}/${stemOf(first)}.txt` },
           });
-        default: // merge
+        default:
           return api.pdfMerge({
             sources: resolved.sources.map((s) => ({ path: s.path })),
             output: { file: `${dir}/merged.pdf` },
           });
       }
     });
+    running = false;
     toastMsg = outcome.message;
     toastTone = outcome.ok ? 'info' : 'error';
     toastVisible = true;
   }
 </script>
 
-<div class="space-y-6">
-  <section>
-    <h2 class="text-xs font-semibold uppercase tracking-wide text-text-dim mb-2">Operation</h2>
-    <OptionRow type="radio" label="What to do with the PDFs" bind:value={op} options={opOptions} />
-  </section>
+<div class="page-header">
+  <div class="icon-block">◫</div>
+  <div style="flex:1">
+    <h1>PDF utilities</h1>
+    <div class="desc">Merge, split, render pages to images, extract text.</div>
+  </div>
+</div>
 
-  <Dropzone
-    label="Drop PDF files here"
-    hint="or click to browse — PDFs only"
-    onfiles={addFiles}
-  />
-
-  {#if files.length > 0}
-    <section>
-      <h2 class="text-xs font-semibold uppercase tracking-wide text-text-dim mb-2">
-        Documents{op === 'merge' ? ' · merged in this order' : ''}
-      </h2>
-      <ul class="space-y-1.5">
-        {#each files as f, i (f.name + i)}
-          <li class="flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2">
-            <span class="text-text-dim text-xs tabular-nums">{i + 1}</span>
-            <Thumbnail path={f.path} />
-            <span class="flex-1 truncate text-sm">{f.name}</span>
-            <button
-              type="button"
-              class="text-text-dim hover:text-error text-sm"
-              aria-label={`Remove ${f.name}`}
-              onclick={() => removeFile(i)}
-            >✕</button>
-          </li>
-        {/each}
-      </ul>
-    </section>
-  {/if}
-
-  <section class="space-y-1">
-    <h2 class="text-xs font-semibold uppercase tracking-wide text-text-dim mb-2">
-      {PDF_OPS.find((o) => o.value === op)?.label} options
-    </h2>
-    {#if op === 'merge'}
-      <p class="text-xs text-text-dim">Merge concatenates the documents above into one PDF.</p>
-    {:else if op === 'split'}
-      <OptionRow type="slider" label="Start a new file every N pages" bind:value={splitEvery} min={1} max={100} />
-    {:else if op === 'render'}
-      <OptionRow type="slider" label="Resolution (DPI)" bind:value={dpi} min={72} max={600} />
-      <OptionRow type="radio" label="Image format" bind:value={renderFormat} options={renderFormats} />
+<div class="conv-grid">
+  <div class="panel">
+    <div class="panel-head">
+      <span>Input</span>
+      <span class="right">accepts PDF</span>
+    </div>
+    <div class="panel-body">
+      <Dropzone label="Drop PDF files here" hint="Browse files" onfiles={addFiles} />
+    </div>
+    <div class="files-head">
+      <span class="ttl">Documents</span>
+      <span class="meta">({files.length})</span>
+      {#if op === 'merge'}<span class="meta">· merged in this order</span>{/if}
+    </div>
+    {#if files.length === 0}
+      <div class="empty-note">No documents yet. Drop PDFs into the box above.</div>
     {:else}
-      <OptionRow type="checkbox" label="Preserve visual layout" bind:value={keepLayout} />
+      {#each files as f, i (f.name + i)}
+        <div class="file-row">
+          <div class="thumb pdf">{i + 1}</div>
+          <div class="file-name">
+            {f.name}
+            {#if f.path}<span class="dim">{f.path}</span>{/if}
+          </div>
+          <span></span>
+          <span></span>
+          <span></span>
+          <button class="file-x" onclick={() => removeFile(i)} title="remove" aria-label="Remove {f.name}">×</button>
+        </div>
+      {/each}
     {/if}
-  </section>
+  </div>
 
-  <div class="flex items-center justify-between border-t border-border pt-4">
-    <span class="text-xs text-text-dim">{summary}</span>
-    <button
-      type="button"
-      class="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-bg disabled:opacity-40 disabled:cursor-not-allowed"
-      disabled={!ready}
-      onclick={run}
-    >Run</button>
+  <div class="conv-col">
+    <div class="panel">
+      <div class="panel-head"><span>Operation</span></div>
+      <div class="panel-body">
+        <div class="seg wide">
+          {#each PDF_OPS as o (o.value)}
+            <button class={op === o.value ? 'on' : ''} onclick={() => (op = o.value)}>{o.label}</button>
+          {/each}
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><span>{opLabel} options</span></div>
+      <div class="panel-body">
+        {#if op === 'merge'}
+          <p style="font-size:12px;color:var(--text-dim);margin:0">
+            Merge concatenates the documents into one PDF.
+          </p>
+        {:else if op === 'split'}
+          <div class="slider-row">
+            <span class="lbl">New file every N pages</span>
+            <span class="val">{splitEvery}</span>
+            <input type="range" min="1" max="100" bind:value={splitEvery} />
+          </div>
+        {:else if op === 'render'}
+          <div class="slider-row">
+            <span class="lbl">Resolution (DPI)</span>
+            <span class="val">{dpi}</span>
+            <input type="range" min="72" max="600" bind:value={dpi} />
+          </div>
+          <div class="toggle-row" style="padding-top:10px">
+            <span class="lbl">Image format</span>
+            <div class="seg">
+              <button class={renderFormat === 'PNG' ? 'on' : ''} onclick={() => (renderFormat = 'PNG')}>PNG</button>
+              <button class={renderFormat === 'JPEG' ? 'on' : ''} onclick={() => (renderFormat = 'JPEG')}>JPEG</button>
+            </div>
+          </div>
+        {:else}
+          <div class="toggle-row">
+            <div class="lbl"><span>Preserve visual layout</span><span class="sub">Keep columns and spacing</span></div>
+            <button class="toggle {keepLayout ? 'on' : ''}" aria-label="Preserve visual layout" onclick={() => (keepLayout = !keepLayout)}></button>
+          </div>
+        {/if}
+      </div>
+    </div>
+
+    <div class="run-summary">{summary}</div>
+
+    <div class="run-btn-block">
+      <button class="btn primary" disabled={!ready || running} onclick={run}>
+        {running ? 'Running…' : `▸ Run ${opLabel.toLowerCase()}`}
+      </button>
+    </div>
   </div>
 </div>
 

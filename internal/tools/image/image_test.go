@@ -2,12 +2,18 @@ package image
 
 import (
 	"context"
+	"fmt"
 	"image"
 	"image/color"
+	"image/gif"
+	"image/jpeg"
 	"image/png"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"golang.org/x/image/bmp"
+	"golang.org/x/image/tiff"
 
 	"github.com/furkandedizkan/handy-tools/internal/tools"
 	"github.com/furkandedizkan/handy-tools/internal/tools/sysdep"
@@ -91,7 +97,56 @@ func TestConvertResizeShrinks(t *testing.T) {
 	}
 }
 
-func TestConvertRefusesOverwriteByDefault(t *testing.T) {
+func TestConvertSuffixesOnCollision(t *testing.T) {
+	dir := t.TempDir()
+	src := writeTinyPNG(t, dir)
+	dst := filepath.Join(dir, "out.png")
+	original := []byte("preexisting")
+	if err := os.WriteFile(dst, original, 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	progress := collect(Convert(context.Background(), ConvertRequest{
+		Source:       src,
+		TargetFormat: FormatPNG,
+		Output:       dst,
+	}))
+	last := progress[len(progress)-1]
+	if !last.Completed || last.Err != nil {
+		t.Fatalf("expected success, got %+v", last)
+	}
+
+	got, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatalf("re-read original: %v", err)
+	}
+	if string(got) != string(original) {
+		t.Fatalf("original out.png was overwritten (Overwrite=false should preserve it)")
+	}
+
+	first := filepath.Join(dir, "out-1.png")
+	if _, err := os.Stat(first); err != nil {
+		t.Fatalf("expected suffixed output %s: %v", first, err)
+	}
+
+	// Second collision: out.png AND out-1.png exist, so the next conversion
+	// should walk the counter forward to out-2.png.
+	progress = collect(Convert(context.Background(), ConvertRequest{
+		Source:       src,
+		TargetFormat: FormatPNG,
+		Output:       dst,
+	}))
+	last = progress[len(progress)-1]
+	if !last.Completed || last.Err != nil {
+		t.Fatalf("expected success on second collision, got %+v", last)
+	}
+	second := filepath.Join(dir, "out-2.png")
+	if _, err := os.Stat(second); err != nil {
+		t.Fatalf("expected counter to advance to %s: %v", second, err)
+	}
+}
+
+func TestConvertOverwriteClobbersInPlace(t *testing.T) {
 	dir := t.TempDir()
 	src := writeTinyPNG(t, dir)
 	dst := filepath.Join(dir, "out.png")
@@ -103,10 +158,24 @@ func TestConvertRefusesOverwriteByDefault(t *testing.T) {
 		Source:       src,
 		TargetFormat: FormatPNG,
 		Output:       dst,
+		Overwrite:    true,
 	}))
 	last := progress[len(progress)-1]
-	if last.Err == nil || last.Err.Code != tools.CodeBadRequest {
-		t.Fatalf("expected BAD_REQUEST, got %+v", last)
+	if !last.Completed || last.Err != nil {
+		t.Fatalf("expected success, got %+v", last)
+	}
+
+	// With Overwrite=true we must NOT have created a suffixed sibling — the
+	// original path is clobbered with the new PNG contents.
+	if _, err := os.Stat(filepath.Join(dir, "out-1.png")); !os.IsNotExist(err) {
+		t.Fatalf("Overwrite=true should not produce a suffixed sibling, got err=%v", err)
+	}
+	got, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatalf("read clobbered: %v", err)
+	}
+	if string(got) == "preexisting" {
+		t.Fatalf("Overwrite=true did not replace the original file")
 	}
 }
 
@@ -226,5 +295,116 @@ func TestBatchConvertAllFail(t *testing.T) {
 	}))
 	if last := progress[len(progress)-1]; last.Err == nil || last.Err.Code != tools.CodeIO {
 		t.Fatalf("expected IO_ERROR when every file fails, got %+v", last)
+	}
+}
+
+// writeTinyImage encodes a 4×4 RGBA fixture in the requested source format
+// at dst. Matrix-test helper — keeps each fixture tiny so the suite stays
+// fast. Returns the path it wrote.
+func writeTinyImage(t *testing.T, dst string, srcFmt Format) string {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 4, 4))
+	for y := 0; y < 4; y++ {
+		for x := 0; x < 4; x++ {
+			img.Set(x, y, color.RGBA{R: uint8(x * 64), G: uint8(y * 64), B: 100, A: 255})
+		}
+	}
+	f, err := os.Create(dst)
+	if err != nil {
+		t.Fatalf("create %s: %v", dst, err)
+	}
+	defer f.Close()
+	switch srcFmt {
+	case FormatPNG:
+		err = png.Encode(f, img)
+	case FormatJPEG:
+		err = jpeg.Encode(f, img, &jpeg.Options{Quality: 90})
+	case FormatGIF:
+		err = gif.Encode(f, img, nil)
+	case FormatBMP:
+		err = bmp.Encode(f, img)
+	case FormatTIFF:
+		err = tiff.Encode(f, img, nil)
+	default:
+		t.Fatalf("writeTinyImage: unsupported source format %v", srcFmt)
+	}
+	if err != nil {
+		t.Fatalf("encode %s: %v", dst, err)
+	}
+	return dst
+}
+
+// TestConvertMatrix exercises every native (source × target) combination so
+// no codec path silently breaks. WebP/HEIC targets are gated on ImageMagick
+// being on PATH — the test sub-skips cleanly if it isn't, matching the
+// existing TestWebPEncodeViaMagick pattern.
+func TestConvertMatrix(t *testing.T) {
+	sysdep.Reset()
+	hasMagick := sysdep.Lookup("magick").Found
+
+	type cell struct {
+		name  string
+		src   Format
+		dst   Format
+		magic bool // requires ImageMagick (WebP / HEIC encode)
+	}
+	srcs := []Format{FormatPNG, FormatJPEG, FormatGIF, FormatBMP, FormatTIFF}
+	dsts := []struct {
+		f     Format
+		magic bool
+	}{
+		{FormatPNG, false},
+		{FormatJPEG, false},
+		{FormatGIF, false},
+		{FormatBMP, false},
+		{FormatTIFF, false},
+		{FormatWebP, true},
+		{FormatHEIC, true},
+	}
+
+	cells := make([]cell, 0, len(srcs)*len(dsts))
+	for _, s := range srcs {
+		for _, d := range dsts {
+			// Identity is exercised by TestConvertResizeShrinks; matrix
+			// focuses on format-translating paths.
+			if s == d.f {
+				continue
+			}
+			cells = append(cells, cell{
+				name:  fmt.Sprintf("%s_to_%s", s.Ext()[1:], d.f.Ext()[1:]),
+				src:   s,
+				dst:   d.f,
+				magic: d.magic,
+			})
+		}
+	}
+
+	for _, c := range cells {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			if c.magic && !hasMagick {
+				t.Skipf("ImageMagick not on PATH; skipping %s", c.name)
+			}
+			dir := t.TempDir()
+			src := writeTinyImage(t, filepath.Join(dir, "in"+c.src.Ext()), c.src)
+			out := filepath.Join(dir, "out"+c.dst.Ext())
+			progress := collect(Convert(context.Background(), ConvertRequest{
+				Source:       src,
+				TargetFormat: c.dst,
+				Output:       out,
+				Opts:         Options{Quality: 80},
+			}))
+			last := progress[len(progress)-1]
+			if !last.Completed || last.Err != nil {
+				t.Fatalf("%s failed: %+v", c.name, last)
+			}
+			info, err := os.Stat(out)
+			if err != nil {
+				t.Fatalf("%s: output missing: %v", c.name, err)
+			}
+			if info.Size() == 0 {
+				t.Fatalf("%s: output is empty", c.name)
+			}
+		})
 	}
 }

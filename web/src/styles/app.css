@@ -8,8 +8,6 @@ html {
   color-scheme: dark;
 }
 
-body {
-  background-color: var(--color-bg);
-  color: var(--color-text);
-  transition: background-color 0.15s ease, color 0.15s ease;
-}
+/* The htools-gui design system (body background, shell, components) lives in
+   styles/gui.css, imported from main.ts after this file so it lands after
+   Tailwind's preflight in the cascade. */

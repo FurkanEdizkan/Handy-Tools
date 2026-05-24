@@ -7,12 +7,6 @@ import (
 
 func TestDecodeYAMLBasic(t *testing.T) {
 	body := strings.Join([]string{
-		"theme:",
-		"  name: snow",
-		"  background: \"#000000\"",
-		"mascot:",
-		"  enabled: true",
-		"  style: wrenly",
 		"image:",
 		"  default_jpeg_quality: 70",
 		"server:",
@@ -28,9 +22,6 @@ func TestDecodeYAMLBasic(t *testing.T) {
 	if err := decode([]byte(body), &c); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if c.Theme.Name != "snow" || c.Theme.Background != "#000000" {
-		t.Errorf("theme: %+v", c.Theme)
-	}
 	if c.Image.DefaultJPEGQuality != 70 {
 		t.Errorf("jpeg quality: %d", c.Image.DefaultJPEGQuality)
 	}
@@ -43,13 +34,15 @@ func TestDecodeYAMLBasic(t *testing.T) {
 }
 
 func TestDecodeYAMLIgnoresUnknown(t *testing.T) {
-	body := "theme:\n  name: snow\nfuture_key:\n  something: 42\n"
+	// theme/mascot were removed when the TUI retired; old configs that still
+	// carry them must continue to load without error.
+	body := "theme:\n  name: snow\nmascot:\n  style: hopper\nfuture_key:\n  something: 42\nimage:\n  default_jpeg_quality: 60\n"
 	c := Defaults()
 	if err := decode([]byte(body), &c); err != nil {
 		t.Fatalf("unknown key should be ignored, got: %v", err)
 	}
-	if c.Theme.Name != "snow" {
-		t.Errorf("theme: %q", c.Theme.Name)
+	if c.Image.DefaultJPEGQuality != 60 {
+		t.Errorf("known sibling key not applied: %d", c.Image.DefaultJPEGQuality)
 	}
 }
 
@@ -58,17 +51,14 @@ func TestDecodeYAMLIgnoresUnknown(t *testing.T) {
 // value.
 func TestDecodeYAMLPartialKeepsDefaults(t *testing.T) {
 	c := Defaults()
-	if err := decode([]byte("theme:\n  name: ember\n"), &c); err != nil {
+	if err := decode([]byte("image:\n  default_jpeg_quality: 60\n"), &c); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if c.Theme.Name != "ember" {
-		t.Errorf("theme name not applied: %q", c.Theme.Name)
+	if c.Image.DefaultJPEGQuality != 60 {
+		t.Errorf("image quality not applied: %d", c.Image.DefaultJPEGQuality)
 	}
-	if c.Mascot.Style != "wrenly" || !c.Mascot.Enabled {
-		t.Errorf("mascot defaults lost: %+v", c.Mascot)
-	}
-	if c.Image.DefaultJPEGQuality != 90 || c.PDF.DefaultDPI != 150 {
-		t.Errorf("numeric defaults lost: image=%d pdf=%d", c.Image.DefaultJPEGQuality, c.PDF.DefaultDPI)
+	if c.PDF.DefaultDPI != 150 {
+		t.Errorf("pdf default lost: %d", c.PDF.DefaultDPI)
 	}
 	if c.Server.Listen != ":7777" {
 		t.Errorf("server default lost: %q", c.Server.Listen)
@@ -93,14 +83,14 @@ func TestDecodeYAMLEmptyListLiteral(t *testing.T) {
 func FuzzDecodeYAML(f *testing.F) {
 	seeds := []string{
 		"",
-		"theme:\n  name: forge\n",
+		"server:\n  listen: ':4242'\n",
 		"server:\n  allow_roots:\n    - /a\n    - /b\n",
 		"recent: []\n",
 		"# just a comment\n",
-		"theme:\n  name: \"with: colon\"\n",
+		"image:\n  default_jpeg_quality: 60\n",
 		":::\n",
 		"- orphan list item\n",
-		"theme:\n\tname: tab-indented\n",
+		"server:\n\tlisten: tab-indented\n",
 		"image:\n  default_jpeg_quality: not-a-number\n",
 		strings.Repeat("a:\n  b: c\n", 200),
 	}
