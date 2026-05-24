@@ -31,8 +31,7 @@ export type NavItem = {
 
 /**
  * Sidebar navigation, grouped into Tools and System sections to mirror the
- * htools-gui design. The tool entries deep-link to `/tool/:id`; Pack is
- * reached from the Home grid rather than the sidebar.
+ * htools-gui design. The tool entries deep-link to `/tool/:id`.
  */
 export const navItems: NavItem[] = [
   { href: '#/', label: 'Home', glyph: '⌂', section: 'tools', matches: (p) => p === '/' || p === '' },
@@ -42,6 +41,13 @@ export const navItems: NavItem[] = [
     glyph: '◇',
     section: 'tools',
     matches: (p) => p === '/tool/convert-image',
+  },
+  {
+    href: '#/tool/zip-pack',
+    label: 'Pack into archive',
+    glyph: '▢',
+    section: 'tools',
+    matches: (p) => p === '/tool/zip-pack',
   },
   {
     href: '#/tool/archive-extract',
