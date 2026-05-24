@@ -1,67 +1,39 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { get } from 'svelte/store';
 
-// Mock the API client so setTheme's backend sync is observable without a
-// server. vi.hoisted keeps `patchConfig` initialised before the hoisted
-// vi.mock factory runs.
-const { patchConfig } = vi.hoisted(() => ({
-  patchConfig: vi.fn().mockResolvedValue({}),
-}));
-vi.mock('../api', () => ({ api: { patchConfig } }));
-
-import { currentTheme, setTheme, cycleTheme, hydrateFromConfig } from './theme';
+import { currentDensity, setDensity, mascotCharacter, mascotEnabled } from './theme';
 
 beforeEach(() => {
-  patchConfig.mockClear();
   localStorage.clear();
-  currentTheme.set('forge');
+  currentDensity.set('regular');
+  mascotCharacter.set('wrenly');
+  mascotEnabled.set(true);
 });
 
-describe('setTheme', () => {
-  it('updates the live store', () => {
-    setTheme('snow');
-    expect(get(currentTheme)).toBe('snow');
+describe('setDensity', () => {
+  it('updates the live store and writes the data-density attribute', () => {
+    setDensity('compact');
+    expect(get(currentDensity)).toBe('compact');
+    expect(document.documentElement.dataset.density).toBe('compact');
   });
 
-  it('persists the choice to the backend config', () => {
-    setTheme('ember');
-    expect(patchConfig).toHaveBeenCalledWith({ theme: 'ember' });
-  });
-});
-
-describe('cycleTheme', () => {
-  it('advances forge -> snow -> ember -> forge', () => {
-    currentTheme.set('forge');
-    cycleTheme();
-    expect(get(currentTheme)).toBe('snow');
-    cycleTheme();
-    expect(get(currentTheme)).toBe('ember');
-    cycleTheme();
-    expect(get(currentTheme)).toBe('forge');
+  it('persists the choice to localStorage', () => {
+    setDensity('comfy');
+    expect(localStorage.getItem('handy.density')).toBe('comfy');
   });
 });
 
-describe('hydrateFromConfig', () => {
-  it('applies the server theme when nothing is stored on this device', async () => {
-    currentTheme.set('forge');
-    localStorage.clear(); // ensure no stored choice — the subscriber writes one
-    const fetchFn = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ theme: 'ember' }),
-    });
-    await hydrateFromConfig(fetchFn as unknown as typeof fetch);
-    expect(get(currentTheme)).toBe('ember');
+describe('mascot preferences', () => {
+  it('cycles mascotCharacter between wrenly and hopper', () => {
+    mascotCharacter.set('hopper');
+    expect(get(mascotCharacter)).toBe('hopper');
+    expect(localStorage.getItem('handy.mascot.character')).toBe('hopper');
   });
 
-  it('keeps a locally-chosen theme over the server value', async () => {
-    setTheme('snow'); // writes localStorage via the subscriber
-    const fetchFn = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ theme: 'ember' }),
-    });
-    await hydrateFromConfig(fetchFn as unknown as typeof fetch);
-    expect(get(currentTheme)).toBe('snow');
-    expect(fetchFn).not.toHaveBeenCalled();
+  it('persists mascotEnabled to localStorage', () => {
+    mascotEnabled.set(false);
+    expect(get(mascotEnabled)).toBe(false);
+    expect(localStorage.getItem('handy.mascot.enabled')).toBe('false');
   });
 });

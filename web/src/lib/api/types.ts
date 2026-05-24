@@ -187,7 +187,6 @@ export interface HealthResponse {
  * where the server omits keys we don't care about yet.
  */
 export interface ConfigResponse {
-  theme?: 'forge' | 'snow' | 'ember';
   allowRoots?: string[];
   defaultJpegQuality?: number;
   defaultPdfDpi?: number;
