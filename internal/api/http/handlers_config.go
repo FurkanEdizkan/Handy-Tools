@@ -9,7 +9,6 @@ import (
 	"github.com/furkandedizkan/handy-tools/internal/tools"
 )
 
-
 // handleConfigGet returns the full user config as JSON.
 func (s *Server) handleConfigGet(w http.ResponseWriter, _ *http.Request) {
 	cfg, _, err := config.Load()
