@@ -118,15 +118,6 @@ func Convert(ctx context.Context, req ConvertRequest) <-chan tools.Progress {
 			return
 		}
 
-		if !req.Overwrite {
-			if _, err := os.Stat(outPath); err == nil {
-				emit(tools.Progress{Completed: true, Level: tools.SeverityError, Err: &tools.Error{
-					Code: tools.CodeBadRequest, Message: "output exists", Detail: outPath,
-				}})
-				return
-			}
-		}
-
 		emit(tools.Progress{Level: tools.SeverityInfo, Message: "encoding " + filepath.Base(outPath), Fraction: 0.5})
 
 		if err := encode(outPath, img, req.TargetFormat, req.Opts); err != nil {
@@ -239,11 +230,6 @@ func convertOne(req ConvertRequest) (outPath string, terr *tools.Error) {
 	outPath, err = resolveOutputPath(req)
 	if err != nil {
 		return "", &tools.Error{Code: tools.CodeBadRequest, Message: err.Error()}
-	}
-	if !req.Overwrite {
-		if _, statErr := os.Stat(outPath); statErr == nil {
-			return "", &tools.Error{Code: tools.CodeBadRequest, Message: "output exists", Detail: outPath}
-		}
 	}
 	if err := encode(outPath, img, req.TargetFormat, req.Opts); err != nil {
 		return "", encodeError(err)
@@ -395,6 +381,21 @@ func resize(src image.Image, maxW, maxH int) image.Image {
 }
 
 func resolveOutputPath(req ConvertRequest) (string, error) {
+	candidate, err := candidateOutputPath(req)
+	if err != nil {
+		return "", err
+	}
+	if req.Overwrite {
+		return candidate, nil
+	}
+	return disambiguatePath(candidate), nil
+}
+
+// candidateOutputPath computes the natural output path before collision
+// disambiguation: source's base name with the target extension, dropped into
+// req.Output if that's a directory, or used verbatim if Output is an explicit
+// file path.
+func candidateOutputPath(req ConvertRequest) (string, error) {
 	if req.Output == "" {
 		base := strings.TrimSuffix(req.Source, filepath.Ext(req.Source))
 		return base + req.TargetFormat.Ext(), nil
@@ -411,6 +412,27 @@ func resolveOutputPath(req ConvertRequest) (string, error) {
 		return "", err
 	}
 	return req.Output, nil
+}
+
+// disambiguatePath returns path unchanged if nothing exists there; otherwise
+// it inserts a "-N" counter before the extension and returns the first miss
+// (photo.jpg → photo-1.jpg → photo-2.jpg → …). Capped so a directory packed
+// with collisions can't spin forever; the last candidate is returned on
+// overflow so the caller still gets a valid path to write to.
+func disambiguatePath(path string) string {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return path
+	}
+	ext := filepath.Ext(path)
+	base := strings.TrimSuffix(path, ext)
+	const max = 9999
+	for i := 1; i <= max; i++ {
+		candidate := fmt.Sprintf("%s-%d%s", base, i, ext)
+		if _, err := os.Stat(candidate); errors.Is(err, os.ErrNotExist) {
+			return candidate
+		}
+	}
+	return fmt.Sprintf("%s-%d%s", base, max, ext)
 }
 
 // drainable so tests don't need to import io
