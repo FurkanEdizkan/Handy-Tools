@@ -2,7 +2,7 @@ SHELL := /usr/bin/env bash
 
 MODULE      := github.com/furkandedizkan/handy-tools
 BIN_DIR     := bin
-TUI_BIN     := $(BIN_DIR)/htools
+CLI_BIN     := $(BIN_DIR)/htools
 SERVER_BIN  := $(BIN_DIR)/htoolsd
 GUI_BIN     := $(BIN_DIR)/htools-gui
 
@@ -26,11 +26,11 @@ help: ## Show this help
 		| awk 'BEGIN {FS = ":.*?## "} {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: build
-build: web $(TUI_BIN) $(SERVER_BIN) ## Build web assets + both binaries
+build: web $(CLI_BIN) $(SERVER_BIN) ## Build web assets + both binaries
 
-$(TUI_BIN):
+$(CLI_BIN):
 	@mkdir -p $(BIN_DIR)
-	$(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(TUI_BIN) ./cmd/htools
+	$(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(CLI_BIN) ./cmd/htools
 
 $(SERVER_BIN):
 	@mkdir -p $(BIN_DIR)
@@ -47,9 +47,9 @@ web: ## Build the Svelte frontend into web/dist (embedded by htoolsd)
 web-dev: ## Run Vite dev server with HMR (point it at a running htoolsd)
 	cd web && npm run dev
 
-.PHONY: tui
-tui: ## Run the TUI
-	$(GO) run ./cmd/htools
+.PHONY: cli
+cli: ## Print the CLI help
+	$(GO) run ./cmd/htools --help
 
 .PHONY: serve
 serve: ## Run the gRPC server
