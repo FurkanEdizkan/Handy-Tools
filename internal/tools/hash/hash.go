@@ -15,7 +15,7 @@ package hash
 import (
 	"bufio"
 	"context"
-	"crypto/md5"  //nolint:gosec // MD5 here is a checksum, not a security primitive — common manifest format
+	"crypto/md5" //nolint:gosec // MD5 here is a checksum, not a security primitive — common manifest format
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -304,4 +304,3 @@ func looksLikeHexDigest(s string) bool {
 	}
 	return true
 }
-

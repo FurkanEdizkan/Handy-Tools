@@ -44,16 +44,22 @@ func cmdHash(ctx context.Context, _ config.Config, args []string) int {
 	if len(positional) == 0 {
 		return usageErr(os.Stderr, "hash", "need at least one source (or --check MANIFEST)")
 	}
-	return runHash(positional, algo, *quiet, *asJSON)
+	return runHash(ctx, positional, algo, *quiet, *asJSON)
 }
 
 // runHash computes digests for every source path. Prints results in
 // canonical `<digest>  <path>` format (two spaces) or as one JSON object
 // per file when --json is set. Exits 1 if any file failed; 0 otherwise.
-func runHash(sources []string, algo hash.Algo, quiet, asJSON bool) int {
+// The context lets a Ctrl+C abort cleanly between files on very large
+// hashing batches.
+func runHash(ctx context.Context, sources []string, algo hash.Algo, quiet, asJSON bool) int {
 	enc := json.NewEncoder(os.Stdout)
 	var failed int
 	for _, src := range sources {
+		if err := ctx.Err(); err != nil {
+			fmt.Fprintf(os.Stderr, "hash: aborted: %v\n", err)
+			return 2
+		}
 		res, terr := hash.Hash(src, algo)
 		if terr != nil {
 			failed++

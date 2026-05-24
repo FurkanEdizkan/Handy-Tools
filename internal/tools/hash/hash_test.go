@@ -188,12 +188,12 @@ func TestParseManifestLine(t *testing.T) {
 		ok     bool
 	}{
 		{d32 + "  path/to/file", d32, "path/to/file", true},
-		{d16 + " *binary.bin", d16, "binary.bin", true},             // single-space + binary marker
-		{d32 + " \tpath.txt", d32, "path.txt", true},                // tab separator (single-space fallback)
-		{d16 + "  *bin.dat", d16, "bin.dat", true},                  // double-space + binary marker
-		{"missing-separator", "", "", false},                        // no whitespace at all
-		{"this line has no hex prefix", "", "", false},              // first token isn't hex
-		{"abc  path", "", "", false},                                // first token too short
+		{d16 + " *binary.bin", d16, "binary.bin", true}, // single-space + binary marker
+		{d32 + " \tpath.txt", d32, "path.txt", true},    // tab separator (single-space fallback)
+		{d16 + "  *bin.dat", d16, "bin.dat", true},      // double-space + binary marker
+		{"missing-separator", "", "", false},            // no whitespace at all
+		{"this line has no hex prefix", "", "", false},  // first token isn't hex
+		{"abc  path", "", "", false},                    // first token too short
 	}
 	for _, tc := range cases {
 		d, p, ok := parseManifestLine(tc.in)
