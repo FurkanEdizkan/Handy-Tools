@@ -1,13 +1,15 @@
 # Build outputs
 /bin/
 /dist/
+/out/
 *.exe
 *.test
 *.out
 
-# Built TUI / server binaries when produced at repo root by ad-hoc `go build`
+# Built binaries when produced at repo root by ad-hoc `go build`
 /htools
 /htoolsd
+/htools-gui
 
 # Go
 vendor/
@@ -29,8 +31,8 @@ vendor/
 coverage.out
 coverage.html
 
-# Mascot work-in-progress assets
-internal/ui/mascot/art/*.draft.txt
+# Stray test fixtures that shouldn't be committed
+/Heretic-Legion-Faction-Image-2.jpg
 
 # Web frontend
 web/node_modules/

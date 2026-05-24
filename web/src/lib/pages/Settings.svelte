@@ -1,14 +1,10 @@
 <script lang="ts">
   import {
-    currentTheme,
-    setTheme,
-    THEMES,
     currentDensity,
     setDensity,
     DENSITIES,
     mascotCharacter,
     mascotEnabled,
-    type ThemeName,
     type Density,
     type MascotCharacter,
   } from '../stores/theme';
@@ -27,20 +23,7 @@
 <div class="setting-section">
   <div class="s-head">
     Appearance
-    <div class="desc">Theme and density preferences for this device.</div>
-  </div>
-  <div class="setting-row">
-    <div class="lbl-block">
-      <div class="lbl">Theme</div>
-      <div class="sub">Forge ships orange-on-dark; Snow swaps the accent cyan; Ember runs warm.</div>
-    </div>
-    <div class="control">
-      <div class="seg">
-        {#each THEMES as t (t)}
-          <button class={$currentTheme === t ? 'on' : ''} onclick={() => setTheme(t as ThemeName)}>{t}</button>
-        {/each}
-      </div>
-    </div>
+    <div class="desc">Display preferences for this device.</div>
   </div>
   <div class="setting-row">
     <div class="lbl-block">
