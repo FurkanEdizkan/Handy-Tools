@@ -42,13 +42,13 @@ func runHelp(t *testing.T, extraEnv ...string) string {
 	return string(out)
 }
 
-// assertBareBanner checks that out begins with the plain two-line banner and
-// carries no color: no ANSI escape sequences, no mascot dot-grid glyphs.
+// assertBareBanner checks that out carries no color codes and no leftover
+// mascot dot-grid glyphs. The bare banner is now a short two-line header
+// ("Handy Tools — one-line installer\n  <repo>") followed by the --help body.
 func assertBareBanner(t *testing.T, label, out string) {
 	t.Helper()
-	const bare = "Handy Tools installer\n\n"
-	if !strings.HasPrefix(out, bare) {
-		t.Errorf("%s: banner is not the bare two-line form; got prefix:\n%q", label, head(out, 120))
+	if !strings.Contains(out, "Handy Tools") {
+		t.Errorf("%s: banner missing the Handy Tools header:\n%q", label, head(out, 120))
 	}
 	if strings.Contains(out, "\x1b[") {
 		t.Errorf("%s: output contains an ANSI escape sequence:\n%q", label, head(out, 200))

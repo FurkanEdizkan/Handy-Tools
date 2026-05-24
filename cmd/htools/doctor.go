@@ -10,10 +10,11 @@ import (
 	"github.com/furkandedizkan/handy-tools/internal/tools/sysdep"
 )
 
-// runDoctor prints which optional system tools are present and which features
-// they unlock. Designed to be readable on a plain terminal (no TUI).
-func runDoctor() {
+// cmdDoctor prints which optional system tools are present and which features
+// they unlock. Designed to be readable on a plain terminal.
+func cmdDoctor() int {
 	writeDoctor(os.Stdout)
+	return 0
 }
 
 // writeDoctor renders the doctor report to w. Split out so tests can capture

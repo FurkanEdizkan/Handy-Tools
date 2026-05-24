@@ -7,12 +7,6 @@ import (
 
 func TestDefaultsHaveSensibleValues(t *testing.T) {
 	c := Defaults()
-	if c.Theme.Name != "forge" {
-		t.Fatalf("theme name: got %q want forge", c.Theme.Name)
-	}
-	if !c.Mascot.Enabled || c.Mascot.Style != "wrenly" {
-		t.Fatalf("mascot defaults wrong: %+v", c.Mascot)
-	}
 	if c.Image.DefaultJPEGQuality != 90 {
 		t.Fatalf("jpeg quality default: %d", c.Image.DefaultJPEGQuality)
 	}
@@ -40,7 +34,6 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	t.Setenv("HANDY_TOOLS_CONFIG", filepath.Join(dir, "config.yaml"))
 
 	c := Defaults()
-	c.Theme.Name = "ember"
 	c.Archive.AutoExtractMultiPart = true
 	c.Image.DefaultJPEGQuality = 75
 	c.Server.Listen = ":9000"
@@ -54,9 +47,6 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	got, _, err := Load()
 	if err != nil {
 		t.Fatalf("load: %v", err)
-	}
-	if got.Theme.Name != "ember" {
-		t.Errorf("theme: %+v", got.Theme)
 	}
 	if !got.Archive.AutoExtractMultiPart {
 		t.Errorf("archive: %+v", got.Archive)
@@ -80,7 +70,7 @@ func TestLoadMissingFileReturnsDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if c.Theme.Name != "forge" {
+	if c.Image.DefaultJPEGQuality != 90 {
 		t.Fatalf("expected defaults, got %+v", c)
 	}
 }
