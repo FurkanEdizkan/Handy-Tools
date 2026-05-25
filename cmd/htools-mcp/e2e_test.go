@@ -409,3 +409,68 @@ func TestE2E_PDFText(t *testing.T) {
 		t.Fatalf("expected 'Page one' in extracted text, got: %q", body)
 	}
 }
+
+// TestE2E_Doctor + TestE2E_RenameInspect are regression tests for the bug
+// where doctor and rename_inspect returned slices directly as
+// structuredContent. MCP spec requires that field to be a JSON object, so
+// strict client validators rejected the response even though the tools'
+// underlying logic was fine. Both now wrap their slice in an object; these
+// tests assert on the wrapper key so a future "simplification" can't
+// silently regress the shape.
+
+func TestE2E_Doctor(t *testing.T) {
+	client := newMCPClient(t, "/")
+	res := client.callTool(t, "doctor", map[string]any{})
+	if res.IsError {
+		t.Fatalf("doctor error:\n%s", res.Text)
+	}
+	if res.Structured == nil {
+		t.Fatal("doctor: missing structuredContent")
+	}
+	tools, ok := res.Structured["tools"]
+	if !ok {
+		t.Fatalf("doctor: structuredContent missing \"tools\" wrapper key; got keys %v", mapKeys(res.Structured))
+	}
+	list, ok := tools.([]any)
+	if !ok {
+		t.Fatalf("doctor: tools is not an array, got %T", tools)
+	}
+	if len(list) == 0 {
+		t.Fatal("doctor: tools list is empty (sysdep.All() returned nothing)")
+	}
+}
+
+func TestE2E_RenameInspect(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "old.txt")
+	if err := os.WriteFile(src, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	client := newMCPClient(t, "/")
+	res := client.callTool(t, "rename_inspect", map[string]any{
+		"sources": []string{src},
+		"pattern": `^old\.txt$`,
+		"replace": "new.txt",
+	})
+	if res.IsError {
+		t.Fatalf("rename_inspect error:\n%s", res.Text)
+	}
+	if res.Structured == nil {
+		t.Fatal("rename_inspect: missing structuredContent")
+	}
+	plans, ok := res.Structured["plans"]
+	if !ok {
+		t.Fatalf("rename_inspect: structuredContent missing \"plans\" wrapper key; got keys %v", mapKeys(res.Structured))
+	}
+	if list, ok := plans.([]any); !ok || len(list) == 0 {
+		t.Fatalf("rename_inspect: plans is not a non-empty array; got %T = %v", plans, plans)
+	}
+}
+
+func mapKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
