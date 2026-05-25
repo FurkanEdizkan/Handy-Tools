@@ -42,7 +42,14 @@ func (o Options) CheckPath(p string) (string, error) {
 		if err != nil {
 			continue
 		}
-		rabs = filepath.Clean(rabs) + string(filepath.Separator)
+		rabs = filepath.Clean(rabs)
+		// Append a separator so "/foo" doesn't match "/foobar", except when
+		// rabs is already exactly the separator (root "/"); doubling it would
+		// produce "//", which no real path starts with — so AllowRoots:["/"]
+		// would silently reject everything.
+		if !strings.HasSuffix(rabs, string(filepath.Separator)) {
+			rabs += string(filepath.Separator)
+		}
 		if strings.HasPrefix(abs+string(filepath.Separator), rabs) {
 			return abs, nil
 		}

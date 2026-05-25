@@ -85,6 +85,19 @@ func TestCheckPathMultipleRoots(t *testing.T) {
 	}
 }
 
+// TestCheckPathRootAllowAcceptsAnyAbsolute locks in the htools-gui /
+// htools-mcp default sandbox: AllowRoots:["/"] must allow any absolute path
+// under root. A prior implementation double-appended the path separator and
+// silently rejected everything under "/".
+func TestCheckPathRootAllowAcceptsAnyAbsolute(t *testing.T) {
+	opts := Options{AllowRoots: []string{"/"}}
+	for _, p := range []string{"/tmp/x.txt", "/etc/hostname", "/"} {
+		if _, err := opts.CheckPath(p); err != nil {
+			t.Fatalf("CheckPath(%q): unexpected error %v", p, err)
+		}
+	}
+}
+
 func TestErrorFromToolNil(t *testing.T) {
 	c, m, d := errorFromTool(nil)
 	if c != "" || m != "" || d != "" {
