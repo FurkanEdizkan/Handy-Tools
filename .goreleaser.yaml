@@ -11,6 +11,19 @@ before:
     - sh -c "cd web && npm ci && npm run build"
 
 builds:
+  - id: handy
+    main: ./cmd/handy
+    binary: handy
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X github.com/furkandedizkan/handy-tools/internal/buildinfo.Version={{.Version}}
+      - -X github.com/furkandedizkan/handy-tools/internal/buildinfo.Commit={{.ShortCommit}}
+      - -X github.com/furkandedizkan/handy-tools/internal/buildinfo.Date={{.Date}}
+
   - id: htools
     main: ./cmd/htools
     binary: htools
@@ -80,6 +93,7 @@ archives:
   # whose binary count differs across platforms.
   - id: default
     ids:
+      - handy
       - htools
       - htoolsd
       - htools-mcp
@@ -161,7 +175,7 @@ release:
     curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/install.sh | sh
     ```
 
-    Or pick the archive for your OS/arch from the assets below, extract, and put `htools`, `htoolsd`, and `htools-mcp` on your PATH. Each release also includes a `*_source.tar.gz` and `checksums.txt`.
+    Or pick the archive for your OS/arch from the assets below, extract, and put `handy`, `htools`, `htoolsd`, and `htools-mcp` on your PATH. (`handy` is the user-facing front door — bare `handy` opens the desktop app and `handy <verb>` dispatches to the others.) Each release also includes a `*_source.tar.gz` and `checksums.txt`.
 
     See [README](https://github.com/FurkanEdizkan/Handy-Tools#readme) for system dependency hints.
 

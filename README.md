@@ -16,23 +16,33 @@
 ---
 
 Handy Tools is a small toolbox for the file work you do every day — converting
-images, extracting odd archive formats, slicing PDFs apart. Four binaries, one
-core.
+images, extracting odd archive formats, slicing PDFs apart. One front door
+(`handy`) over four backends.
 
+- **`handy`** — the user-facing command. Bare `handy` launches the desktop
+  app; `handy convert in.png --format jpeg --out out.jpg` runs the CLI;
+  `handy serve` / `handy mcp` start the daemons. Thin dispatcher; the
+  backends below do the real work.
 - **`htools`** — a non-interactive subcommand CLI. One run, one operation,
-  scriptable: `htools convert in.png --format jpeg --out out.jpg`.
+  scriptable: `htools convert in.png --format jpeg --out out.jpg`. Also
+  reachable via `handy convert ...`.
 - **`htoolsd`** — the same tools exposed over **gRPC** and **HTTP + SSE**, so
   you can run Handy Tools as a service and call its features from anywhere
-  (web, CI, scripts). It also embeds and serves the Svelte web UI.
+  (web, CI, scripts). It also embeds and serves the Svelte web UI. Reachable
+  via `handy serve`.
 - **`htools-mcp`** — the same tools exposed over the **Model Context Protocol**
   on stdio, so an MCP-capable client (Claude Code, Claude Desktop, Cursor) can
-  call them directly in a conversation. See [MCP server](#mcp-server) below.
+  call them directly in a conversation. Reachable via `handy mcp`.
+  See [MCP server](#mcp-server) below.
 - **`htools-gui`** — a Wails desktop app that wraps the same web UI in a
   native window with file dialogs. Built behind the `wails` build tag
-  (CGO + webkit2gtk, linux/amd64).
+  (CGO + webkit2gtk, linux/amd64). Reachable via bare `handy` or
+  `handy gui`.
 
-All four share one core: every tool is a plain Go package, used identically by
-the CLI, the server, the MCP bridge, and the desktop app. The architecture is on one page in
+`handy` is the friendly UX; the four backends remain installed and can
+still be called directly if you want to skip a hop. All five share one
+core: every tool is a plain Go package, used identically by the CLI, the
+server, the MCP bridge, and the desktop app. The architecture is on one page in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 > **Status:** pre-1.0, calver pre-releases. The CLI, the `htoolsd` server
@@ -74,8 +84,8 @@ curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/inst
 ```
 
 The installer detects your OS/arch, downloads the matching release tarball,
-verifies it against `checksums.txt`, and drops `htools` and `htoolsd` into
-`$HOME/.local/bin`.
+verifies it against `checksums.txt`, and drops `handy`, `htools`, `htoolsd`,
+and `htools-mcp` into `$HOME/.local/bin`.
 
 After install it lists missing optional system tools. Pass `--install-deps`
 (and optionally `--yes`) to have it run the matching `apt-get` / `dnf` /
@@ -89,8 +99,8 @@ Same script, `--uninstall` flag:
 curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/install.sh | sh -s -- --uninstall
 ```
 
-The uninstaller removes the `htools`, `htoolsd`, `htools-gui` binaries from
-the install dir; the config dir (`$HANDY_TOOLS_CONFIG` parent, or
+The uninstaller removes the `handy`, `htools`, `htoolsd`, `htools-mcp`, and
+`htools-gui` binaries from the install dir; the config dir (`$HANDY_TOOLS_CONFIG` parent, or
 `$XDG_CONFIG_HOME/handy-tools`, or `~/.config/handy-tools`); and the cache
 dir (`$XDG_CACHE_HOME/handy-tools` or `~/.cache/handy-tools`). It prompts
 once before deleting; pass `--yes` to skip the prompt. User-created output
@@ -136,36 +146,47 @@ on Ubuntu 22.04/24.04 and macOS before it goes out.
 
 ## Quick tour
 
+Everything below works two ways: through `handy` (the friendly front door)
+or by calling the underlying binary directly. Pick whichever you like.
+
 ```sh
+# Open the desktop app:
+handy                                  # ↔ htools-gui
+
 # Image conversion (single source, single output file):
-htools convert photo.png --format jpeg --quality 80 --out photo.jpg
+handy convert photo.png --format jpeg --quality 80 --out photo.jpg
+# ↔ htools convert photo.png --format jpeg --quality 80 --out photo.jpg
 
 # Batch convert into a directory:
-htools convert a.png b.png c.png --format webp --out ./converted
+handy convert a.png b.png c.png --format webp --out ./converted
 
 # Pack a zip:
-htools pack ./project --format zip --output project.zip
+handy pack ./project --format zip --output project.zip
 
 # Extract any archive (zip / tar.gz / 7z / rar / …):
-htools extract bundle.tar.gz --out ./extracted
+handy extract bundle.tar.gz --out ./extracted
 
 # PDF operations:
-htools pdf merge a.pdf b.pdf --out merged.pdf
-htools pdf split big.pdf --pages 1-20 --out ./parts
-htools pdf render report.pdf --pages 1-3 --dpi 200 --out ./pages
-htools pdf text report.pdf --layout --out report.txt
+handy pdf merge a.pdf b.pdf --out merged.pdf
+handy pdf split big.pdf --pages 1-20 --out ./parts
+handy pdf render report.pdf --pages 1-3 --dpi 200 --out ./pages
+handy pdf text report.pdf --layout --out report.txt
 
 # Doctor: which optional tools are present, and what each one unlocks
-htools doctor
+handy doctor
 
 # Version: semver, short commit, build date, GOOS/GOARCH
-htools --version
+handy --version
 
 # Help:
-htools --help
+handy --help
 
 # Service mode:
-htoolsd --listen :7777 --allow-roots /srv/uploads,/srv/output
+handy serve --listen :7777 --allow-roots /srv/uploads,/srv/output
+# ↔ htoolsd --listen :7777 --allow-roots /srv/uploads,/srv/output
+
+# MCP server (wire it into Claude Code / Cursor / Claude Desktop):
+handy mcp                              # ↔ htools-mcp
 
 # Probe the running service with grpcurl:
 grpcurl -plaintext localhost:7777 list
@@ -196,14 +217,15 @@ on stdio. An MCP-capable client launches it as a subprocess and can then call
 conversation.
 
 To wire it into Claude Code, add an entry to `~/.claude.json` (or a per-project
-`.mcp.json`):
+`.mcp.json`). Either binary works — `handy mcp` re-execs `htools-mcp` and
+preserves stdin/stdout, so the wire behavior is identical:
 
 ```json
 {
   "mcpServers": {
     "handy-tools": {
-      "command": "/absolute/path/to/handy-tools/bin/htools-mcp",
-      "args": []
+      "command": "/absolute/path/to/handy-tools/bin/handy",
+      "args": ["mcp"]
     }
   }
 }
@@ -253,9 +275,11 @@ recent: []
 
 ```sh
 make proto       # generate Go bindings under gen/ from api/proto (run once after clone)
-make build       # builds bin/htools and bin/htoolsd
-make cli         # prints the CLI help (sanity check)
+make build       # builds bin/handy + bin/htools + bin/htoolsd + bin/htools-mcp
+make handy       # prints the handy front-door help (sanity check)
+make cli         # prints the htools CLI help (sanity check)
 make serve       # runs the gRPC server on the address from config (default :7777)
+make mcp         # runs the MCP server on stdio (or `make mcp-build` for the binary)
 make gui         # builds the web UI and runs the Wails desktop app
 make gui-build   # builds bin/htools-gui
 make test        # go test -race -count=1 ./...
