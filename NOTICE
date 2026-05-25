@@ -52,6 +52,10 @@ Go libraries (linked into htools, htoolsd and htools-gui)
   Copyright the yaml.v3 authors (Canonical Ltd. and Kirill Simonov).
   YAML decoding for the on-disk config.
 
+- github.com/modelcontextprotocol/go-sdk — Apache-2.0
+  Copyright the Model Context Protocol authors.
+  MCP server SDK used by htools-mcp to speak the protocol over stdio.
+
 Web frontend libraries (bundled into the embedded SPA)
 ------------------------------------------------------
 

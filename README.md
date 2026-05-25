@@ -16,7 +16,7 @@
 ---
 
 Handy Tools is a small toolbox for the file work you do every day — converting
-images, extracting odd archive formats, slicing PDFs apart. Three binaries, one
+images, extracting odd archive formats, slicing PDFs apart. Four binaries, one
 core.
 
 - **`htools`** — a non-interactive subcommand CLI. One run, one operation,
@@ -24,12 +24,15 @@ core.
 - **`htoolsd`** — the same tools exposed over **gRPC** and **HTTP + SSE**, so
   you can run Handy Tools as a service and call its features from anywhere
   (web, CI, scripts). It also embeds and serves the Svelte web UI.
+- **`htools-mcp`** — the same tools exposed over the **Model Context Protocol**
+  on stdio, so an MCP-capable client (Claude Code, Claude Desktop, Cursor) can
+  call them directly in a conversation. See [MCP server](#mcp-server) below.
 - **`htools-gui`** — a Wails desktop app that wraps the same web UI in a
   native window with file dialogs. Built behind the `wails` build tag
   (CGO + webkit2gtk, linux/amd64).
 
-All three share one core: every tool is a plain Go package, used identically by
-the CLI, the server, and the desktop app. The architecture is on one page in
+All four share one core: every tool is a plain Go package, used identically by
+the CLI, the server, the MCP bridge, and the desktop app. The architecture is on one page in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 > **Status:** pre-1.0, calver pre-releases. The CLI, the `htoolsd` server
@@ -181,6 +184,37 @@ before any tool is called — paths outside an allow-root, or that try to
 escape via `..`, are rejected. See the test suite at
 [internal/server/server_test.go](internal/server/server_test.go) for the
 exact contract.
+
+## MCP server
+
+`htools-mcp` exposes the same toolbox over the [Model Context Protocol](https://modelcontextprotocol.io)
+on stdio. An MCP-capable client launches it as a subprocess and can then call
+`pdf_merge`, `pdf_split`, `pdf_render`, `pdf_text`, `image_convert`,
+`image_batch_convert`, `image_strip_meta`, `archive_inspect`,
+`archive_extract`, `archive_compress`, `hash`, `hash_verify`, `diff_tree`,
+`rename_inspect`, `rename_run`, and `doctor` as ordinary tools in a
+conversation.
+
+To wire it into Claude Code, add an entry to `~/.claude.json` (or a per-project
+`.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "handy-tools": {
+      "command": "/absolute/path/to/handy-tools/bin/htools-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+`htools-mcp` defaults to `--allow-roots=/` because it runs as a subprocess of
+the local user (the same sandbox posture as `htools-gui`). Pass
+`--allow-roots=/path/a,/path/b` if you want to narrow it. Path validation,
+error codes, and progress messages flow through the same `internal/server/*Handler`
+adapters that the gRPC and HTTP transports use, so behavior is identical
+across surfaces.
 
 ## Configuration
 
