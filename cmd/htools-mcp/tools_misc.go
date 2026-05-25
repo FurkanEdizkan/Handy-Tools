@@ -109,7 +109,10 @@ func registerMiscTools(srv *mcp.Server, h *handlers) {
 		if err != nil {
 			return errorResult("rename", "inspect", err), nil, nil
 		}
-		return jsonResult("rename.inspect: ok\n", plans), nil, nil
+		// MCP spec: structuredContent must be a JSON object, not an array.
+		// Wrap the slice so strict clients (e.g. the official Go SDK
+		// validator) accept the response.
+		return jsonResult("rename.inspect: ok\n", map[string]any{"plans": plans}), nil, nil
 	})
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -143,6 +146,7 @@ func registerMiscTools(srv *mcp.Server, h *handlers) {
 				InstallHint: r.Tool.InstallHint[runtime.GOOS],
 			})
 		}
-		return jsonResult("doctor: ok\n", entries), nil, nil
+		// See rename_inspect above — structuredContent must be an object.
+		return jsonResult("doctor: ok\n", map[string]any{"tools": entries}), nil, nil
 	})
 }
