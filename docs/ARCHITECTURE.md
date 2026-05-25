@@ -113,15 +113,22 @@ The frontend never has a "Wails-only" branch — feature detection of
 
 | Binary | Source | Purpose |
 | --- | --- | --- |
+| `handy` | `cmd/handy/` | User-facing front door. Bare `handy` opens the desktop app; `handy <verb>` re-execs into the right backend. ~200 LOC, no tool logic, no `internal/tools` import — just a router |
 | `htools` | `cmd/htools/` | Non-interactive subcommand CLI (image/archive/pdf/doctor) |
 | `htoolsd` | `cmd/htoolsd/` | gRPC + HTTP/SSE server; serves `web/dist/` |
 | `htools-mcp` | `cmd/htools-mcp/` | Model Context Protocol server over stdio; wraps every `internal/server/*Handler` so an MCP client (Claude, Cursor) drives the same tools |
 | `htools-gui` | `cmd/htools-gui/` | Wails desktop app; bundles `web/dist/` (linux/amd64 + CGO) |
 
+`handy` is a thin dispatcher: it parses the first positional argument, locates
+the right backend binary (same directory as `handy` first, then `$PATH`), and
+`syscall.Exec`s it so the backend takes over the process — stdin/stdout/stderr/
+signals/exit codes flow through unchanged. The four standalone binaries
+remain installed and callable directly; `handy` is layered on top.
+
 `htools-mcp` shares the gRPC/HTTP server-side layer rather than re-implementing
 it: every MCP tool calls into an `internal/server/*Handler` method, which in
-turn delegates to `internal/tools/<feature>/`. Two tool packages (`hash`,
-`difftree`, `rename`) that had no `internal/server` handler before this binary
+turn delegates to `internal/tools/<feature>/`. Three tool packages (`hash`,
+`difftree`, `rename`) that had no `internal/server` handler before that binary
 landed got one each, following the existing PDF/Image/Archive pattern. Path
 safety uses the same `Options.CheckPath`; the MCP binary's default
 `--allow-roots=/` matches the `htools-gui` posture because both run as a

@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 # Handy Tools installer — downloads the latest (or pinned) release from GitHub,
-# verifies the checksum, drops `htools` and `htoolsd` into an install dir, and
-# optionally installs the small set of optional system tools Handy Tools uses.
+# verifies the checksum, drops `handy` + `htools` + `htoolsd` + `htools-mcp`
+# into an install dir, and optionally installs the small set of optional
+# system tools Handy Tools uses.
 #
 #   curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/install.sh | sh
 #
@@ -70,8 +71,9 @@ usage() {
   banner
   cat <<'EOF'
 Handy Tools installer — downloads the latest (or pinned) release from GitHub,
-verifies the checksum, drops `htools` and `htoolsd` into an install dir, and
-optionally installs the small set of optional system tools Handy Tools uses.
+verifies the checksum, drops `handy` + `htools` + `htoolsd` + `htools-mcp`
+into an install dir, and optionally installs the small set of optional
+system tools Handy Tools uses.
 
   curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/install.sh | sh
   curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/install.sh | sh -s -- --uninstall
@@ -84,11 +86,12 @@ Knobs (env or flag):
   NO_COLOR=1                         # disable ANSI colors
   --version 0.2.0 / --dir PATH / --install-deps / --uninstall / --yes / --no-color / --help
 
-Uninstall removes the htools, htoolsd, htools-gui binaries from the install
-dir (default $HOME/.local/bin or --dir), the config dir ($HANDY_TOOLS_CONFIG
-parent or $XDG_CONFIG_HOME/handy-tools or ~/.config/handy-tools), and the
-cache dir ($XDG_CACHE_HOME/handy-tools or ~/.cache/handy-tools). User-created
-output files are never touched. Prompts before deleting unless --yes is set.
+Uninstall removes the handy, htools, htoolsd, htools-mcp, htools-gui binaries
+from the install dir (default $HOME/.local/bin or --dir), the config dir
+($HANDY_TOOLS_CONFIG parent or $XDG_CONFIG_HOME/handy-tools or
+~/.config/handy-tools), and the cache dir ($XDG_CACHE_HOME/handy-tools or
+~/.cache/handy-tools). User-created output files are never touched. Prompts
+before deleting unless --yes is set.
 
 Targets Linux and macOS. Windows is not yet supported.
 EOF
@@ -150,7 +153,7 @@ resolve_cache_dir() {
 do_uninstall() {
   cfg_dir=$(resolve_config_dir)
   cache_dir=$(resolve_cache_dir)
-  bins="$INSTALL_DIR/htools $INSTALL_DIR/htoolsd $INSTALL_DIR/htools-gui"
+  bins="$INSTALL_DIR/handy $INSTALL_DIR/htools $INSTALL_DIR/htoolsd $INSTALL_DIR/htools-mcp $INSTALL_DIR/htools-gui"
 
   log "uninstall plan"
   for b in $bins; do
@@ -335,8 +338,10 @@ ok "checksum verified"
 mkdir -p "$INSTALL_DIR"
 ( cd "$tmp" && tar -xzf "$asset" )
 
-# The tar produced by goreleaser puts htools / htoolsd at the archive root.
-for bin in htools htoolsd; do
+# The tar produced by goreleaser puts handy / htools / htoolsd / htools-mcp
+# at the archive root. htools-gui ships in a separate archive (Wails desktop
+# is linux/amd64-only with CGO, so it can't share the linux+darwin tarball).
+for bin in handy htools htoolsd htools-mcp; do
   [ -f "$tmp/$bin" ] || die "expected $bin in archive but it was missing"
   install -m 0755 "$tmp/$bin" "$INSTALL_DIR/$bin"
   ok "installed $(amber "$INSTALL_DIR/$bin")"
@@ -468,4 +473,6 @@ if [ -n "$missing" ]; then
 fi
 
 echo
-log "done. Try: $(orange "$INSTALL_DIR/htools --version")"
+log "done. Try: $(orange "$INSTALL_DIR/handy --help")"
+log "      or:  $(orange "$INSTALL_DIR/handy")  $(dim '# opens the desktop app')"
+log "      or:  $(orange "$INSTALL_DIR/htools --version")  $(dim '# the low-level CLI')"
