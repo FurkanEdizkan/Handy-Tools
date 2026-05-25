@@ -50,6 +50,8 @@ func dispatch(ctx context.Context, cfg config.Config, verb string, args []string
 		return cmdHash(ctx, cfg, args)
 	case "diff-tree":
 		return cmdDiffTree(ctx, cfg, args)
+	case "strip-meta":
+		return cmdStripMeta(ctx, cfg, args)
 	case "doctor":
 		return cmdDoctor()
 	case "version", "--version", "-v":

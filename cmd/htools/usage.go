@@ -67,6 +67,12 @@ Commands:
                        --quiet --json
                      Exit codes: 0 trees match, 1 trees differ, 2 I/O error.
 
+  strip-meta <files>... Re-encode images, dropping EXIF / IPTC / XMP.
+                       --in-place             overwrite source (default: write
+                                              <name>-stripped.<ext> sibling)
+                       --quality N            JPEG re-encode quality 1..100
+                       --quiet --json
+
   doctor             List optional system binaries Handy Tools can use and
                      whether each one is on PATH.
 
