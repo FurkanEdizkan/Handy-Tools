@@ -1,7 +1,7 @@
 // Command htools is the non-interactive CLI for Handy Tools. It dispatches
 // each invocation to one of the tool subcommands (convert, pack, extract,
-// inspect, pdf, rename, doctor) using stdlib flag — one run, one operation,
-// no terminal UI.
+// inspect, pdf, rename, hash, doctor) using stdlib flag — one run, one
+// operation, no terminal UI.
 package main
 
 import (
@@ -46,6 +46,8 @@ func dispatch(ctx context.Context, cfg config.Config, verb string, args []string
 		return cmdPDF(ctx, cfg, args)
 	case "rename":
 		return cmdRename(ctx, cfg, args)
+	case "hash":
+		return cmdHash(ctx, cfg, args)
 	case "doctor":
 		return cmdDoctor()
 	case "version", "--version", "-v":
