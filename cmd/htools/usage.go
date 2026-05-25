@@ -61,6 +61,12 @@ Commands:
                        --check MANIFEST       verify a manifest instead of hashing
                        --quiet --json
 
+  diff-tree <a> <b>  Compare two directory trees and report added / removed /
+                     changed files. Symlinks are not followed.
+                       --by mtime|hash        compare strategy (default mtime)
+                       --quiet --json
+                     Exit codes: 0 trees match, 1 trees differ, 2 I/O error.
+
   doctor             List optional system binaries Handy Tools can use and
                      whether each one is on PATH.
 

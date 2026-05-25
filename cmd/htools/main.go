@@ -48,6 +48,8 @@ func dispatch(ctx context.Context, cfg config.Config, verb string, args []string
 		return cmdRename(ctx, cfg, args)
 	case "hash":
 		return cmdHash(ctx, cfg, args)
+	case "diff-tree":
+		return cmdDiffTree(ctx, cfg, args)
 	case "doctor":
 		return cmdDoctor()
 	case "version", "--version", "-v":
