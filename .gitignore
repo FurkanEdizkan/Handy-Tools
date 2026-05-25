@@ -9,6 +9,7 @@
 # Built binaries when produced at repo root by ad-hoc `go build`
 /htools
 /htoolsd
+/htools-mcp
 /htools-gui
 
 # Go
