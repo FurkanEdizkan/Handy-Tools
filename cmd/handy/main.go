@@ -157,7 +157,7 @@ func execBackend(backend string, args []string, stderr io.Writer) int {
 
 	path, err := locateBackend(backend)
 	if err != nil {
-		fmt.Fprintln(stderr, "handy:", err)
+		fmt.Fprint(stderr, backendNotFoundHint(backend, err))
 		return 127
 	}
 
@@ -185,6 +185,29 @@ func isHeadless() bool {
 		return false
 	}
 	return os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == ""
+}
+
+// backendNotFoundHint turns a backend-lookup failure into a user-facing
+// message. The generic message is fine for the four CGO-free backends —
+// they're all shipped together in the default tarball, so "not present"
+// almost always means the install was tampered with. htools-gui is
+// different: it ships in its own platform-gated tarball and isn't
+// produced by a default `make build` (Wails needs CGO + libwebkit2gtk),
+// so a tailored hint saves users a trip to the docs.
+func backendNotFoundHint(backend string, err error) string {
+	if backend != "htools-gui" {
+		return fmt.Sprintf("handy: %s\n", err)
+	}
+	return `handy: couldn't find "htools-gui" — the desktop app isn't installed in this layout.
+
+If you installed via install.sh on linux/amd64, the GUI download was skipped
+or failed. Re-run install.sh, or grab the GUI tarball from
+https://github.com/FurkanEdizkan/Handy-Tools/releases.
+
+If you're running from source, build the GUI separately:
+  sudo apt install libwebkit2gtk-4.1-dev   # or 4.0-dev on Ubuntu 22.04
+  make gui-build                            # produces bin/htools-gui
+`
 }
 
 // locateBackend finds the named backend binary. Resolution order:

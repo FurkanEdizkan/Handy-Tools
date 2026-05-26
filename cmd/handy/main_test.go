@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -91,6 +92,39 @@ func TestRunUnknownVerbExits2(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "unknown subcommand") {
 		t.Errorf("stderr missing 'unknown subcommand'; got:\n%s", stderr.String())
+	}
+}
+
+func TestBackendNotFoundHintGUIIncludesBuildPointers(t *testing.T) {
+	got := backendNotFoundHint("htools-gui", errors.New("ignored"))
+	// The GUI-specific hint must surface both the install.sh path and the
+	// dev-build path — a future "clean up the wording" pass could easily
+	// drop one and silently regress the UX.
+	for _, want := range []string{
+		"htools-gui",
+		"install.sh",
+		"make gui-build",
+		"libwebkit2gtk",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("htools-gui hint missing %q; got:\n%s", want, got)
+		}
+	}
+}
+
+func TestBackendNotFoundHintGenericForOtherBackends(t *testing.T) {
+	for _, backend := range []string{"htools", "htoolsd", "htools-mcp"} {
+		err := errors.New("couldn't find " + backend + " on PATH")
+		got := backendNotFoundHint(backend, err)
+		if !strings.Contains(got, "handy:") {
+			t.Errorf("%s hint missing handy: prefix; got: %q", backend, got)
+		}
+		if strings.Contains(got, "make gui-build") {
+			t.Errorf("%s hint leaked GUI-specific text; got: %q", backend, got)
+		}
+		if !strings.Contains(got, err.Error()) {
+			t.Errorf("%s hint should wrap the underlying error; got: %q", backend, got)
+		}
 	}
 }
 
