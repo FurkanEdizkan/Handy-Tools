@@ -61,6 +61,16 @@ type Inspection struct {
 // it walks the directory looking for sibling parts. Use the result to confirm
 // with the user before kicking off Extract.
 func Inspect(_ context.Context, source string) (*Inspection, error) {
+	return inspect(source, true)
+}
+
+// inspect is the shared implementation. summary controls whether the
+// zip central directory is read end-to-end to populate EntryCount /
+// UncompressedSz — Extract doesn't need either of those, so calling it with
+// summary=false saves one full re-read of the central directory in the
+// common Extract path. The Inspect-the-archive CLI verb passes summary=true
+// to preserve the existing user-facing output.
+func inspect(source string, summary bool) (*Inspection, error) {
 	info, err := os.Stat(source)
 	if err != nil {
 		return nil, err
@@ -95,10 +105,12 @@ func Inspect(_ context.Context, source string) (*Inspection, error) {
 			ins.MissingParts = missing
 		}
 	case FormatZip:
-		count, size, err := summarizeZip(source)
-		if err == nil {
-			ins.EntryCount = count
-			ins.UncompressedSz = size
+		if summary {
+			count, size, err := summarizeZip(source)
+			if err == nil {
+				ins.EntryCount = count
+				ins.UncompressedSz = size
+			}
 		}
 	}
 	return ins, nil
@@ -143,7 +155,11 @@ func Extract(ctx context.Context, req ExtractRequest) <-chan tools.Progress {
 			return
 		}
 
-		ins, err := Inspect(ctx, req.Source)
+		// Extract doesn't consume EntryCount / UncompressedSz, so use the
+		// light variant — for zip archives this skips a full re-read of the
+		// central directory, leaving the one zip.OpenReader call inside
+		// extractZip as the sole disk pass.
+		ins, err := inspect(req.Source, false)
 		if err != nil {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
 				Code: tools.CodeIO, Message: "inspect failed", Detail: err.Error()},
@@ -439,13 +455,20 @@ func plainOpener(r io.Reader) (io.Reader, error) { return r, nil }
 func gzipOpener(r io.Reader) (io.Reader, error)  { return gzip.NewReader(r) }
 func bzip2Opener(r io.Reader) (io.Reader, error) { return bzip2.NewReader(r), nil }
 
+// tarReadBuf is the buffered-reader size used in front of the compressed
+// stream. 1 MiB is the sweet spot: large enough to amortise syscall cost on
+// linear tar reads, small enough that the buffer doesn't dominate RSS for
+// many parallel extractions. Default bufio.NewReader picks 4 KiB which is
+// far too small for the multi-MB tar.gz workloads the daemon sees.
+const tarReadBuf = 1 << 20
+
 func extractTar(ctx context.Context, req ExtractRequest, emit emitFn, open tarOpener) error {
 	f, err := os.Open(req.Source) //nolint:gosec
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	r, err := open(bufio.NewReader(f))
+	r, err := open(bufio.NewReaderSize(f, tarReadBuf))
 	if err != nil {
 		return err
 	}
