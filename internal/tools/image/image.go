@@ -16,7 +16,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/image/bmp"
@@ -139,12 +142,23 @@ type BatchConvertRequest struct {
 	Opts         Options
 	OutputDir    string
 	Overwrite    bool
+
+	// Parallelism caps the number of concurrent worker goroutines.
+	// 0 (the default) auto-sizes to runtime.GOMAXPROCS(0). 1 forces
+	// serial — useful in tests that depend on event ordering.
+	Parallelism int
 }
 
-// BatchConvert converts each source in turn, emitting one tools.Progress per
-// file plus a terminal summary. A single file's failure is reported as a
-// per-file error event and the batch continues; the terminal event carries an
-// error only when every file failed.
+// BatchConvert converts every source concurrently and emits one
+// tools.Progress per file plus a terminal summary. A single file's failure
+// is reported as a per-file error event and the batch continues; the
+// terminal event carries an error only when every file failed.
+//
+// Per-file events arrive in worker-completion order, not source-list order,
+// when Parallelism != 1. Callers that need ordered output (the CLI's
+// non-JSON --quiet=false mode) print them as they arrive — the order is
+// stable within a single run because the workload is deterministic, but
+// don't assert exact ordering in tests.
 func BatchConvert(ctx context.Context, req BatchConvertRequest) <-chan tools.Progress {
 	ch := make(chan tools.Progress, 8)
 	go func() {
@@ -168,41 +182,82 @@ func BatchConvert(ctx context.Context, req BatchConvertRequest) <-chan tools.Pro
 		}
 
 		total := len(req.Sources)
-		failed := 0
-		for i, src := range req.Sources {
-			if err := ctx.Err(); err != nil {
-				emit(tools.Progress{Completed: true, Err: &tools.Error{
-					Code: tools.CodeAborted, Message: "batch convert canceled",
-				}})
-				return
-			}
-			name := filepath.Base(src)
-			outPath, terr := convertOne(ConvertRequest{
-				Source:       src,
-				TargetFormat: req.TargetFormat,
-				Opts:         req.Opts,
-				Output:       req.OutputDir,
-				Overwrite:    req.Overwrite,
-			})
-			if terr != nil {
-				failed++
-				emit(tools.Progress{
-					Level:       tools.SeverityError,
-					CurrentItem: name,
-					Fraction:    float64(i+1) / float64(total),
-					Message:     fmt.Sprintf("[%d/%d] %s: %s", i+1, total, name, terr.Message),
-				})
-				continue
-			}
-			emit(tools.Progress{
-				Level:       tools.SeverityInfo,
-				CurrentItem: name,
-				Fraction:    float64(i+1) / float64(total),
-				Message:     fmt.Sprintf("[%d/%d] wrote %s", i+1, total, filepath.Base(outPath)),
-			})
+		workers := req.Parallelism
+		if workers <= 0 {
+			workers = runtime.GOMAXPROCS(0)
+		}
+		if workers > total {
+			workers = total
 		}
 
-		if failed == total {
+		type job struct {
+			index int
+			src   string
+		}
+		jobs := make(chan job)
+		var (
+			wg        sync.WaitGroup
+			completed atomic.Int64
+			failed    atomic.Int64
+		)
+
+		for w := 0; w < workers; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for j := range jobs {
+					if err := ctx.Err(); err != nil {
+						return
+					}
+					name := filepath.Base(j.src)
+					outPath, terr := convertOne(ConvertRequest{
+						Source:       j.src,
+						TargetFormat: req.TargetFormat,
+						Opts:         req.Opts,
+						Output:       req.OutputDir,
+						Overwrite:    req.Overwrite,
+					})
+					done := completed.Add(1)
+					if terr != nil {
+						failed.Add(1)
+						emit(tools.Progress{
+							Level:       tools.SeverityError,
+							CurrentItem: name,
+							Fraction:    float64(done) / float64(total),
+							Message:     fmt.Sprintf("[%d/%d] %s: %s", done, total, name, terr.Message),
+						})
+						continue
+					}
+					emit(tools.Progress{
+						Level:       tools.SeverityInfo,
+						CurrentItem: name,
+						Fraction:    float64(done) / float64(total),
+						Message:     fmt.Sprintf("[%d/%d] wrote %s", done, total, filepath.Base(outPath)),
+					})
+				}
+			}()
+		}
+
+		// Feed sources; bail early on context cancellation.
+	feed:
+		for i, src := range req.Sources {
+			select {
+			case <-ctx.Done():
+				break feed
+			case jobs <- job{index: i, src: src}:
+			}
+		}
+		close(jobs)
+		wg.Wait()
+
+		if err := ctx.Err(); err != nil {
+			emit(tools.Progress{Completed: true, Err: &tools.Error{
+				Code: tools.CodeAborted, Message: "batch convert canceled",
+			}})
+			return
+		}
+		nFailed := int(failed.Load())
+		if nFailed == total {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
 				Code: tools.CodeIO, Message: fmt.Sprintf("all %d conversion(s) failed", total),
 			}})
@@ -210,7 +265,7 @@ func BatchConvert(ctx context.Context, req BatchConvertRequest) <-chan tools.Pro
 		}
 		emit(tools.Progress{
 			Completed: true, Fraction: 1, Level: tools.SeverityInfo,
-			Message: fmt.Sprintf("converted %d/%d image(s)", total-failed, total),
+			Message: fmt.Sprintf("converted %d/%d image(s)", total-nFailed, total),
 		})
 	}()
 	return ch
@@ -388,7 +443,7 @@ func resolveOutputPath(req ConvertRequest) (string, error) {
 	if req.Overwrite {
 		return candidate, nil
 	}
-	return disambiguatePath(candidate), nil
+	return disambiguatePath(candidate)
 }
 
 // candidateOutputPath computes the natural output path before collision
@@ -414,25 +469,36 @@ func candidateOutputPath(req ConvertRequest) (string, error) {
 	return req.Output, nil
 }
 
-// disambiguatePath returns path unchanged if nothing exists there; otherwise
-// it inserts a "-N" counter before the extension and returns the first miss
-// (photo.jpg → photo-1.jpg → photo-2.jpg → …). Capped so a directory packed
-// with collisions can't spin forever; the last candidate is returned on
-// overflow so the caller still gets a valid path to write to.
-func disambiguatePath(path string) string {
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		return path
-	}
+// disambiguatePath returns a path that is guaranteed not to collide with an
+// existing file at the moment this function returns. It tries the requested
+// path first, then path-1, path-2, ... up to a 9999 cap. The check uses
+// os.OpenFile with O_CREATE|O_EXCL so the result is atomic against other
+// concurrent callers — a stat-then-create loop would race under parallelism
+// (two workers can both see "free" and both write). The reserved file is
+// closed immediately after creation; encode() reopens it with O_TRUNC.
+//
+// On overflow (every candidate up to the cap is taken) returns an error so
+// the caller surfaces a clean failure instead of silently overwriting.
+func disambiguatePath(path string) (string, error) {
 	ext := filepath.Ext(path)
 	base := strings.TrimSuffix(path, ext)
-	const max = 9999
-	for i := 1; i <= max; i++ {
-		candidate := fmt.Sprintf("%s-%d%s", base, i, ext)
-		if _, err := os.Stat(candidate); errors.Is(err, os.ErrNotExist) {
-			return candidate
+	const maxAttempts = 9999
+	for i := 0; i <= maxAttempts; i++ {
+		candidate := path
+		if i > 0 {
+			candidate = fmt.Sprintf("%s-%d%s", base, i, ext)
+		}
+		f, err := os.OpenFile(candidate, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644) //nolint:gosec
+		if err == nil {
+			f.Close()
+			return candidate, nil
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return "", err
 		}
 	}
-	return fmt.Sprintf("%s-%d%s", base, max, ext)
+	return "", fmt.Errorf("could not find a free output path: %s, %s-1..%s-%d all exist",
+		path, base, base, maxAttempts)
 }
 
 // drainable so tests don't need to import io

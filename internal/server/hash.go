@@ -18,9 +18,15 @@ type HashHandler struct {
 // HashRunParams drives HashHandler.Run. Algo is a string here (rather than
 // hash.Algo) so transports can pass the user-typed value through without
 // linking into the tool package; Run validates via hash.ParseAlgo.
+//
+// Parallelism is the worker-pool size for the underlying hash.Run; 0 (the
+// default) auto-sizes to runtime.GOMAXPROCS(0). Transports surface it so
+// callers can pin the pool when the host is shared (e.g. a daemon with
+// multiple tenants).
 type HashRunParams struct {
-	Sources []string
-	Algo    string
+	Sources     []string
+	Algo        string
+	Parallelism int
 }
 
 // Run hashes every source after path-validating it and forwards progress to
@@ -36,7 +42,7 @@ func (h *HashHandler) Run(ctx context.Context, p HashRunParams, emit func(tools.
 		srcs = append(srcs, v)
 	}
 	algo, _ := hash.ParseAlgo(p.Algo)
-	ch := hash.Run(ctx, hash.Request{Sources: srcs, Algo: algo})
+	ch := hash.Run(ctx, hash.Request{Sources: srcs, Algo: algo, Parallelism: p.Parallelism})
 	for prog := range ch {
 		if err := emit(prog); err != nil {
 			return err
@@ -65,13 +71,13 @@ type HashVerifyResult struct {
 // Verify is synchronous — the underlying hash.Verify returns the full slice
 // in one shot. emit is left out of the signature because there is no streamed
 // progress to forward.
-func (h *HashHandler) Verify(_ context.Context, p HashVerifyParams) (*HashVerifyResult, error) {
+func (h *HashHandler) Verify(ctx context.Context, p HashVerifyParams) (*HashVerifyResult, error) {
 	manifest, err := h.Opts.CheckPath(p.Manifest)
 	if err != nil {
 		return nil, err
 	}
 	algo, _ := hash.ParseAlgo(p.Algo)
-	entries, terr := hash.Verify(manifest, algo)
+	entries, terr := hash.Verify(ctx, manifest, algo)
 	if terr != nil {
 		return nil, terr
 	}

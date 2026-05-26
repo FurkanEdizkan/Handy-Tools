@@ -66,6 +66,9 @@ func (h *ImageHandler) Convert(ctx context.Context, p ConvertParams, emit func(t
 
 // BatchConvertParams is the wire-shape-agnostic input for a batch job: every
 // source is converted to the same TargetFormat and written into OutputDir.
+//
+// Parallelism is the worker-pool size for image.BatchConvert; 0 (the default)
+// auto-sizes to runtime.GOMAXPROCS(0).
 type BatchConvertParams struct {
 	Sources      []string
 	TargetFormat image.Format
@@ -74,6 +77,7 @@ type BatchConvertParams struct {
 	MaxHeight    int
 	OutputDir    string
 	Overwrite    bool
+	Parallelism  int
 }
 
 // BatchConvert converts every source in one job, forwarding the per-file and
@@ -100,8 +104,9 @@ func (h *ImageHandler) BatchConvert(ctx context.Context, p BatchConvertParams, e
 			MaxWidth:  p.MaxWidth,
 			MaxHeight: p.MaxHeight,
 		},
-		OutputDir: out,
-		Overwrite: p.Overwrite,
+		OutputDir:   out,
+		Overwrite:   p.Overwrite,
+		Parallelism: p.Parallelism,
 	})
 	for prog := range ch {
 		if err := emit(prog); err != nil {

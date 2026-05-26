@@ -65,6 +65,7 @@ type batchConvertRequest struct {
 	TargetFormat string       `json:"target_format"` // PNG|JPEG|GIF|BMP|TIFF|WEBP|HEIC
 	Options      imageOptions `json:"options"`
 	Output       outputRef    `json:"output"`
+	Parallelism  int          `json:"parallelism,omitempty"`
 }
 
 // inspectRequest is the body of POST /v1/archive/inspect.
@@ -139,8 +140,9 @@ type pdfSplitRequest struct {
 // hashRunRequest is the body of POST /v1/hash. Sources are hashed in order
 // and a Progress event is streamed per file.
 type hashRunRequest struct {
-	Sources []fileRef `json:"sources"`
-	Algo    string    `json:"algo"` // md5|sha256|blake3
+	Sources     []fileRef `json:"sources"`
+	Algo        string    `json:"algo"` // md5|sha256|blake3
+	Parallelism int       `json:"parallelism,omitempty"`
 }
 
 // hashVerifyRequest is the body of POST /v1/hash/verify. The manifest is a
@@ -169,9 +171,10 @@ type hashVerifyResponse struct {
 
 // diffTreeInspectRequest is the body of POST /v1/diff-tree/inspect.
 type diffTreeInspectRequest struct {
-	A    fileRef `json:"a"`
-	B    fileRef `json:"b"`
-	Mode string  `json:"mode"` // mtime|hash
+	A           fileRef `json:"a"`
+	B           fileRef `json:"b"`
+	Mode        string  `json:"mode"` // mtime|hash
+	Parallelism int     `json:"parallelism,omitempty"`
 }
 
 // diffEntry is one row of the diff report.

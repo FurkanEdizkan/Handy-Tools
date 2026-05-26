@@ -16,10 +16,15 @@ type DiffTreeHandler struct {
 // DiffTreeParams drives DiffTreeHandler.Run. Mode is a string here so the
 // transport doesn't have to depend on the difftree package; Run validates
 // via difftree.ParseMode.
+//
+// Parallelism is the worker-pool size for ModeHash file comparisons in
+// difftree.Run; 0 (the default) auto-sizes to runtime.GOMAXPROCS(0).
+// Ignored in ModeMTime.
 type DiffTreeParams struct {
-	A    string
-	B    string
-	Mode string
+	A           string
+	B           string
+	Mode        string
+	Parallelism int
 }
 
 // Run validates both roots, then streams one progress per diff entry plus
@@ -34,7 +39,7 @@ func (h *DiffTreeHandler) Run(ctx context.Context, p DiffTreeParams, emit func(t
 		return err
 	}
 	mode, _ := difftree.ParseMode(p.Mode)
-	ch := difftree.Run(ctx, difftree.Request{A: a, B: b, Mode: mode})
+	ch := difftree.Run(ctx, difftree.Request{A: a, B: b, Mode: mode, Parallelism: p.Parallelism})
 	for prog := range ch {
 		if err := emit(prog); err != nil {
 			return err
@@ -46,7 +51,7 @@ func (h *DiffTreeHandler) Run(ctx context.Context, p DiffTreeParams, emit func(t
 // Inspect is the synchronous form — used by transports that want the full
 // diff slice up front (e.g., an MCP tool that returns the report as JSON
 // instead of replaying a progress stream).
-func (h *DiffTreeHandler) Inspect(p DiffTreeParams) ([]difftree.Diff, error) {
+func (h *DiffTreeHandler) Inspect(ctx context.Context, p DiffTreeParams) ([]difftree.Diff, error) {
 	a, err := h.Opts.CheckPath(p.A)
 	if err != nil {
 		return nil, err
@@ -56,7 +61,7 @@ func (h *DiffTreeHandler) Inspect(p DiffTreeParams) ([]difftree.Diff, error) {
 		return nil, err
 	}
 	mode, _ := difftree.ParseMode(p.Mode)
-	diffs, terr := difftree.Inspect(difftree.Request{A: a, B: b, Mode: mode})
+	diffs, terr := difftree.Inspect(ctx, difftree.Request{A: a, B: b, Mode: mode, Parallelism: p.Parallelism})
 	if terr != nil {
 		return nil, terr
 	}
