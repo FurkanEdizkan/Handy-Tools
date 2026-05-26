@@ -355,17 +355,39 @@ for bin in handy htools htoolsd htools-mcp; do
 done
 
 # ---- desktop GUI (linux/amd64 only) ---------------------------------------
-# Pull the separate GUI tarball when the platform supports it and the user
+# Pull the matching GUI tarball when the platform supports it and the user
 # didn't opt out. Soft-fail throughout — a missing or mismatching GUI
 # tarball must not block the CLI install (the four binaries above are
 # already on disk and useful).
+#
+# Wails htools-gui is built against one of two incompatible webkit2gtk
+# ABIs. Ubuntu 22.04 / Debian 12 ship libwebkit2gtk-4.0; Ubuntu 24.04+
+# ship libwebkit2gtk-4.1; nothing currently ships both. The release
+# pipeline produces both tarballs (`handy-tools-gui_*` for 4.0,
+# `handy-tools-gui-webkit41_*` for 4.1); we pick the one that matches
+# what's actually loadable on this host.
 GUI_INSTALLED=0
 if [ "$NO_GUI" = "1" ]; then
   log "skipping desktop GUI install (--no-gui set)"
 elif [ "$OS" != "linux" ] || [ "$ARCH" != "amd64" ]; then
   log "desktop GUI is currently linux/amd64 only — skipping htools-gui"
 else
-  gui_asset="${PROJECT_NAME}-gui_${VERSION}_${OS}_${ARCH}.tar.gz"
+  # Probe ldconfig for what's available. Prefer 4.1 when both are present
+  # (newer install, faster JS engine). Fall back to 4.0 if only the legacy
+  # ABI is loadable. If neither is present, guess 4.1 — `--install-deps`
+  # will pull libwebkit2gtk-4.1-0 from the missing-tools detection below,
+  # which only knows about 4.1.
+  if ldconfig -p 2>/dev/null | grep -q 'libwebkit2gtk-4\.1\.so'; then
+    gui_variant="webkit41"
+    gui_asset="${PROJECT_NAME}-gui-webkit41_${VERSION}_${OS}_${ARCH}.tar.gz"
+  elif ldconfig -p 2>/dev/null | grep -q 'libwebkit2gtk-4\.0\.so'; then
+    gui_variant="webkit40 (legacy)"
+    gui_asset="${PROJECT_NAME}-gui_${VERSION}_${OS}_${ARCH}.tar.gz"
+  else
+    gui_variant="webkit41 (no libwebkit2gtk detected — defaulting to 4.1)"
+    gui_asset="${PROJECT_NAME}-gui-webkit41_${VERSION}_${OS}_${ARCH}.tar.gz"
+  fi
+  log "GUI ABI: $gui_variant"
   gui_url="${base}/${gui_asset}"
   log "downloading $gui_asset"
   if $DLO "$tmp/$gui_asset" "$gui_url" 2>/dev/null; then
