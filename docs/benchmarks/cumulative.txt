@@ -1,0 +1,251 @@
+go test -run=^$ -bench=. -benchmem -count=10 ./internal/tools/...
+?   	github.com/furkandedizkan/handy-tools/internal/tools	[no test files]
+goos: linux
+goarch: amd64
+pkg: github.com/furkandedizkan/handy-tools/internal/tools/archive
+cpu: Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz
+BenchmarkCompress/zip-8         	      28	  41410265 ns/op	 6892937 B/op	    4699 allocs/op
+BenchmarkCompress/zip-8         	      25	  41571322 ns/op	 6932405 B/op	    4699 allocs/op
+BenchmarkCompress/zip-8         	      26	  41246444 ns/op	 6927957 B/op	    4699 allocs/op
+BenchmarkCompress/zip-8         	      25	  40433356 ns/op	 6899444 B/op	    4698 allocs/op
+BenchmarkCompress/zip-8         	      26	  40582551 ns/op	 6865268 B/op	    4697 allocs/op
+BenchmarkCompress/zip-8         	      26	  41105788 ns/op	 6928245 B/op	    4699 allocs/op
+BenchmarkCompress/zip-8         	      25	  41107562 ns/op	 6932243 B/op	    4699 allocs/op
+BenchmarkCompress/zip-8         	      28	  40239021 ns/op	 6892531 B/op	    4698 allocs/op
+BenchmarkCompress/zip-8         	      28	  40486195 ns/op	 6892268 B/op	    4699 allocs/op
+BenchmarkCompress/zip-8         	      27	  40036865 ns/op	 6894649 B/op	    4698 allocs/op
+BenchmarkCompress/tar-gz-8      	      28	  40661015 ns/op	 7608016 B/op	    3901 allocs/op
+BenchmarkCompress/tar-gz-8      	      30	  39787034 ns/op	 7607380 B/op	    3899 allocs/op
+BenchmarkCompress/tar-gz-8      	      28	  40705195 ns/op	 7605808 B/op	    3899 allocs/op
+BenchmarkCompress/tar-gz-8      	      28	  40148818 ns/op	 7606248 B/op	    3900 allocs/op
+BenchmarkCompress/tar-gz-8      	      30	  39677717 ns/op	 7607126 B/op	    3900 allocs/op
+BenchmarkCompress/tar-gz-8      	      30	  39651266 ns/op	 7606791 B/op	    3899 allocs/op
+BenchmarkCompress/tar-gz-8      	      30	  39364113 ns/op	 7607129 B/op	    3899 allocs/op
+BenchmarkCompress/tar-gz-8      	      30	  39725958 ns/op	 7606240 B/op	    3899 allocs/op
+BenchmarkCompress/tar-gz-8      	      30	  40567414 ns/op	 7605558 B/op	    3898 allocs/op
+BenchmarkCompress/tar-gz-8      	      26	  43029464 ns/op	 7606223 B/op	    3899 allocs/op
+BenchmarkCompress/tar-zst-8     	     100	  10633373 ns/op	26036782 B/op	    3957 allocs/op
+BenchmarkCompress/tar-zst-8     	     116	  10053184 ns/op	26035828 B/op	    3954 allocs/op
+BenchmarkCompress/tar-zst-8     	     100	  10418524 ns/op	26035617 B/op	    3954 allocs/op
+BenchmarkCompress/tar-zst-8     	      99	  11032109 ns/op	26035464 B/op	    3955 allocs/op
+BenchmarkCompress/tar-zst-8     	     110	  10389344 ns/op	26035671 B/op	    3954 allocs/op
+BenchmarkCompress/tar-zst-8     	     121	   9877767 ns/op	26035666 B/op	    3954 allocs/op
+BenchmarkCompress/tar-zst-8     	     100	  10865478 ns/op	26035650 B/op	    3955 allocs/op
+BenchmarkCompress/tar-zst-8     	      96	  11070841 ns/op	26036081 B/op	    3954 allocs/op
+BenchmarkCompress/tar-zst-8     	     100	  10292565 ns/op	26035717 B/op	    3955 allocs/op
+BenchmarkCompress/tar-zst-8     	     116	  10295429 ns/op	26035250 B/op	    3953 allocs/op
+BenchmarkExtract/zip-8          	      78	  14625701 ns/op	 6805488 B/op	    4054 allocs/op
+BenchmarkExtract/zip-8          	      78	  14867472 ns/op	 6808572 B/op	    4054 allocs/op
+BenchmarkExtract/zip-8          	      80	  14619968 ns/op	 6810058 B/op	    4053 allocs/op
+BenchmarkExtract/zip-8          	      81	  15212858 ns/op	 6808866 B/op	    4054 allocs/op
+BenchmarkExtract/zip-8          	      78	  14589417 ns/op	 6810668 B/op	    4054 allocs/op
+BenchmarkExtract/zip-8          	      81	  14551798 ns/op	 6807576 B/op	    4053 allocs/op
+BenchmarkExtract/zip-8          	      81	  14628274 ns/op	 6808215 B/op	    4053 allocs/op
+BenchmarkExtract/zip-8          	      82	  15024618 ns/op	 6809697 B/op	    4055 allocs/op
+BenchmarkExtract/zip-8          	      72	  16072586 ns/op	 6815732 B/op	    4056 allocs/op
+BenchmarkExtract/zip-8          	      73	  15562154 ns/op	 6815415 B/op	    4056 allocs/op
+BenchmarkExtract/tar-gz-8       	      39	  28295189 ns/op	 7857358 B/op	    4553 allocs/op
+BenchmarkExtract/tar-gz-8       	      44	  26080747 ns/op	 7857514 B/op	    4553 allocs/op
+BenchmarkExtract/tar-gz-8       	      49	  25266609 ns/op	 7854794 B/op	    4552 allocs/op
+BenchmarkExtract/tar-gz-8       	      49	  25610566 ns/op	 7857220 B/op	    4553 allocs/op
+BenchmarkExtract/tar-gz-8       	      42	  25905227 ns/op	 7855253 B/op	    4552 allocs/op
+BenchmarkExtract/tar-gz-8       	      45	  25761463 ns/op	 7858919 B/op	    4553 allocs/op
+BenchmarkExtract/tar-gz-8       	      51	  25833138 ns/op	 7856010 B/op	    4552 allocs/op
+BenchmarkExtract/tar-gz-8       	      42	  26307717 ns/op	 7855508 B/op	    4553 allocs/op
+BenchmarkExtract/tar-gz-8       	      44	  25768667 ns/op	 7860124 B/op	    4553 allocs/op
+BenchmarkExtract/tar-gz-8       	      48	  25979706 ns/op	 7857766 B/op	    4553 allocs/op
+BenchmarkInspect-8              	    5174	    250617 ns/op	  150568 B/op	    2018 allocs/op
+BenchmarkInspect-8              	    4635	    237203 ns/op	  150568 B/op	    2018 allocs/op
+BenchmarkInspect-8              	    5179	    235666 ns/op	  150568 B/op	    2018 allocs/op
+BenchmarkInspect-8              	    4897	    235650 ns/op	  150568 B/op	    2018 allocs/op
+BenchmarkInspect-8              	    5054	    237677 ns/op	  150568 B/op	    2018 allocs/op
+BenchmarkInspect-8              	    5446	    239512 ns/op	  150568 B/op	    2018 allocs/op
+BenchmarkInspect-8              	    5028	    238634 ns/op	  150568 B/op	    2018 allocs/op
+BenchmarkInspect-8              	    4260	    264334 ns/op	  150568 B/op	    2018 allocs/op
+BenchmarkInspect-8              	    4016	    283423 ns/op	  150568 B/op	    2018 allocs/op
+BenchmarkInspect-8              	    5200	    270101 ns/op	  150568 B/op	    2018 allocs/op
+PASS
+ok  	github.com/furkandedizkan/handy-tools/internal/tools/archive	85.205s
+goos: linux
+goarch: amd64
+pkg: github.com/furkandedizkan/handy-tools/internal/tools/difftree
+cpu: Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz
+BenchmarkRun/mtime-8         	     298	   3980183 ns/op	  820868 B/op	    7233 allocs/op
+BenchmarkRun/mtime-8         	     291	   4138720 ns/op	  820749 B/op	    7232 allocs/op
+BenchmarkRun/mtime-8         	     285	   3992924 ns/op	  820664 B/op	    7232 allocs/op
+BenchmarkRun/mtime-8         	     279	   4076022 ns/op	  820838 B/op	    7233 allocs/op
+BenchmarkRun/mtime-8         	     289	   4019930 ns/op	  820666 B/op	    7232 allocs/op
+BenchmarkRun/mtime-8         	     288	   4025457 ns/op	  820732 B/op	    7232 allocs/op
+BenchmarkRun/mtime-8         	     278	   4162261 ns/op	  820478 B/op	    7232 allocs/op
+BenchmarkRun/mtime-8         	     294	   4020179 ns/op	  821027 B/op	    7233 allocs/op
+BenchmarkRun/mtime-8         	     283	   4111147 ns/op	  820945 B/op	    7233 allocs/op
+BenchmarkRun/mtime-8         	     286	   4047079 ns/op	  820902 B/op	    7233 allocs/op
+BenchmarkRun/hash-8          	      55	  19448281 ns/op	34190378 B/op	   15277 allocs/op
+BenchmarkRun/hash-8          	      60	  19910947 ns/op	34189506 B/op	   15275 allocs/op
+BenchmarkRun/hash-8          	      57	  19637374 ns/op	34189863 B/op	   15274 allocs/op
+BenchmarkRun/hash-8          	      52	  20174332 ns/op	34189030 B/op	   15275 allocs/op
+BenchmarkRun/hash-8          	      50	  21342979 ns/op	34188475 B/op	   15273 allocs/op
+BenchmarkRun/hash-8          	      45	  22415320 ns/op	34188336 B/op	   15273 allocs/op
+BenchmarkRun/hash-8          	      51	  22582572 ns/op	34188693 B/op	   15274 allocs/op
+BenchmarkRun/hash-8          	      52	  20832504 ns/op	34188023 B/op	   15272 allocs/op
+BenchmarkRun/hash-8          	      51	  21447629 ns/op	34188142 B/op	   15273 allocs/op
+BenchmarkRun/hash-8          	      56	  20826964 ns/op	34187675 B/op	   15274 allocs/op
+PASS
+ok  	github.com/furkandedizkan/handy-tools/internal/tools/difftree	23.564s
+goos: linux
+goarch: amd64
+pkg: github.com/furkandedizkan/handy-tools/internal/tools/hash
+cpu: Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz
+BenchmarkRun/md5-8    	     247	   4392983 ns/op	2386.93 MB/s	  335977 B/op	     130 allocs/op
+BenchmarkRun/md5-8    	     290	   4156276 ns/op	2522.87 MB/s	  335373 B/op	     128 allocs/op
+BenchmarkRun/md5-8    	     286	   4103673 ns/op	2555.21 MB/s	  335265 B/op	     128 allocs/op
+BenchmarkRun/md5-8    	     288	   4097204 ns/op	2559.25 MB/s	  335256 B/op	     128 allocs/op
+BenchmarkRun/md5-8    	     282	   4177130 ns/op	2510.28 MB/s	  335318 B/op	     128 allocs/op
+BenchmarkRun/md5-8    	     290	   4098894 ns/op	2558.19 MB/s	  335263 B/op	     128 allocs/op
+BenchmarkRun/md5-8    	     285	   4126250 ns/op	2541.23 MB/s	  335243 B/op	     128 allocs/op
+BenchmarkRun/md5-8    	     288	   4104667 ns/op	2554.59 MB/s	  335274 B/op	     128 allocs/op
+BenchmarkRun/md5-8    	     290	   4129853 ns/op	2539.02 MB/s	  335258 B/op	     128 allocs/op
+BenchmarkRun/md5-8    	     288	   4107535 ns/op	2552.81 MB/s	  335277 B/op	     128 allocs/op
+BenchmarkRun/sha256-8 	     126	   9498530 ns/op	1103.94 MB/s	  337089 B/op	     138 allocs/op
+BenchmarkRun/sha256-8 	     100	  11662178 ns/op	 899.13 MB/s	  337084 B/op	     138 allocs/op
+BenchmarkRun/sha256-8 	     123	   9727129 ns/op	1077.99 MB/s	  337030 B/op	     138 allocs/op
+BenchmarkRun/sha256-8 	     100	  10398455 ns/op	1008.40 MB/s	  337043 B/op	     138 allocs/op
+BenchmarkRun/sha256-8 	     123	   9609156 ns/op	1091.23 MB/s	  337053 B/op	     138 allocs/op
+BenchmarkRun/sha256-8 	     126	   9596903 ns/op	1092.62 MB/s	  337046 B/op	     138 allocs/op
+BenchmarkRun/sha256-8 	     126	   9495431 ns/op	1104.30 MB/s	  337084 B/op	     138 allocs/op
+BenchmarkRun/sha256-8 	     121	   9820927 ns/op	1067.70 MB/s	  337063 B/op	     138 allocs/op
+BenchmarkRun/sha256-8 	     126	   9439870 ns/op	1110.79 MB/s	  337067 B/op	     138 allocs/op
+BenchmarkRun/sha256-8 	     124	   9547144 ns/op	1098.31 MB/s	  337053 B/op	     138 allocs/op
+BenchmarkRun/blake3-8 	     188	   6307285 ns/op	1662.48 MB/s	11812696 B/op	    6567 allocs/op
+BenchmarkRun/blake3-8 	     192	   6290017 ns/op	1667.05 MB/s	11812923 B/op	    6570 allocs/op
+BenchmarkRun/blake3-8 	     189	   6298422 ns/op	1664.82 MB/s	11812638 B/op	    6568 allocs/op
+BenchmarkRun/blake3-8 	     192	   6223539 ns/op	1684.86 MB/s	11812839 B/op	    6569 allocs/op
+BenchmarkRun/blake3-8 	     189	   6304920 ns/op	1663.11 MB/s	11812924 B/op	    6570 allocs/op
+BenchmarkRun/blake3-8 	     190	   6331999 ns/op	1656.00 MB/s	11812882 B/op	    6569 allocs/op
+BenchmarkRun/blake3-8 	     177	   6496424 ns/op	1614.08 MB/s	11812838 B/op	    6569 allocs/op
+BenchmarkRun/blake3-8 	     189	   6186613 ns/op	1694.91 MB/s	11812810 B/op	    6569 allocs/op
+BenchmarkRun/blake3-8 	     190	   6262946 ns/op	1674.25 MB/s	11812509 B/op	    6567 allocs/op
+BenchmarkRun/blake3-8 	     192	   6209787 ns/op	1688.59 MB/s	11812551 B/op	    6567 allocs/op
+BenchmarkRunLarge-8   	       3	 384094604 ns/op	 349.44 MB/s	   35458 B/op	      23 allocs/op
+BenchmarkRunLarge-8   	       3	 411509656 ns/op	 326.16 MB/s	   35592 B/op	      24 allocs/op
+BenchmarkRunLarge-8   	       3	 416609663 ns/op	 322.17 MB/s	   35725 B/op	      25 allocs/op
+BenchmarkRunLarge-8   	       3	 390916906 ns/op	 343.34 MB/s	   35549 B/op	      24 allocs/op
+BenchmarkRunLarge-8   	       3	 404228877 ns/op	 332.03 MB/s	   35416 B/op	      23 allocs/op
+BenchmarkRunLarge-8   	       3	 368996319 ns/op	 363.74 MB/s	   35592 B/op	      24 allocs/op
+BenchmarkRunLarge-8   	       3	 373285931 ns/op	 359.56 MB/s	   35725 B/op	      25 allocs/op
+BenchmarkRunLarge-8   	       3	 374843457 ns/op	 358.06 MB/s	   35416 B/op	      23 allocs/op
+BenchmarkRunLarge-8   	       3	 377857850 ns/op	 355.21 MB/s	   35549 B/op	      24 allocs/op
+BenchmarkRunLarge-8   	       3	 370423517 ns/op	 362.34 MB/s	   35592 B/op	      24 allocs/op
+PASS
+ok  	github.com/furkandedizkan/handy-tools/internal/tools/hash	48.304s
+goos: linux
+goarch: amd64
+pkg: github.com/furkandedizkan/handy-tools/internal/tools/image
+cpu: Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz
+BenchmarkBatchConvert/to-png-8         	       8	 130707955 ns/op	42377235 B/op	 5243939 allocs/op
+BenchmarkBatchConvert/to-png-8         	       8	 134322685 ns/op	42373287 B/op	 5243932 allocs/op
+BenchmarkBatchConvert/to-png-8         	       7	 145132625 ns/op	42374617 B/op	 5243936 allocs/op
+BenchmarkBatchConvert/to-png-8         	       8	 132955805 ns/op	42373427 B/op	 5243933 allocs/op
+BenchmarkBatchConvert/to-png-8         	       8	 131735325 ns/op	42373436 B/op	 5243930 allocs/op
+BenchmarkBatchConvert/to-png-8         	       8	 131310029 ns/op	42373832 B/op	 5243938 allocs/op
+BenchmarkBatchConvert/to-png-8         	       8	 132532005 ns/op	42372807 B/op	 5243932 allocs/op
+BenchmarkBatchConvert/to-png-8         	       8	 135899247 ns/op	42372922 B/op	 5243927 allocs/op
+BenchmarkBatchConvert/to-png-8         	       8	 131906327 ns/op	42372299 B/op	 5243928 allocs/op
+BenchmarkBatchConvert/to-png-8         	       8	 132200025 ns/op	42372983 B/op	 5243929 allocs/op
+BenchmarkBatchConvert/to-webp-8        	       3	 368014005 ns/op	42777253 B/op	 5246003 allocs/op
+BenchmarkBatchConvert/to-webp-8        	       4	 268617457 ns/op	42765526 B/op	 5245984 allocs/op
+BenchmarkBatchConvert/to-webp-8        	       4	 264226365 ns/op	42765082 B/op	 5245982 allocs/op
+BenchmarkBatchConvert/to-webp-8        	       4	 259535590 ns/op	42764594 B/op	 5245987 allocs/op
+BenchmarkBatchConvert/to-webp-8        	       4	 256458143 ns/op	42765360 B/op	 5245983 allocs/op
+BenchmarkBatchConvert/to-webp-8        	       4	 259100566 ns/op	42765792 B/op	 5245992 allocs/op
+BenchmarkBatchConvert/to-webp-8        	       4	 262261833 ns/op	42764644 B/op	 5245988 allocs/op
+BenchmarkBatchConvert/to-webp-8        	       4	 265442566 ns/op	42764824 B/op	 5245988 allocs/op
+BenchmarkBatchConvert/to-webp-8        	       4	 272506703 ns/op	42765326 B/op	 5245984 allocs/op
+BenchmarkBatchConvert/to-webp-8        	       4	 284440818 ns/op	42764732 B/op	 5245978 allocs/op
+BenchmarkConvert-8                     	      39	  28950734 ns/op	 2118860 B/op	  262195 allocs/op
+BenchmarkConvert-8                     	      42	  28730332 ns/op	 2118857 B/op	  262195 allocs/op
+BenchmarkConvert-8                     	      45	  25931523 ns/op	 2118872 B/op	  262195 allocs/op
+BenchmarkConvert-8                     	      40	  28187534 ns/op	 2118875 B/op	  262195 allocs/op
+BenchmarkConvert-8                     	      48	  24278699 ns/op	 2118871 B/op	  262195 allocs/op
+BenchmarkConvert-8                     	      45	  25183253 ns/op	 2118871 B/op	  262195 allocs/op
+BenchmarkConvert-8                     	      48	  25018018 ns/op	 2118883 B/op	  262195 allocs/op
+BenchmarkConvert-8                     	      46	  24947134 ns/op	 2118870 B/op	  262195 allocs/op
+BenchmarkConvert-8                     	      48	  24554788 ns/op	 2118858 B/op	  262195 allocs/op
+BenchmarkConvert-8                     	      48	  24567241 ns/op	 2118870 B/op	  262195 allocs/op
+PASS
+ok  	github.com/furkandedizkan/handy-tools/internal/tools/image	33.409s
+goos: linux
+goarch: amd64
+pkg: github.com/furkandedizkan/handy-tools/internal/tools/pdf
+cpu: Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz
+BenchmarkMerge-8    	     223	   5280087 ns/op	 3588230 B/op	   16095 allocs/op
+BenchmarkMerge-8    	     223	   5294031 ns/op	 3587911 B/op	   16093 allocs/op
+BenchmarkMerge-8    	     225	   5227152 ns/op	 3587927 B/op	   16093 allocs/op
+BenchmarkMerge-8    	     229	   5267149 ns/op	 3587955 B/op	   16093 allocs/op
+BenchmarkMerge-8    	     220	   5294641 ns/op	 3587948 B/op	   16093 allocs/op
+BenchmarkMerge-8    	     218	   5478764 ns/op	 3587951 B/op	   16094 allocs/op
+BenchmarkMerge-8    	     219	   5309583 ns/op	 3587984 B/op	   16094 allocs/op
+BenchmarkMerge-8    	     223	   5285661 ns/op	 3587996 B/op	   16094 allocs/op
+BenchmarkMerge-8    	     230	   5149700 ns/op	 3587900 B/op	   16093 allocs/op
+BenchmarkMerge-8    	     226	   5293084 ns/op	 3588025 B/op	   16094 allocs/op
+BenchmarkSplit-8    	      98	  11196209 ns/op	18294979 B/op	   22308 allocs/op
+BenchmarkSplit-8    	     106	  11215561 ns/op	18294969 B/op	   22308 allocs/op
+BenchmarkSplit-8    	     109	  10901298 ns/op	18294843 B/op	   22307 allocs/op
+BenchmarkSplit-8    	     103	  11560656 ns/op	18295006 B/op	   22309 allocs/op
+BenchmarkSplit-8    	     106	  11263697 ns/op	18295041 B/op	   22309 allocs/op
+BenchmarkSplit-8    	     103	  11780460 ns/op	18295306 B/op	   22310 allocs/op
+BenchmarkSplit-8    	      97	  11640380 ns/op	18295496 B/op	   22312 allocs/op
+BenchmarkSplit-8    	      84	  13579352 ns/op	18295705 B/op	   22315 allocs/op
+BenchmarkSplit-8    	      87	  13875002 ns/op	18295535 B/op	   22313 allocs/op
+BenchmarkSplit-8    	      81	  13367498 ns/op	18296092 B/op	   22318 allocs/op
+BenchmarkRender-8   	       3	 461263202 ns/op	   24082 B/op	      98 allocs/op
+BenchmarkRender-8   	       3	 463096718 ns/op	   24045 B/op	      97 allocs/op
+BenchmarkRender-8   	       3	 436406799 ns/op	   24029 B/op	      97 allocs/op
+BenchmarkRender-8   	       3	 433070205 ns/op	   24008 B/op	      97 allocs/op
+BenchmarkRender-8   	       3	 437413072 ns/op	   24029 B/op	      97 allocs/op
+BenchmarkRender-8   	       3	 456031664 ns/op	   24008 B/op	      97 allocs/op
+BenchmarkRender-8   	       3	 432662841 ns/op	   24008 B/op	      97 allocs/op
+BenchmarkRender-8   	       3	 433385729 ns/op	   24008 B/op	      97 allocs/op
+BenchmarkRender-8   	       3	 435094890 ns/op	   24008 B/op	      97 allocs/op
+BenchmarkRender-8   	       3	 441005913 ns/op	   24008 B/op	      97 allocs/op
+BenchmarkText-8     	      87	  13111411 ns/op	   23448 B/op	      93 allocs/op
+BenchmarkText-8     	      86	  13145350 ns/op	   23448 B/op	      93 allocs/op
+BenchmarkText-8     	      91	  12953672 ns/op	   23449 B/op	      93 allocs/op
+BenchmarkText-8     	      91	  13154213 ns/op	   23448 B/op	      93 allocs/op
+BenchmarkText-8     	      91	  13008802 ns/op	   23448 B/op	      93 allocs/op
+BenchmarkText-8     	      91	  13006034 ns/op	   23433 B/op	      93 allocs/op
+BenchmarkText-8     	      91	  13021064 ns/op	   23448 B/op	      93 allocs/op
+BenchmarkText-8     	      79	  13014879 ns/op	   23448 B/op	      93 allocs/op
+BenchmarkText-8     	      87	  13539069 ns/op	   23449 B/op	      93 allocs/op
+BenchmarkText-8     	      92	  12802531 ns/op	   23448 B/op	      93 allocs/op
+PASS
+ok  	github.com/furkandedizkan/handy-tools/internal/tools/pdf	49.321s
+goos: linux
+goarch: amd64
+pkg: github.com/furkandedizkan/handy-tools/internal/tools/rename
+cpu: Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz
+BenchmarkRun-8       	      55	  20893513 ns/op	  560981 B/op	   10290 allocs/op
+BenchmarkRun-8       	      49	  21308015 ns/op	  560958 B/op	   10290 allocs/op
+BenchmarkRun-8       	      56	  22882268 ns/op	  560879 B/op	   10289 allocs/op
+BenchmarkRun-8       	      50	  21948906 ns/op	  560800 B/op	   10289 allocs/op
+BenchmarkRun-8       	      55	  21386127 ns/op	  560869 B/op	   10290 allocs/op
+BenchmarkRun-8       	      51	  21579945 ns/op	  560992 B/op	   10290 allocs/op
+BenchmarkRun-8       	      63	  20967801 ns/op	  561003 B/op	   10290 allocs/op
+BenchmarkRun-8       	      61	  21237623 ns/op	  560832 B/op	   10289 allocs/op
+BenchmarkRun-8       	      51	  21730470 ns/op	  560895 B/op	   10290 allocs/op
+BenchmarkRun-8       	      55	  21185581 ns/op	  560934 B/op	   10290 allocs/op
+BenchmarkInspect-8   	    2346	    522732 ns/op	  159028 B/op	    4034 allocs/op
+BenchmarkInspect-8   	    2204	    503469 ns/op	  159025 B/op	    4034 allocs/op
+BenchmarkInspect-8   	    2371	    501274 ns/op	  159025 B/op	    4034 allocs/op
+BenchmarkInspect-8   	    2151	    502126 ns/op	  159026 B/op	    4034 allocs/op
+BenchmarkInspect-8   	    2458	    493100 ns/op	  159025 B/op	    4034 allocs/op
+BenchmarkInspect-8   	    2202	    500830 ns/op	  159026 B/op	    4034 allocs/op
+BenchmarkInspect-8   	    2311	    509680 ns/op	  159025 B/op	    4034 allocs/op
+BenchmarkInspect-8   	    2287	    503164 ns/op	  159026 B/op	    4034 allocs/op
+BenchmarkInspect-8   	    2306	    495048 ns/op	  159026 B/op	    4034 allocs/op
+BenchmarkInspect-8   	    2065	    641190 ns/op	  159027 B/op	    4034 allocs/op
+PASS
+ok  	github.com/furkandedizkan/handy-tools/internal/tools/rename	39.192s
+PASS
+ok  	github.com/furkandedizkan/handy-tools/internal/tools/sysdep	0.005s
+?   	github.com/furkandedizkan/handy-tools/internal/tools/testutil/stressgen	[no test files]
