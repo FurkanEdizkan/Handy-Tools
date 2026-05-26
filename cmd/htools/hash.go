@@ -6,8 +6,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/furkandedizkan/handy-tools/internal/config"
+	"github.com/furkandedizkan/handy-tools/internal/tools"
 	"github.com/furkandedizkan/handy-tools/internal/tools/hash"
 )
 
@@ -47,39 +49,62 @@ func cmdHash(ctx context.Context, _ config.Config, args []string) int {
 	return runHash(ctx, positional, algo, *quiet, *asJSON)
 }
 
-// runHash computes digests for every source path. Prints results in
+// runHash computes digests for every source path via hash.Run, which fans
+// the work out across runtime.GOMAXPROCS(0) goroutines. Prints results in
 // canonical `<digest>  <path>` format (two spaces) or as one JSON object
 // per file when --json is set. Exits 1 if any file failed; 0 otherwise.
-// The context lets a Ctrl+C abort cleanly between files on very large
-// hashing batches.
+//
+// Output order is per-file completion order, not source-list order — the
+// parallel worker pool means smaller files print first when batched with
+// large ones. The --quiet stderr summary stays identical.
 func runHash(ctx context.Context, sources []string, algo hash.Algo, quiet, asJSON bool) int {
 	enc := json.NewEncoder(os.Stdout)
-	var failed int
-	for _, src := range sources {
-		if err := ctx.Err(); err != nil {
-			fmt.Fprintf(os.Stderr, "hash: aborted: %v\n", err)
-			return 2
+	var perFileFailed int
+	for ev := range hash.Run(ctx, hash.Request{Sources: sources, Algo: algo}) {
+		// Terminal event with a structured Err: surface and exit.
+		if ev.Completed && ev.Err != nil {
+			fmt.Fprintf(os.Stderr, "hash: %s\n", ev.Err.Message)
+			return exitCode(ev.Err)
 		}
-		res, terr := hash.Hash(ctx, src, algo)
-		if terr != nil {
-			failed++
-			fmt.Fprintf(os.Stderr, "hash: %s: %s\n", src, terr.Message)
+		// Terminal success: print the summary line on stderr.
+		if ev.Completed {
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "hash: %s\n", ev.Message)
+			}
 			continue
 		}
+		// Per-file failure (SeverityError, not Completed).
+		if ev.Level == tools.SeverityError {
+			perFileFailed++
+			fmt.Fprintf(os.Stderr, "hash: %s\n", ev.Message)
+			continue
+		}
+		// Per-file success: ev.Message already has the `<digest>  <path>` shape.
 		if asJSON {
-			_ = enc.Encode(res)
+			digest, path, ok := parseHashLine(ev.Message)
+			if !ok {
+				continue
+			}
+			_ = enc.Encode(&hash.Result{Path: path, Digest: digest, Algo: algo})
 		} else {
-			fmt.Printf("%s  %s\n", res.Digest, res.Path)
+			fmt.Println(ev.Message)
 		}
 	}
-	if !quiet {
-		total := len(sources)
-		fmt.Fprintf(os.Stderr, "hash: %d/%d file(s) hashed with %s\n", total-failed, total, algo)
-	}
-	if failed > 0 {
+	if perFileFailed > 0 {
 		return 1
 	}
 	return 0
+}
+
+// parseHashLine splits a hash.Run success message of the form
+// `<digest>  <path>` (two-space separator, matching sha256sum). Used only
+// by --json mode to reconstruct a hash.Result for encoding.
+func parseHashLine(msg string) (digest, path string, ok bool) {
+	i := strings.Index(msg, "  ")
+	if i <= 0 || i >= len(msg)-2 {
+		return "", "", false
+	}
+	return msg[:i], msg[i+2:], true
 }
 
 // runVerify reads a manifest and reports OK / FAILED per entry. Exits 1 on
