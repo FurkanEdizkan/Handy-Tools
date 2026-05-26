@@ -73,6 +73,7 @@ func (s *Server) handleImageBatchConvert(w http.ResponseWriter, r *http.Request)
 		MaxHeight:    req.Options.MaxHeight,
 		OutputDir:    req.Output.Directory,
 		Overwrite:    req.Output.Overwrite,
+		Parallelism:  req.Parallelism,
 	}
 
 	// One job for the whole batch; image.BatchConvert emits one Progress per

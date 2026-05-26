@@ -16,9 +16,10 @@ func (s *Server) handleDiffTreeInspect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	diffs, err := s.DiffTree.Inspect(r.Context(), server.DiffTreeParams{
-		A:    req.A.Path,
-		B:    req.B.Path,
-		Mode: req.Mode,
+		A:           req.A.Path,
+		B:           req.B.Path,
+		Mode:        req.Mode,
+		Parallelism: req.Parallelism,
 	})
 	if err != nil {
 		writeError(w, err)

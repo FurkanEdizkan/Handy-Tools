@@ -12,8 +12,9 @@ import (
 )
 
 type hashRunInput struct {
-	Sources []string `json:"sources" jsonschema:"absolute paths of files to hash"`
-	Algo    string   `json:"algo,omitempty" jsonschema:"one of: md5, sha256 (default), blake3"`
+	Sources     []string `json:"sources" jsonschema:"absolute paths of files to hash"`
+	Algo        string   `json:"algo,omitempty" jsonschema:"one of: md5, sha256 (default), blake3"`
+	Parallelism int      `json:"parallelism,omitempty" jsonschema:"worker pool size; 0 (default) auto-sizes to host GOMAXPROCS"`
 }
 
 type hashVerifyInput struct {
@@ -22,9 +23,10 @@ type hashVerifyInput struct {
 }
 
 type diffTreeInput struct {
-	A    string `json:"a" jsonschema:"absolute path of the first directory tree"`
-	B    string `json:"b" jsonschema:"absolute path of the second directory tree"`
-	Mode string `json:"mode,omitempty" jsonschema:"comparison mode: mtime (default, fast) or hash (slow, authoritative)"`
+	A           string `json:"a" jsonschema:"absolute path of the first directory tree"`
+	B           string `json:"b" jsonschema:"absolute path of the second directory tree"`
+	Mode        string `json:"mode,omitempty" jsonschema:"comparison mode: mtime (default, fast) or hash (slow, authoritative)"`
+	Parallelism int    `json:"parallelism,omitempty" jsonschema:"worker pool size for ModeHash; 0 (default) auto-sizes to host GOMAXPROCS; ignored in mtime mode"`
 }
 
 type renameInspectInput struct {
@@ -60,8 +62,9 @@ func registerMiscTools(srv *mcp.Server, h *handlers) {
 		}
 		res := drainProgress(ctx, "hash", "run", func(emit func(tools.Progress) error) error {
 			return h.Hash.Run(ctx, server.HashRunParams{
-				Sources: in.Sources,
-				Algo:    algo,
+				Sources:     in.Sources,
+				Algo:        algo,
+				Parallelism: in.Parallelism,
 			}, emit)
 		})
 		return res, nil, nil
@@ -91,7 +94,7 @@ func registerMiscTools(srv *mcp.Server, h *handlers) {
 			mode = "mtime"
 		}
 		res := drainProgress(ctx, "diff_tree", "run", func(emit func(tools.Progress) error) error {
-			return h.DiffTree.Run(ctx, server.DiffTreeParams{A: in.A, B: in.B, Mode: mode}, emit)
+			return h.DiffTree.Run(ctx, server.DiffTreeParams{A: in.A, B: in.B, Mode: mode, Parallelism: in.Parallelism}, emit)
 		})
 		return res, nil, nil
 	})
