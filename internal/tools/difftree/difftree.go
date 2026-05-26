@@ -168,6 +168,12 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 				Message:     line,
 			})
 		}
+		if err := ctx.Err(); err != nil {
+			emit(tools.Progress{Completed: true, Err: &tools.Error{
+				Code: tools.CodeAborted, Message: "diff-tree canceled",
+			}})
+			return
+		}
 		var added, removed, changed int
 		for _, d := range diffs {
 			switch d.Status {
