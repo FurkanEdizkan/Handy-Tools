@@ -4,20 +4,41 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project shape
 
-Handy Tools is a single Go module that produces three binaries from one core:
+Handy Tools is a single Go module that produces five binaries from one core:
 
+- `cmd/handy` — user-facing front door. Bare `handy` launches the desktop app; `handy <verb>` re-execs into the right backend (`htools` / `htoolsd` / `htools-mcp` / `htools-gui`). Thin dispatcher, ~200 LOC, zero tool logic — never add behavior here, only routing. See [cmd/handy/main.go](cmd/handy/main.go).
 - `cmd/htools` — non-interactive subcommand CLI (`make build && ./bin/htools --help`). Each invocation runs exactly one operation (`convert`, `pack`, `extract`, `pdf merge|split|render|text`, `doctor`, `version`) using stdlib `flag`.
 - `cmd/htoolsd` — gRPC + HTTP/SSE server exposing the same tools (`make serve` / `go run ./cmd/htoolsd`).
+- `cmd/htools-mcp` — Model Context Protocol server over stdio (`make mcp` / `go run ./cmd/htools-mcp`). Lets an MCP-capable client (Claude Code, Claude Desktop, Cursor) drive every tool. CGO-free, ships on linux/darwin × amd64/arm64 like `htools` and `htoolsd`.
 - `cmd/htools-gui` — Wails v2 desktop app (`make gui` / `make gui-build`), gated behind the `wails` build tag (CGO + webkit2gtk, linux/amd64); without the tag a stub stands in so the other jobs stay CGO-free. `make gui` also adds the `webkit2_41` tag when `pkg-config` finds webkit2gtk-4.1 (Ubuntu 24.04+), so one command builds against either webkit 4.0 or 4.1.
 
-All three depend on `internal/tools/<feature>/` (image, archive, pdf), which is the **only** layer allowed to touch files, run external binaries, or know about formats. `cmd/htools/`, `internal/server/`, and `internal/api/http/` are thin adapters — never put tool logic in any of them. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The four backends depend on `internal/tools/<feature>/` (image, archive, pdf, hash, difftree, rename, ...), which is the **only** layer allowed to touch files, run external binaries, or know about formats. `cmd/htools/`, `cmd/htools-mcp/`, `internal/server/`, and `internal/api/http/` are thin adapters — never put tool logic in any of them. The MCP server reuses the same `internal/server/*Handler` types as the gRPC/HTTP transports. `cmd/handy/` doesn't import any of `internal/tools` or `internal/server` — it only routes. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+### Wiring htools-mcp into Claude Code
+
+After `make build` produces `bin/htools-mcp`, add it to `~/.claude.json` (or a project `.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "handy-tools": {
+      "command": "/absolute/path/to/handy-tools/bin/htools-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+The binary defaults to `--allow-roots=/` because it runs as a subprocess of the local user, matching the `htools-gui` sandbox posture. Pass `--allow-roots=/path1,/path2` to narrow it.
 
 ## Common commands
 
 ```sh
 make proto      # regenerate Go bindings into gen/ from api/proto (run once after clone)
-make build      # bin/htools + bin/htoolsd
-make cli        # print the CLI help (sanity check)
+make build      # bin/handy + bin/htools + bin/htoolsd + bin/htools-mcp
+make handy      # print the handy front-door help (sanity check)
+make cli        # print the htools CLI help (sanity check)
+make mcp        # run the MCP server on stdio (or `make mcp-build` for the binary)
 make gui        # build the web UI + run the Wails desktop app (needs GTK/webkit dev headers)
 make test       # go test -race -count=1 ./...
 make fuzz       # short fuzz over the config YAML decoder

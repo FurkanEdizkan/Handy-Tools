@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 # Handy Tools installer — downloads the latest (or pinned) release from GitHub,
-# verifies the checksum, drops `htools` and `htoolsd` into an install dir, and
-# optionally installs the small set of optional system tools Handy Tools uses.
+# verifies the checksum, drops `handy` + `htools` + `htoolsd` + `htools-mcp`
+# into an install dir, and optionally installs the small set of optional
+# system tools Handy Tools uses.
 #
 #   curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/install.sh | sh
 #
@@ -12,9 +13,10 @@
 #   HANDY_TOOLS_VERSION=0.2.0          # pin a specific version (default: latest)
 #   HANDY_TOOLS_INSTALL_DIR=$HOME/...  # where to put binaries (default: $HOME/.local/bin)
 #   HANDY_TOOLS_INSTALL_DEPS=1         # also install optional system tools (apt/dnf/pacman/brew)
+#   HANDY_TOOLS_NO_GUI=1               # skip the desktop GUI tarball even on linux/amd64
 #   HANDY_TOOLS_UNINSTALL=1            # remove binaries + config + cache and exit
 #   NO_COLOR=1                         # disable ANSI colors
-#   --version 0.2.0 / --dir PATH / --install-deps / --uninstall / --yes / --no-color / --help
+#   --version 0.2.0 / --dir PATH / --install-deps / --no-gui / --uninstall / --yes / --no-color / --help
 #
 # This script is POSIX sh. It targets Linux and macOS. Windows is not yet
 # supported.
@@ -28,6 +30,7 @@ DEFAULT_INSTALL_DIR="${HOME}/.local/bin"
 VERSION="${HANDY_TOOLS_VERSION:-}"
 INSTALL_DIR="${HANDY_TOOLS_INSTALL_DIR:-}"
 INSTALL_DEPS="${HANDY_TOOLS_INSTALL_DEPS:-0}"
+NO_GUI="${HANDY_TOOLS_NO_GUI:-0}"
 UNINSTALL="${HANDY_TOOLS_UNINSTALL:-0}"
 ASSUME_YES=0
 USE_COLOR=1
@@ -70,8 +73,9 @@ usage() {
   banner
   cat <<'EOF'
 Handy Tools installer — downloads the latest (or pinned) release from GitHub,
-verifies the checksum, drops `htools` and `htoolsd` into an install dir, and
-optionally installs the small set of optional system tools Handy Tools uses.
+verifies the checksum, drops `handy` + `htools` + `htoolsd` + `htools-mcp`
+(plus `htools-gui` on linux/amd64) into an install dir, and optionally installs the small set of optional
+system tools Handy Tools uses.
 
   curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/install.sh | sh
   curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/install.sh | sh -s -- --uninstall
@@ -80,15 +84,20 @@ Knobs (env or flag):
   HANDY_TOOLS_VERSION=0.2.0          # pin a specific version (default: latest)
   HANDY_TOOLS_INSTALL_DIR=$HOME/...  # where to put binaries (default: $HOME/.local/bin)
   HANDY_TOOLS_INSTALL_DEPS=1         # also install optional system tools (apt/dnf/pacman/brew)
+  HANDY_TOOLS_NO_GUI=1               # skip the desktop GUI tarball even on linux/amd64
   HANDY_TOOLS_UNINSTALL=1            # remove binaries + config + cache, then exit
   NO_COLOR=1                         # disable ANSI colors
-  --version 0.2.0 / --dir PATH / --install-deps / --uninstall / --yes / --no-color / --help
+  --version 0.2.0 / --dir PATH / --install-deps / --no-gui / --uninstall / --yes / --no-color / --help
 
-Uninstall removes the htools, htoolsd, htools-gui binaries from the install
-dir (default $HOME/.local/bin or --dir), the config dir ($HANDY_TOOLS_CONFIG
-parent or $XDG_CONFIG_HOME/handy-tools or ~/.config/handy-tools), and the
-cache dir ($XDG_CACHE_HOME/handy-tools or ~/.cache/handy-tools). User-created
-output files are never touched. Prompts before deleting unless --yes is set.
+The desktop GUI ships only on linux/amd64 (Wails + libwebkit2gtk); on other
+platforms or with --no-gui the script installs only the four CLI binaries.
+
+Uninstall removes the handy, htools, htoolsd, htools-mcp, htools-gui binaries
+from the install dir (default $HOME/.local/bin or --dir), the config dir
+($HANDY_TOOLS_CONFIG parent or $XDG_CONFIG_HOME/handy-tools or
+~/.config/handy-tools), and the cache dir ($XDG_CACHE_HOME/handy-tools or
+~/.cache/handy-tools). User-created output files are never touched. Prompts
+before deleting unless --yes is set.
 
 Targets Linux and macOS. Windows is not yet supported.
 EOF
@@ -102,6 +111,7 @@ while [ $# -gt 0 ]; do
     --dir) INSTALL_DIR="$2"; shift 2 ;;
     --dir=*) INSTALL_DIR="${1#--dir=}"; shift ;;
     --install-deps) INSTALL_DEPS=1; shift ;;
+    --no-gui) NO_GUI=1; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
     --yes|-y) ASSUME_YES=1; shift ;;
     --no-color) USE_COLOR=0; shift ;;
@@ -150,7 +160,7 @@ resolve_cache_dir() {
 do_uninstall() {
   cfg_dir=$(resolve_config_dir)
   cache_dir=$(resolve_cache_dir)
-  bins="$INSTALL_DIR/htools $INSTALL_DIR/htoolsd $INSTALL_DIR/htools-gui"
+  bins="$INSTALL_DIR/handy $INSTALL_DIR/htools $INSTALL_DIR/htoolsd $INSTALL_DIR/htools-mcp $INSTALL_DIR/htools-gui"
 
   log "uninstall plan"
   for b in $bins; do
@@ -335,12 +345,53 @@ ok "checksum verified"
 mkdir -p "$INSTALL_DIR"
 ( cd "$tmp" && tar -xzf "$asset" )
 
-# The tar produced by goreleaser puts htools / htoolsd at the archive root.
-for bin in htools htoolsd; do
+# The tar produced by goreleaser puts handy / htools / htoolsd / htools-mcp
+# at the archive root. htools-gui ships in a separate archive (Wails desktop
+# is linux/amd64-only with CGO, so it can't share the linux+darwin tarball).
+for bin in handy htools htoolsd htools-mcp; do
   [ -f "$tmp/$bin" ] || die "expected $bin in archive but it was missing"
   install -m 0755 "$tmp/$bin" "$INSTALL_DIR/$bin"
   ok "installed $(amber "$INSTALL_DIR/$bin")"
 done
+
+# ---- desktop GUI (linux/amd64 only) ---------------------------------------
+# Pull the separate GUI tarball when the platform supports it and the user
+# didn't opt out. Soft-fail throughout — a missing or mismatching GUI
+# tarball must not block the CLI install (the four binaries above are
+# already on disk and useful).
+GUI_INSTALLED=0
+if [ "$NO_GUI" = "1" ]; then
+  log "skipping desktop GUI install (--no-gui set)"
+elif [ "$OS" != "linux" ] || [ "$ARCH" != "amd64" ]; then
+  log "desktop GUI is currently linux/amd64 only — skipping htools-gui"
+else
+  gui_asset="${PROJECT_NAME}-gui_${VERSION}_${OS}_${ARCH}.tar.gz"
+  gui_url="${base}/${gui_asset}"
+  log "downloading $gui_asset"
+  if $DLO "$tmp/$gui_asset" "$gui_url" 2>/dev/null; then
+    gui_expected=$(grep "  ${gui_asset}\$" "$tmp/checksums.txt" | awk '{print $1}')
+    if [ -z "$gui_expected" ]; then
+      warn "no checksum entry for $gui_asset — skipping GUI install"
+    else
+      gui_got=$(cd "$tmp" && $SHA "$gui_asset" | awk '{print $1}')
+      if [ "$gui_expected" != "$gui_got" ]; then
+        warn "GUI checksum mismatch: expected $gui_expected, got $gui_got — skipping GUI install"
+      else
+        ok "GUI checksum verified"
+        ( cd "$tmp" && tar -xzf "$gui_asset" )
+        if [ -f "$tmp/htools-gui" ]; then
+          install -m 0755 "$tmp/htools-gui" "$INSTALL_DIR/htools-gui"
+          ok "installed $(amber "$INSTALL_DIR/htools-gui")"
+          GUI_INSTALLED=1
+        else
+          warn "htools-gui missing from GUI tarball — skipping"
+        fi
+      fi
+    fi
+  else
+    warn "GUI tarball not found at $gui_url — skipping (this release may not include a desktop build)"
+  fi
+fi
 
 # Warn if the install dir is not on PATH.
 case ":$PATH:" in
@@ -354,18 +405,34 @@ esac
 # Keep this list in sync when adding new optional tools.
 needed_for() {
   case "$1" in
-    unrar)     echo "RAR archive extraction (incl. multi-part .partN.rar)" ;;
-    7z)        echo "7z multi-part extraction" ;;
-    pdftoppm)  echo "render PDF pages to images" ;;
-    pdftotext) echo "extract text from PDFs" ;;
-    magick)    echo "decode HEIC/HEIF images; encode HEIC and WebP" ;;
-    *)         echo "" ;;
+    unrar)         echo "RAR archive extraction (incl. multi-part .partN.rar)" ;;
+    7z)            echo "7z multi-part extraction" ;;
+    pdftoppm)      echo "render PDF pages to images" ;;
+    pdftotext)     echo "extract text from PDFs" ;;
+    magick)        echo "decode HEIC/HEIF images; encode HEIC and WebP" ;;
+    libwebkit2gtk) echo "desktop app runtime — required to launch htools-gui" ;;
+    *)             echo "" ;;
   esac
 }
 
 ALL_TOOLS="unrar 7z pdftoppm pdftotext magick"
+# Only check for the libwebkit2gtk runtime when we actually installed the
+# desktop GUI; macOS users and --no-gui callers shouldn't see a GTK prompt.
+if [ "$GUI_INSTALLED" = "1" ]; then
+  ALL_TOOLS="$ALL_TOOLS libwebkit2gtk"
+fi
 missing=""
 for t in $ALL_TOOLS; do
+  # libwebkit2gtk is a shared library, not a command — detect via
+  # ldconfig (Linux). 4.0 (Ubuntu 22.04) and 4.1 (Ubuntu 24.04+) are both
+  # acceptable; Wails resolves whichever is present at startup.
+  if [ "$t" = "libwebkit2gtk" ]; then
+    if ldconfig -p 2>/dev/null | grep -qE 'libwebkit2gtk-4\.(0|1)\.so'; then
+      continue
+    fi
+    missing="$missing $t"
+    continue
+  fi
   if ! command -v "$t" >/dev/null 2>&1; then
     # 7z has aliases (7zz, 7za); unrar has unrar-free.
     case "$t" in
@@ -409,18 +476,22 @@ pkg_for() {
     apt:7z)            echo "p7zip-full" ;;
     apt:pdftoppm|apt:pdftotext) echo "poppler-utils" ;;
     apt:magick)        echo "imagemagick" ;;
+    apt:libwebkit2gtk) echo "libwebkit2gtk-4.1-0" ;;
     dnf:unrar)         echo "unrar" ;;
     dnf:7z)            echo "p7zip p7zip-plugins" ;;
     dnf:pdftoppm|dnf:pdftotext) echo "poppler-utils" ;;
     dnf:magick)        echo "ImageMagick" ;;
+    dnf:libwebkit2gtk) echo "webkit2gtk4.1" ;;
     pacman:unrar)      echo "unrar" ;;
     pacman:7z)         echo "p7zip" ;;
     pacman:pdftoppm|pacman:pdftotext) echo "poppler" ;;
     pacman:magick)     echo "imagemagick" ;;
+    pacman:libwebkit2gtk) echo "webkit2gtk-4.1" ;;
     brew:unrar)        echo "unrar" ;;
     brew:7z)           echo "p7zip" ;;
     brew:pdftoppm|brew:pdftotext) echo "poppler" ;;
     brew:magick)       echo "imagemagick" ;;
+    # brew:libwebkit2gtk intentionally omitted — we don't ship GUI on darwin.
     *) echo "" ;;
   esac
 }
@@ -468,4 +539,8 @@ if [ -n "$missing" ]; then
 fi
 
 echo
-log "done. Try: $(orange "$INSTALL_DIR/htools --version")"
+log "done. Try: $(orange "$INSTALL_DIR/handy --help")"
+if [ "$GUI_INSTALLED" = "1" ]; then
+  log "      or:  $(orange "$INSTALL_DIR/handy")  $(dim '# opens the desktop app')"
+fi
+log "      or:  $(orange "$INSTALL_DIR/htools --version")  $(dim '# the low-level CLI')"

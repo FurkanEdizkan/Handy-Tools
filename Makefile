@@ -2,8 +2,10 @@ SHELL := /usr/bin/env bash
 
 MODULE      := github.com/furkandedizkan/handy-tools
 BIN_DIR     := bin
+HANDY_BIN   := $(BIN_DIR)/handy
 CLI_BIN     := $(BIN_DIR)/htools
 SERVER_BIN  := $(BIN_DIR)/htoolsd
+MCP_BIN     := $(BIN_DIR)/htools-mcp
 GUI_BIN     := $(BIN_DIR)/htools-gui
 
 GO          ?= go
@@ -26,7 +28,11 @@ help: ## Show this help
 		| awk 'BEGIN {FS = ":.*?## "} {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: build
-build: web $(CLI_BIN) $(SERVER_BIN) ## Build web assets + both binaries
+build: web $(HANDY_BIN) $(CLI_BIN) $(SERVER_BIN) $(MCP_BIN) ## Build web assets + all CLI binaries (front-door, CLI, daemon, MCP server)
+
+$(HANDY_BIN):
+	@mkdir -p $(BIN_DIR)
+	$(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(HANDY_BIN) ./cmd/handy
 
 $(CLI_BIN):
 	@mkdir -p $(BIN_DIR)
@@ -35,6 +41,10 @@ $(CLI_BIN):
 $(SERVER_BIN):
 	@mkdir -p $(BIN_DIR)
 	$(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(SERVER_BIN) ./cmd/htoolsd
+
+$(MCP_BIN):
+	@mkdir -p $(BIN_DIR)
+	$(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(MCP_BIN) ./cmd/htools-mcp
 
 .PHONY: web
 web: ## Build the Svelte frontend into web/dist (embedded by htoolsd)
@@ -47,6 +57,10 @@ web: ## Build the Svelte frontend into web/dist (embedded by htoolsd)
 web-dev: ## Run Vite dev server with HMR (point it at a running htoolsd)
 	cd web && npm run dev
 
+.PHONY: handy
+handy: ## Print the handy front-door help
+	$(GO) run ./cmd/handy --help
+
 .PHONY: cli
 cli: ## Print the CLI help
 	$(GO) run ./cmd/htools --help
@@ -54,6 +68,13 @@ cli: ## Print the CLI help
 .PHONY: serve
 serve: ## Run the gRPC server
 	$(GO) run ./cmd/htoolsd
+
+.PHONY: mcp
+mcp: ## Run the MCP server on stdio (wire it into an MCP client manually)
+	$(GO) run ./cmd/htools-mcp
+
+.PHONY: mcp-build
+mcp-build: $(MCP_BIN) ## Build the MCP server binary into bin/htools-mcp
 
 .PHONY: gui
 gui: web ## Build the web UI and run the Wails desktop app
