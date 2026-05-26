@@ -32,6 +32,12 @@ vendor/
 coverage.out
 coverage.html
 
+# Stress harness outputs — fixtures + per-run timing logs.
+# The committed baseline lives at docs/benchmarks/baseline.txt; everything
+# else here is local scratch produced by `make stress`.
+/docs/benchmarks/local-*.txt
+/docs/benchmarks/stress-*.log
+
 # Stray test fixtures that shouldn't be committed
 /Heretic-Legion-Faction-Image-2.jpg
 
