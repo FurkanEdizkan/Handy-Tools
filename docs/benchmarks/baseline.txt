@@ -1,0 +1,99 @@
+goos: linux
+goarch: amd64
+pkg: github.com/furkandedizkan/handy-tools/internal/tools/hash
+cpu: Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz
+BenchmarkRun/md5-8    	      67	  17771810 ns/op	 590.02 MB/s	  334022 B/op	     116 allocs/op
+BenchmarkRun/md5-8    	      61	  17634814 ns/op	 594.61 MB/s	  334037 B/op	     116 allocs/op
+BenchmarkRun/md5-8    	      66	  17237380 ns/op	 608.32 MB/s	  334032 B/op	     116 allocs/op
+BenchmarkRun/sha256-8 	      36	  32522832 ns/op	 322.41 MB/s	  335854 B/op	     126 allocs/op
+BenchmarkRun/sha256-8 	      36	  32503108 ns/op	 322.61 MB/s	  335824 B/op	     126 allocs/op
+BenchmarkRun/sha256-8 	      37	  31854674 ns/op	 329.17 MB/s	  335853 B/op	     126 allocs/op
+BenchmarkRun/blake3-8 	      66	  17034232 ns/op	 615.57 MB/s	11815076 B/op	    6560 allocs/op
+BenchmarkRun/blake3-8 	      69	  17268105 ns/op	 607.23 MB/s	11812651 B/op	    6556 allocs/op
+BenchmarkRun/blake3-8 	      69	  17600092 ns/op	 595.78 MB/s	11812638 B/op	    6556 allocs/op
+BenchmarkRunLarge-8   	       3	 397192954 ns/op	 337.92 MB/s	   35256 B/op	      19 allocs/op
+BenchmarkRunLarge-8   	       3	 395633942 ns/op	 339.25 MB/s	   35256 B/op	      19 allocs/op
+BenchmarkRunLarge-8   	       3	 426016305 ns/op	 315.05 MB/s	   35170 B/op	      18 allocs/op
+PASS
+ok  	github.com/furkandedizkan/handy-tools/internal/tools/hash	14.488s
+goos: linux
+goarch: amd64
+pkg: github.com/furkandedizkan/handy-tools/internal/tools/rename
+cpu: Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz
+BenchmarkRun-8       	      51	  21542747 ns/op	  561355 B/op	   10291 allocs/op
+BenchmarkRun-8       	      56	  22034688 ns/op	  560847 B/op	   10289 allocs/op
+BenchmarkRun-8       	      60	  21217567 ns/op	  560892 B/op	   10289 allocs/op
+BenchmarkInspect-8   	    2200	    516508 ns/op	  159025 B/op	    4034 allocs/op
+BenchmarkInspect-8   	    2162	    528172 ns/op	  151022 B/op	    4034 allocs/op
+BenchmarkInspect-8   	    1986	    534542 ns/op	  159024 B/op	    4034 allocs/op
+PASS
+ok  	github.com/furkandedizkan/handy-tools/internal/tools/rename	12.001s
+goos: linux
+goarch: amd64
+pkg: github.com/furkandedizkan/handy-tools/internal/tools/difftree
+cpu: Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz
+BenchmarkRun/mtime-8         	     288	   4161886 ns/op	  820585 B/op	    7230 allocs/op
+BenchmarkRun/mtime-8         	     286	   4412194 ns/op	  820530 B/op	    7230 allocs/op
+BenchmarkRun/mtime-8         	     280	   4287260 ns/op	  820382 B/op	    7230 allocs/op
+BenchmarkRun/hash-8          	      30	  38468108 ns/op	34054193 B/op	   15241 allocs/op
+BenchmarkRun/hash-8          	      32	  38315899 ns/op	34054832 B/op	   15242 allocs/op
+BenchmarkRun/hash-8          	      32	  39168060 ns/op	34054776 B/op	   15242 allocs/op
+PASS
+ok  	github.com/furkandedizkan/handy-tools/internal/tools/difftree	8.157s
+goos: linux
+goarch: amd64
+pkg: github.com/furkandedizkan/handy-tools/internal/tools/archive
+cpu: Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz
+BenchmarkCompress/zip-8         	      28	  41215065 ns/op	 6892627 B/op	    4699 allocs/op
+BenchmarkCompress/zip-8         	      33	  42830383 ns/op	 6908428 B/op	    4700 allocs/op
+BenchmarkCompress/zip-8         	      28	  40961568 ns/op	 6921510 B/op	    4699 allocs/op
+BenchmarkCompress/tar-gz-8      	      26	  42435545 ns/op	 7605230 B/op	    3899 allocs/op
+BenchmarkCompress/tar-gz-8      	      28	  40626461 ns/op	 7605834 B/op	    3898 allocs/op
+BenchmarkCompress/tar-gz-8      	      27	  41781985 ns/op	 7605179 B/op	    3899 allocs/op
+BenchmarkCompress/tar-zst-8     	     100	  10557004 ns/op	26037023 B/op	    3957 allocs/op
+BenchmarkCompress/tar-zst-8     	     120	   9883658 ns/op	26035874 B/op	    3955 allocs/op
+BenchmarkCompress/tar-zst-8     	     109	  10531243 ns/op	26035980 B/op	    3954 allocs/op
+BenchmarkExtract/zip-8          	      78	  15439751 ns/op	 6874630 B/op	    4869 allocs/op
+BenchmarkExtract/zip-8          	      84	  16417000 ns/op	 6883863 B/op	    4869 allocs/op
+BenchmarkExtract/zip-8          	      74	  15160888 ns/op	 6876922 B/op	    4868 allocs/op
+BenchmarkExtract/tar-gz-8       	      52	  28029411 ns/op	 6808002 B/op	    4550 allocs/op
+BenchmarkExtract/tar-gz-8       	      43	  25710152 ns/op	 6807169 B/op	    4551 allocs/op
+BenchmarkExtract/tar-gz-8       	      44	  26225583 ns/op	 6806092 B/op	    4549 allocs/op
+BenchmarkInspect-8              	    4364	    243083 ns/op	  150568 B/op	    2018 allocs/op
+BenchmarkInspect-8              	    5239	    236886 ns/op	  150568 B/op	    2018 allocs/op
+BenchmarkInspect-8              	    4964	    235183 ns/op	  150568 B/op	    2018 allocs/op
+PASS
+ok  	github.com/furkandedizkan/handy-tools/internal/tools/archive	26.469s
+goos: linux
+goarch: amd64
+pkg: github.com/furkandedizkan/handy-tools/internal/tools/image
+cpu: Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz
+BenchmarkBatchConvert/to-png-8         	       2	 532277400 ns/op	42386628 B/op	 5243917 allocs/op
+BenchmarkBatchConvert/to-png-8         	       3	 482615558 ns/op	42382517 B/op	 5243917 allocs/op
+BenchmarkBatchConvert/to-png-8         	       2	 514864132 ns/op	42382920 B/op	 5243918 allocs/op
+BenchmarkBatchConvert/to-webp-8        	       1	1100637391 ns/op	42694712 B/op	 5245130 allocs/op
+BenchmarkBatchConvert/to-webp-8        	       1	1136824867 ns/op	42689152 B/op	 5245120 allocs/op
+BenchmarkBatchConvert/to-webp-8        	       1	1110233150 ns/op	42695760 B/op	 5245125 allocs/op
+BenchmarkConvert-8                     	      48	  25110302 ns/op	 2118868 B/op	  262195 allocs/op
+BenchmarkConvert-8                     	      42	  25353539 ns/op	 2118845 B/op	  262195 allocs/op
+BenchmarkConvert-8                     	      48	  24966154 ns/op	 2118878 B/op	  262195 allocs/op
+PASS
+ok  	github.com/furkandedizkan/handy-tools/internal/tools/image	10.597s
+goos: linux
+goarch: amd64
+pkg: github.com/furkandedizkan/handy-tools/internal/tools/pdf
+cpu: Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz
+BenchmarkMerge-8    	     214	   5540144 ns/op	 3588275 B/op	   16096 allocs/op
+BenchmarkMerge-8    	     223	   5387799 ns/op	 3587897 B/op	   16093 allocs/op
+BenchmarkMerge-8    	     205	   5691365 ns/op	 3587947 B/op	   16094 allocs/op
+BenchmarkSplit-8    	     103	  11679032 ns/op	18294629 B/op	   22304 allocs/op
+BenchmarkSplit-8    	      90	  11573997 ns/op	18294493 B/op	   22302 allocs/op
+BenchmarkSplit-8    	     100	  11269530 ns/op	18294509 B/op	   22302 allocs/op
+BenchmarkRender-8   	       3	 482896843 ns/op	   19605 B/op	      54 allocs/op
+BenchmarkRender-8   	       3	 493918066 ns/op	   19568 B/op	      53 allocs/op
+BenchmarkRender-8   	       3	 481516360 ns/op	   19605 B/op	      53 allocs/op
+BenchmarkText-8     	      90	  14342210 ns/op	   18992 B/op	      49 allocs/op
+BenchmarkText-8     	      79	  14179058 ns/op	   18992 B/op	      49 allocs/op
+BenchmarkText-8     	      94	  13479638 ns/op	   18992 B/op	      49 allocs/op
+PASS
+ok  	github.com/furkandedizkan/handy-tools/internal/tools/pdf	15.284s
