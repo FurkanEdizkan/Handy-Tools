@@ -47,7 +47,7 @@ func TestDiffTreeHandlerInspectReturnsDiffs(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := &DiffTreeHandler{Opts: Options{AllowRoots: []string{a, b}}}
-	diffs, err := h.Inspect(DiffTreeParams{A: a, B: b, Mode: "mtime"})
+	diffs, err := h.Inspect(context.Background(), DiffTreeParams{A: a, B: b, Mode: "mtime"})
 	if err != nil {
 		t.Fatalf("Inspect: %v", err)
 	}

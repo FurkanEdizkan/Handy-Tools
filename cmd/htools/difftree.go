@@ -21,7 +21,7 @@ import (
 //
 // The walker doesn't follow symlinks, so a symlink-loop fixture cannot hang
 // the tool — that's enforced at the package level in internal/tools/difftree.
-func cmdDiffTree(_ context.Context, _ config.Config, args []string) int {
+func cmdDiffTree(ctx context.Context, _ config.Config, args []string) int {
 	fs := flag.NewFlagSet("diff-tree", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	by := fs.String("by", "mtime", "compare strategy: mtime (size + mtime) | hash (SHA256 content)")
@@ -39,7 +39,7 @@ func cmdDiffTree(_ context.Context, _ config.Config, args []string) int {
 		return usageErr(os.Stderr, "diff-tree", fmt.Sprintf("unknown --by %q (want mtime or hash)", *by))
 	}
 
-	diffs, terr := difftree.Inspect(difftree.Request{
+	diffs, terr := difftree.Inspect(ctx, difftree.Request{
 		A:    positional[0],
 		B:    positional[1],
 		Mode: mode,

@@ -65,13 +65,13 @@ type HashVerifyResult struct {
 // Verify is synchronous — the underlying hash.Verify returns the full slice
 // in one shot. emit is left out of the signature because there is no streamed
 // progress to forward.
-func (h *HashHandler) Verify(_ context.Context, p HashVerifyParams) (*HashVerifyResult, error) {
+func (h *HashHandler) Verify(ctx context.Context, p HashVerifyParams) (*HashVerifyResult, error) {
 	manifest, err := h.Opts.CheckPath(p.Manifest)
 	if err != nil {
 		return nil, err
 	}
 	algo, _ := hash.ParseAlgo(p.Algo)
-	entries, terr := hash.Verify(manifest, algo)
+	entries, terr := hash.Verify(ctx, manifest, algo)
 	if terr != nil {
 		return nil, terr
 	}
