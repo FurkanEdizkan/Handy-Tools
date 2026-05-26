@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/brand/wrenly.svg" alt="Handy Tools logo" width="160" />
+
 # Handy Tools
 
 **A friendly toolbox for everyday file work**

@@ -43,6 +43,24 @@ export const defaultTools: ToolDef[] = [
     desc: 'merge · split · pages → image · text',
   },
   {
+    id: 'hash',
+    glyph: '#',
+    label: 'Hash files',
+    desc: 'md5 · sha256 · blake3 · verify manifest',
+  },
+  {
+    id: 'diff-tree',
+    glyph: '⇆',
+    label: 'Diff two folders',
+    desc: 'added · removed · changed (mtime or hash)',
+  },
+  {
+    id: 'rename',
+    glyph: '✎',
+    label: 'Batch rename',
+    desc: 'regex pattern → replacement, dry-run first',
+  },
+  {
     id: 'doctor',
     glyph: '◊',
     label: 'Doctor',
