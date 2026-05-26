@@ -13,6 +13,11 @@
 //	POST /v1/pdf/to-image             → 202 {"job_id": "..."}
 //	POST /v1/pdf/to-text              → 202 {"job_id": "..."}
 //	POST /v1/pdf/merge                → 202 {"job_id": "..."}
+//	POST /v1/hash                     → 202 {"job_id": "..."}
+//	POST /v1/hash/verify              → 200 {VerifyReport}
+//	POST /v1/diff-tree/inspect        → 200 {entries:[...]}
+//	POST /v1/rename/inspect           → 200 {plans:[...]}
+//	POST /v1/rename/run               → 202 {"job_id": "..."}
 //	GET  /v1/jobs/{id}/events         → text/event-stream of Progress
 //	GET  /v1/sysdep                   → 200 [SysdepResult, ...]
 //	GET  /v1/config                   → 200 {Config}
@@ -129,6 +134,76 @@ type pdfSplitRequest struct {
 	PageRanges []pageRange `json:"page_ranges"`
 	EveryN     int         `json:"every_n"`
 	Output     outputRef   `json:"output"` // Directory is where the split files land
+}
+
+// hashRunRequest is the body of POST /v1/hash. Sources are hashed in order
+// and a Progress event is streamed per file.
+type hashRunRequest struct {
+	Sources []fileRef `json:"sources"`
+	Algo    string    `json:"algo"` // md5|sha256|blake3
+}
+
+// hashVerifyRequest is the body of POST /v1/hash/verify. The manifest is a
+// sha256sum-format file (one `<digest>  <path>` per line).
+type hashVerifyRequest struct {
+	Manifest fileRef `json:"manifest"`
+	Algo     string  `json:"algo"`
+}
+
+// hashVerifyEntry mirrors hash.VerifyEntry on the wire.
+type hashVerifyEntry struct {
+	Path     string `json:"path"`
+	Expected string `json:"expected"`
+	Got      string `json:"got,omitempty"`
+	OK       bool   `json:"ok"`
+	Err      string `json:"err,omitempty"`
+}
+
+// hashVerifyResponse is the body of 200 from POST /v1/hash/verify.
+type hashVerifyResponse struct {
+	Entries []hashVerifyEntry `json:"entries"`
+	OK      int               `json:"ok"`
+	Failed  int               `json:"failed"`
+	Missing int               `json:"missing"`
+}
+
+// diffTreeInspectRequest is the body of POST /v1/diff-tree/inspect.
+type diffTreeInspectRequest struct {
+	A    fileRef `json:"a"`
+	B    fileRef `json:"b"`
+	Mode string  `json:"mode"` // mtime|hash
+}
+
+// diffEntry is one row of the diff report.
+type diffEntry struct {
+	Path   string `json:"path"`
+	Status string `json:"status"` // added|removed|changed
+	Reason string `json:"reason,omitempty"`
+}
+
+// diffTreeInspectResponse is the body of 200 from POST /v1/diff-tree/inspect.
+type diffTreeInspectResponse struct {
+	Entries []diffEntry `json:"entries"`
+}
+
+// renameRequest is the body of POST /v1/rename/inspect and POST /v1/rename/run.
+// OnCollision is "error" (default), "skip", or "suffix".
+type renameRequest struct {
+	Sources     []fileRef `json:"sources"`
+	Pattern     string    `json:"pattern"`
+	Replace     string    `json:"replace"`
+	OnCollision string    `json:"on_collision,omitempty"`
+}
+
+// renamePlan mirrors rename.Plan on the wire.
+type renamePlan struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+// renameInspectResponse is the body of 200 from POST /v1/rename/inspect.
+type renameInspectResponse struct {
+	Plans []renamePlan `json:"plans"`
 }
 
 // jobResponse is the body of 202 from any async POST endpoint.

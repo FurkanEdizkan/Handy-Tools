@@ -2,12 +2,15 @@ import { describe, it, expect } from 'vitest';
 import { defaultTools, toolById } from './tools';
 
 describe('defaultTools', () => {
-  it('lists exactly the five catalog tools', () => {
+  it('lists exactly the catalog tools', () => {
     expect(defaultTools.map((t) => t.id)).toEqual([
       'convert-image',
       'zip-pack',
       'archive-extract',
       'pdf',
+      'hash',
+      'diff-tree',
+      'rename',
       'doctor',
     ]);
   });

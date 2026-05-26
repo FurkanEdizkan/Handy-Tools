@@ -14,8 +14,8 @@ import (
 )
 
 // Server is the HTTP/SSE transport. It owns its own *http.Server and shares
-// the Image/Archive/PDF handlers with the gRPC server — both transports drive
-// the same internal/tools code through internal/server.{Image,Archive,PDF}Handler.
+// every tool handler with the gRPC server — both transports drive the same
+// internal/tools code through the matching internal/server.*Handler type.
 //
 // Lifecycle:
 //
@@ -26,9 +26,12 @@ import (
 type Server struct {
 	Opts server.Options
 
-	Image   *server.ImageHandler
-	Archive *server.ArchiveHandler
-	PDF     *server.PDFHandler
+	Image    *server.ImageHandler
+	Archive  *server.ArchiveHandler
+	PDF      *server.PDFHandler
+	Hash     *server.HashHandler
+	DiffTree *server.DiffTreeHandler
+	Rename   *server.RenameHandler
 
 	// Queue is the shared job registry — the same instance the gRPC server
 	// uses — so a job started on either transport is visible to both.
@@ -52,6 +55,9 @@ func New(opts server.Options, q *queue.Queue) *Server {
 		Image:     &server.ImageHandler{Opts: opts},
 		Archive:   &server.ArchiveHandler{Opts: opts},
 		PDF:       &server.PDFHandler{Opts: opts},
+		Hash:      &server.HashHandler{Opts: opts},
+		DiffTree:  &server.DiffTreeHandler{Opts: opts},
+		Rename:    &server.RenameHandler{Opts: opts},
 		Queue:     q,
 		previews:  newPreviewCache(previewMaxEntries),
 		startedAt: time.Now(),
@@ -98,6 +104,11 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /v1/pdf/to-text", s.handlePDFToText)
 	mux.HandleFunc("POST /v1/pdf/merge", s.handlePDFMerge)
 	mux.HandleFunc("POST /v1/pdf/split", s.handlePDFSplit)
+	mux.HandleFunc("POST /v1/hash", s.handleHashRun)
+	mux.HandleFunc("POST /v1/hash/verify", s.handleHashVerify)
+	mux.HandleFunc("POST /v1/diff-tree/inspect", s.handleDiffTreeInspect)
+	mux.HandleFunc("POST /v1/rename/inspect", s.handleRenameInspect)
+	mux.HandleFunc("POST /v1/rename/run", s.handleRenameRun)
 	mux.HandleFunc("GET /v1/jobs", s.handleJobsList)
 	mux.HandleFunc("GET /v1/jobs/events", s.handleJobsEvents)
 	mux.HandleFunc("GET /v1/jobs/{id}/events", s.handleJobEvents)

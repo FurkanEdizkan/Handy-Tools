@@ -9,13 +9,18 @@
  */
 
 import type {
+  CompressRequest,
   ConfigPatch,
   ConfigResponse,
   ConvertRequest,
+  DiffTreeInspectRequest,
+  DiffTreeInspectResponse,
   ErrorEnvelope,
   ExtractRequest,
+  HashRunRequest,
+  HashVerifyRequest,
+  HashVerifyResponse,
   HealthResponse,
-  CompressRequest,
   InspectRequest,
   InspectResponse,
   JobResponse,
@@ -26,6 +31,8 @@ import type {
   PdfToImageRequest,
   PdfToTextRequest,
   ProgressEvent,
+  RenameInspectResponse,
+  RenameRequest,
   SysdepResult,
 } from './types';
 
@@ -93,6 +100,32 @@ export class ApiClient {
 
   pdfSplit(req: PdfSplitRequest): Promise<JobResponse> {
     return this.postJSON('/v1/pdf/split', req);
+  }
+
+  // ---- Hash -----------------------------------------------------------------
+
+  hash(req: HashRunRequest): Promise<JobResponse> {
+    return this.postJSON('/v1/hash', req);
+  }
+
+  hashVerify(req: HashVerifyRequest): Promise<HashVerifyResponse> {
+    return this.postJSON('/v1/hash/verify', req);
+  }
+
+  // ---- Diff tree ------------------------------------------------------------
+
+  diffTreeInspect(req: DiffTreeInspectRequest): Promise<DiffTreeInspectResponse> {
+    return this.postJSON('/v1/diff-tree/inspect', req);
+  }
+
+  // ---- Rename ---------------------------------------------------------------
+
+  renameInspect(req: RenameRequest): Promise<RenameInspectResponse> {
+    return this.postJSON('/v1/rename/inspect', req);
+  }
+
+  renameRun(req: RenameRequest): Promise<JobResponse> {
+    return this.postJSON('/v1/rename/run', req);
   }
 
   // ---- Jobs -----------------------------------------------------------------
