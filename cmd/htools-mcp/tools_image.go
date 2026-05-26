@@ -35,6 +35,7 @@ type imageBatchConvertInput struct {
 	MaxHeight     int      `json:"max_height,omitempty" jsonschema:"resize cap, 0 = keep"`
 	Overwrite     bool     `json:"overwrite,omitempty" jsonschema:"replace existing outputs instead of suffixing"`
 	StripMetadata bool     `json:"strip_metadata,omitempty" jsonschema:"drop metadata on re-encode"`
+	Parallelism   int      `json:"parallelism,omitempty" jsonschema:"worker pool size; 0 (default) auto-sizes to host GOMAXPROCS"`
 }
 
 type imageStripMetaInput struct {
@@ -124,6 +125,7 @@ func registerImageTools(srv *mcp.Server, h *handlers) {
 				MaxHeight:    in.MaxHeight,
 				OutputDir:    in.OutputDir,
 				Overwrite:    in.Overwrite,
+				Parallelism:  in.Parallelism,
 			}, emit)
 		})
 		return res, nil, nil

@@ -19,7 +19,7 @@ func (s *Server) handleHashRun(w http.ResponseWriter, r *http.Request) {
 	for _, sref := range req.Sources {
 		srcs = append(srcs, sref.Path)
 	}
-	params := server.HashRunParams{Sources: srcs, Algo: req.Algo}
+	params := server.HashRunParams{Sources: srcs, Algo: req.Algo, Parallelism: req.Parallelism}
 
 	s.enqueue(w, "hash", "run", 30*time.Minute,
 		func(ctx context.Context, emit func(tools.Progress)) error {
