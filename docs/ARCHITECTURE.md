@@ -1,12 +1,13 @@
 # Architecture
 
-Handy Tools is one Go module that produces three binaries from one shared
+Handy Tools is one Go module that produces five binaries from one shared
 tool core. Every UI/transport is a thin adapter over `internal/tools/`.
 
 ```text
                        +----------------------------+
                        |   internal/tools/<x>       |   pure Go API per feature
-                       |   (image, archive, pdf)    |   no UI, no network
+                       |   (image, archive, pdf,    |   no UI, no network
+                       |    hash, difftree, rename) |
                        +-------------+--------------+
                                      ^
               +----------+-----------+-----------+
@@ -19,11 +20,17 @@ tool core. Every UI/transport is a thin adapter over `internal/tools/`.
                             |   |                 |
                        cmd/htoolsd        consumed by every
                        (gRPC + HTTP+SSE)  server-side surface
+                       cmd/htools-mcp     (htoolsd / htools-gui)
+                       (MCP over stdio;
+                        wraps internal/server/*Handler)
                               ^
                               |  via embedded webview
                               |
                        cmd/htools-gui
                        (Wails desktop, linux/amd64 + CGO)
+
+       cmd/handy  front-door dispatcher; re-execs the right backend
+                  (htools | htoolsd | htools-mcp | htools-gui)
 
        web/  Svelte + Vite + TS + Tailwind — built into web/dist/ and
              embedded into htoolsd / htools-gui via go:embed
@@ -52,7 +59,8 @@ flag set, builds the matching request struct in `internal/tools/<feature>`,
 streams the progress channel to stderr (or JSON to stdout via `--json`), and
 exits with a code derived from the terminal `tools.Error.Code`.
 
-Subcommands: `convert`, `pack`, `extract`, `pdf merge|split|render|text`,
+Subcommands: `convert`, `pack`, `extract`, `inspect`, `pdf
+merge|split|render|text`, `hash`, `diff-tree`, `rename`, `strip-meta`,
 `doctor`, `version`. See `htools --help` for the canonical list of flags.
 
 ### `internal/server` (gRPC)

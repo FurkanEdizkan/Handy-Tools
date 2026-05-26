@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Handy Tools is a single Go module that produces five binaries from one core:
 
 - `cmd/handy` — user-facing front door. Bare `handy` launches the desktop app; `handy <verb>` re-execs into the right backend (`htools` / `htoolsd` / `htools-mcp` / `htools-gui`). Thin dispatcher, ~200 LOC, zero tool logic — never add behavior here, only routing. See [cmd/handy/main.go](cmd/handy/main.go).
-- `cmd/htools` — non-interactive subcommand CLI (`make build && ./bin/htools --help`). Each invocation runs exactly one operation (`convert`, `pack`, `extract`, `pdf merge|split|render|text`, `doctor`, `version`) using stdlib `flag`.
+- `cmd/htools` — non-interactive subcommand CLI (`make build && ./bin/htools --help`). Each invocation runs exactly one operation (`convert`, `pack`, `extract`, `inspect`, `pdf merge|split|render|text`, `hash`, `diff-tree`, `rename`, `strip-meta`, `doctor`, `version`) using stdlib `flag`.
 - `cmd/htoolsd` — gRPC + HTTP/SSE server exposing the same tools (`make serve` / `go run ./cmd/htoolsd`).
 - `cmd/htools-mcp` — Model Context Protocol server over stdio (`make mcp` / `go run ./cmd/htools-mcp`). Lets an MCP-capable client (Claude Code, Claude Desktop, Cursor) drive every tool. CGO-free, ships on linux/darwin × amd64/arm64 like `htools` and `htoolsd`.
 - `cmd/htools-gui` — Wails v2 desktop app (`make gui` / `make gui-build`), gated behind the `wails` build tag (CGO + webkit2gtk, linux/amd64); without the tag a stub stands in so the other jobs stay CGO-free. `make gui` also adds the `webkit2_41` tag when `pkg-config` finds webkit2gtk-4.1 (Ubuntu 24.04+), so one command builds against either webkit 4.0 or 4.1. The release pipeline builds **both** ABIs (4.0 + 4.1) on the Ubuntu 22.04 runner and publishes two GUI tarballs (`handy-tools-gui_*` for 4.0, `handy-tools-gui-webkit41_*` for 4.1); `install.sh` ldconfig-probes and picks the matching one.
@@ -125,7 +125,7 @@ Display brand is **Handy Tools**. Binary names are `htools`, `htoolsd`, and `hto
 The `cmd/htools/` binary is a stdlib-`flag` subcommand dispatcher:
 
 - [main.go](cmd/htools/main.go) — entry + `dispatch()` switch over the verb.
-- [convert.go](cmd/htools/convert.go), [pack.go](cmd/htools/pack.go), [extract.go](cmd/htools/extract.go), [pdf.go](cmd/htools/pdf.go), [doctor.go](cmd/htools/doctor.go) — one file per top-level verb; each owns its own `flag.FlagSet`.
+- [convert.go](cmd/htools/convert.go), [pack.go](cmd/htools/pack.go), [extract.go](cmd/htools/extract.go), [inspect.go](cmd/htools/inspect.go), [pdf.go](cmd/htools/pdf.go), [hash.go](cmd/htools/hash.go), [difftree.go](cmd/htools/difftree.go), [rename.go](cmd/htools/rename.go), [stripmeta.go](cmd/htools/stripmeta.go), [doctor.go](cmd/htools/doctor.go) — one file per top-level verb; each owns its own `flag.FlagSet`.
 - [progress.go](cmd/htools/progress.go) — `streamProgress(ch, opts)` drains a tool's `<-chan tools.Progress`, handles `--quiet` / `--json`, and maps the terminal `tools.Error.Code` to a process exit code.
 - [usage.go](cmd/htools/usage.go) — `printUsage(w)` for `--help` / unknown-command paths.
 
