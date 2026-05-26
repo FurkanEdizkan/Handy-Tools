@@ -65,11 +65,17 @@ builds:
 
   # The Wails desktop app. Unlike htools/htoolsd it needs CGO + the webkit2gtk
   # toolchain, so it cannot be cross-compiled: it ships linux/amd64 only,
-  # built natively on the release runner (release.yml installs webkit and
-  # pins ubuntu-22.04). darwin/arm64 desktop builds need a macOS runner and
-  # are a post-1.0 follow-up. The `wails` tag selects the real app over the
-  # CGO-free stub (see cmd/htools-gui).
-  - id: htools-gui
+  # built natively on the release runner (release.yml installs both webkit
+  # ABIs and pins ubuntu-22.04). darwin/arm64 desktop builds need a macOS
+  # runner and are a post-1.0 follow-up. The `wails` tag selects the real
+  # app over the CGO-free stub (see cmd/htools-gui).
+  #
+  # We build htools-gui twice — once per webkit2gtk ABI — because the two
+  # are not source-compatible at runtime (libwebkit2gtk-4.0.so.37 vs
+  # libwebkit2gtk-4.1.so.0). Ubuntu 22.04 / Debian 12 have only 4.0;
+  # Ubuntu 24.04+ has only 4.1; install.sh picks the matching tarball
+  # based on what ldconfig reports.
+  - id: htools-gui-webkit40
     main: ./cmd/htools-gui
     binary: htools-gui
     env:
@@ -78,11 +84,27 @@ builds:
     goarch: [amd64]
     # `wails` selects the real app over the CGO-free stub; `production` is
     # required by Wails itself — without it the binary aborts at startup with
-    # "will not build without the correct build tags". The release runner is
-    # ubuntu-22.04 (webkit2gtk-4.0), so no `webkit2_41` tag here.
+    # "will not build without the correct build tags". No `webkit2_41` tag
+    # here → CGO links against libwebkit2gtk-4.0.so.37.
     tags:
       - wails
       - production
+    ldflags:
+      - -s -w
+
+  - id: htools-gui-webkit41
+    main: ./cmd/htools-gui
+    binary: htools-gui
+    env:
+      - CGO_ENABLED=1
+    goos: [linux]
+    goarch: [amd64]
+    # `webkit2_41` flips cmd/htools-gui's CGO bindings to the 4.1 ABI —
+    # CGO then links against libwebkit2gtk-4.1.so.0 for Ubuntu 24.04+.
+    tags:
+      - wails
+      - production
+      - webkit2_41
     ldflags:
       - -s -w
 
@@ -107,10 +129,25 @@ archives:
       - README.md
       - docs/**/*
 
-  - id: gui
+  # Legacy GUI archive (webkit2gtk-4.0 ABI) — kept under its original
+  # name so older install.sh versions and existing user automation keep
+  # working on Ubuntu 22.04 / Debian 12.
+  - id: gui-webkit40
     ids:
-      - htools-gui
+      - htools-gui-webkit40
     name_template: "{{ .ProjectName }}-gui_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    files:
+      - LICENSE
+      - README.md
+
+  # New GUI archive (webkit2gtk-4.1 ABI) — install.sh on Ubuntu 24.04+
+  # picks this one based on `ldconfig -p`. Same internal binary name,
+  # different ABI.
+  - id: gui-webkit41
+    ids:
+      - htools-gui-webkit41
+    name_template: "{{ .ProjectName }}-gui-webkit41_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]
     files:
       - LICENSE
