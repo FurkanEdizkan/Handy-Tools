@@ -23,7 +23,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"lukechampine.com/blake3"
@@ -78,6 +81,14 @@ func newHasher(a Algo) (hash.Hash, *tools.Error) {
 type Request struct {
 	Sources []string
 	Algo    Algo
+
+	// Parallelism caps the number of concurrent file-hashing goroutines.
+	// 0 (the default) auto-sizes to runtime.GOMAXPROCS(0); 1 forces serial
+	// — useful in tests that depend on per-file event ordering. Hash
+	// computation is CPU-bound (md5/sha256) or memory-bandwidth-bound
+	// (blake3) so parallelism scales near-linearly until disk becomes the
+	// bottleneck.
+	Parallelism int
 }
 
 // Result is the digest + path for one file. Surfaced both on the channel
@@ -89,10 +100,14 @@ type Result struct {
 	Algo   Algo   `json:"algo"`
 }
 
-// Run hashes each Sources entry in turn, streaming one Progress event per
-// file plus a terminal summary. The per-file event's Message holds the
+// Run hashes Sources concurrently, streaming one Progress event per file
+// plus a terminal summary. The per-file event's Message holds the
 // `<digest>  <path>` line so a `--quiet` CLI can still capture it via the
 // terminal event's progress aggregation.
+//
+// Per-file events arrive in worker-completion order, not Sources order,
+// whenever Parallelism != 1. The terminal event is always last. Tests must
+// assert on (set-of-events, terminal-shape) rather than positional ordering.
 func Run(ctx context.Context, req Request) <-chan tools.Progress {
 	ch := make(chan tools.Progress, 8)
 	go func() {
@@ -119,34 +134,71 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 		}
 
 		total := len(req.Sources)
-		var failed int
-		for i, src := range req.Sources {
-			if err := ctx.Err(); err != nil {
-				emit(tools.Progress{Completed: true, Err: &tools.Error{
-					Code: tools.CodeAborted, Message: "hash canceled",
-				}})
-				return
-			}
-			res, terr := Hash(src, req.Algo)
-			if terr != nil {
-				failed++
-				emit(tools.Progress{
-					Level:       tools.SeverityError,
-					CurrentItem: filepath.Base(src),
-					Fraction:    float64(i+1) / float64(total),
-					Message:     fmt.Sprintf("[%d/%d] %s: %s", i+1, total, src, terr.Message),
-				})
-				continue
-			}
-			emit(tools.Progress{
-				Level:       tools.SeverityInfo,
-				CurrentItem: filepath.Base(src),
-				Fraction:    float64(i+1) / float64(total),
-				Message:     fmt.Sprintf("%s  %s", res.Digest, res.Path),
-			})
+		workers := req.Parallelism
+		if workers <= 0 {
+			workers = runtime.GOMAXPROCS(0)
 		}
-		summary := fmt.Sprintf("hashed %d/%d file(s) with %s", total-failed, total, req.Algo)
-		if failed == total {
+		if workers > total {
+			workers = total
+		}
+
+		jobs := make(chan string)
+		var (
+			wg        sync.WaitGroup
+			completed atomic.Int64
+			failed    atomic.Int64
+		)
+
+		for w := 0; w < workers; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for src := range jobs {
+					if err := ctx.Err(); err != nil {
+						return
+					}
+					res, terr := Hash(src, req.Algo)
+					done := completed.Add(1)
+					if terr != nil {
+						failed.Add(1)
+						emit(tools.Progress{
+							Level:       tools.SeverityError,
+							CurrentItem: filepath.Base(src),
+							Fraction:    float64(done) / float64(total),
+							Message:     fmt.Sprintf("[%d/%d] %s: %s", done, total, src, terr.Message),
+						})
+						continue
+					}
+					emit(tools.Progress{
+						Level:       tools.SeverityInfo,
+						CurrentItem: filepath.Base(src),
+						Fraction:    float64(done) / float64(total),
+						Message:     fmt.Sprintf("%s  %s", res.Digest, res.Path),
+					})
+				}
+			}()
+		}
+
+	feed:
+		for _, src := range req.Sources {
+			select {
+			case <-ctx.Done():
+				break feed
+			case jobs <- src:
+			}
+		}
+		close(jobs)
+		wg.Wait()
+
+		if err := ctx.Err(); err != nil {
+			emit(tools.Progress{Completed: true, Err: &tools.Error{
+				Code: tools.CodeAborted, Message: "hash canceled",
+			}})
+			return
+		}
+		nFailed := int(failed.Load())
+		summary := fmt.Sprintf("hashed %d/%d file(s) with %s", total-nFailed, total, req.Algo)
+		if nFailed == total {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
 				Code: tools.CodeIO, Message: "all hashes failed", Detail: summary,
 			}})
