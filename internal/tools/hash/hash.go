@@ -157,7 +157,7 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 					if err := ctx.Err(); err != nil {
 						return
 					}
-					res, terr := Hash(src, req.Algo)
+					res, terr := Hash(ctx, src, req.Algo)
 					done := completed.Add(1)
 					if terr != nil {
 						failed.Add(1)
@@ -215,7 +215,12 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 // Hash computes the digest of a single file using algo. Returns a structured
 // Result on success. Used by Run internally and exported so callers (CLI,
 // Verify, future server) can hash one file without spinning up a channel.
-func Hash(path string, algo Algo) (*Result, *tools.Error) {
+//
+// The ctx parameter is checked between 32 KiB read chunks of the file's
+// stream, so a Ctrl+C during a multi-GB hash preempts within a chunk
+// instead of blocking on the whole file (the old io.Copy was uncancellable).
+// Pass context.Background() if you don't need cancellation.
+func Hash(ctx context.Context, path string, algo Algo) (*Result, *tools.Error) {
 	h, terr := newHasher(algo)
 	if terr != nil {
 		return nil, terr
@@ -225,14 +230,43 @@ func Hash(path string, algo Algo) (*Result, *tools.Error) {
 		return nil, &tools.Error{Code: tools.CodeIO, Message: "open file", Detail: err.Error()}
 	}
 	defer f.Close()
-	if _, err := io.Copy(h, f); err != nil {
-		return nil, &tools.Error{Code: tools.CodeIO, Message: "read file", Detail: err.Error()}
+	if terr := streamInto(ctx, h, f); terr != nil {
+		return nil, terr
 	}
 	return &Result{
 		Path:   path,
 		Digest: hex.EncodeToString(h.Sum(nil)),
 		Algo:   algo,
 	}, nil
+}
+
+// streamCopyChunk is the read-and-write granularity used by streamInto.
+// 32 KiB matches io.Copy's default buffer and keeps memory flat across
+// many-file workloads — a 500-file batch with a 1 MiB chunk would burn
+// 500 MiB of GC pressure. ctx.Err() is checked between chunks, so a 1 GB
+// hash preempts within ~100 µs (32 KiB / typical 300 MiB/s sha256).
+const streamCopyChunk = 32 << 10
+
+// streamInto copies r into h in streamCopyChunk-sized chunks, checking
+// ctx.Err() between chunks. Used by Hash so a Run worker that takes ctx
+// from the caller can preempt a long-running file mid-hash.
+func streamInto(ctx context.Context, h hash.Hash, r io.Reader) *tools.Error {
+	buf := make([]byte, streamCopyChunk)
+	for {
+		if err := ctx.Err(); err != nil {
+			return &tools.Error{Code: tools.CodeAborted, Message: "hash canceled", Detail: err.Error()}
+		}
+		n, err := r.Read(buf)
+		if n > 0 {
+			h.Write(buf[:n])
+		}
+		if err == io.EOF { //nolint:errorlint // io.Reader contract guarantees the sentinel here
+			return nil
+		}
+		if err != nil {
+			return &tools.Error{Code: tools.CodeIO, Message: "read file", Detail: err.Error()}
+		}
+	}
 }
 
 // VerifyEntry is one row of a parsed manifest plus its recomputed status.
@@ -256,7 +290,7 @@ type VerifyEntry struct {
 //   - Each unreadable target file is reported per-entry via OK=false + Err,
 //     not as a Verify-level failure — so a manifest with some missing files
 //     still produces a usable report.
-func Verify(manifestPath string, algo Algo) ([]VerifyEntry, *tools.Error) {
+func Verify(ctx context.Context, manifestPath string, algo Algo) ([]VerifyEntry, *tools.Error) {
 	if _, terr := newHasher(algo); terr != nil {
 		return nil, terr
 	}
@@ -290,8 +324,11 @@ func Verify(manifestPath string, algo Algo) ([]VerifyEntry, *tools.Error) {
 		if !filepath.IsAbs(target) {
 			target = filepath.Join(manifestDir, path)
 		}
+		if err := ctx.Err(); err != nil {
+			return nil, &tools.Error{Code: tools.CodeAborted, Message: "verify canceled", Detail: err.Error()}
+		}
 		entry := VerifyEntry{Path: path, Expected: digest}
-		res, terr := Hash(target, algo)
+		res, terr := Hash(ctx, target, algo)
 		if terr != nil {
 			entry.OK = false
 			entry.Err = terr.Message

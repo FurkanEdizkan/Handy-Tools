@@ -39,7 +39,7 @@ func cmdHash(ctx context.Context, _ config.Config, args []string) int {
 		if len(positional) != 0 {
 			return usageErr(os.Stderr, "hash", "--check is exclusive with positional sources")
 		}
-		return runVerify(*check, algo, *quiet, *asJSON)
+		return runVerify(ctx, *check, algo, *quiet, *asJSON)
 	}
 	if len(positional) == 0 {
 		return usageErr(os.Stderr, "hash", "need at least one source (or --check MANIFEST)")
@@ -60,7 +60,7 @@ func runHash(ctx context.Context, sources []string, algo hash.Algo, quiet, asJSO
 			fmt.Fprintf(os.Stderr, "hash: aborted: %v\n", err)
 			return 2
 		}
-		res, terr := hash.Hash(src, algo)
+		res, terr := hash.Hash(ctx, src, algo)
 		if terr != nil {
 			failed++
 			fmt.Fprintf(os.Stderr, "hash: %s: %s\n", src, terr.Message)
@@ -84,8 +84,8 @@ func runHash(ctx context.Context, sources []string, algo hash.Algo, quiet, asJSO
 
 // runVerify reads a manifest and reports OK / FAILED per entry. Exits 1 on
 // the first mismatch / per-entry error; 0 when every row matched.
-func runVerify(manifestPath string, algo hash.Algo, quiet, asJSON bool) int {
-	entries, terr := hash.Verify(manifestPath, algo)
+func runVerify(ctx context.Context, manifestPath string, algo hash.Algo, quiet, asJSON bool) int {
+	entries, terr := hash.Verify(ctx, manifestPath, algo)
 	if terr != nil {
 		fmt.Fprintf(os.Stderr, "hash --check: %s\n", terr.Message)
 		return exitCode(terr)

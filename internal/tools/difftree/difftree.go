@@ -92,7 +92,12 @@ type entry struct {
 // Inspect synchronously walks both trees and returns a sorted list of diffs.
 // Use this when you have the report up-front (CLI default, future UI summary
 // pane). Run wraps Inspect for callers that want a Progress stream.
-func Inspect(req Request) ([]Diff, *tools.Error) {
+//
+// ctx is checked between 1 MiB chunks of each hashed file (ModeHash) and
+// before each tree walk so a Ctrl+C during a multi-GB diff preempts within
+// a chunk instead of waiting for the current file. Pass context.Background()
+// when cancellation isn't needed.
+func Inspect(ctx context.Context, req Request) ([]Diff, *tools.Error) {
 	if req.A == "" || req.B == "" {
 		return nil, &tools.Error{Code: tools.CodeBadRequest, Message: "diff-tree needs both A and B paths"}
 	}
@@ -120,7 +125,7 @@ func Inspect(req Request) ([]Diff, *tools.Error) {
 	if terr != nil {
 		return nil, terr
 	}
-	return compareMaps(req.A, req.B, aMap, bMap, mode, req.Parallelism)
+	return compareMaps(ctx, req.A, req.B, aMap, bMap, mode, req.Parallelism)
 }
 
 // Run streams one Progress event per diff entry plus a terminal summary.
@@ -140,7 +145,7 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 			case ch <- p:
 			}
 		}
-		diffs, terr := Inspect(req)
+		diffs, terr := Inspect(ctx, req)
 		if terr != nil {
 			emit(tools.Progress{Completed: true, Err: terr})
 			return
@@ -238,7 +243,7 @@ func walkRoot(root string) (map[string]entry, *tools.Error) {
 // goroutines (capped at GOMAXPROCS by default). ModeMTime stays serial —
 // its inner loop is map lookups and time comparison, no I/O. Removed and
 // Added entries are collected serially since they involve no I/O either.
-func compareMaps(aRoot, bRoot string, a, b map[string]entry, mode Mode, parallelism int) ([]Diff, *tools.Error) {
+func compareMaps(ctx context.Context, aRoot, bRoot string, a, b map[string]entry, mode Mode, parallelism int) ([]Diff, *tools.Error) {
 	var out []Diff
 	if mode == ModeMTime {
 		// Single-pass: ModeMTime's per-pair check is sub-microsecond, no
@@ -250,7 +255,7 @@ func compareMaps(aRoot, bRoot string, a, b map[string]entry, mode Mode, parallel
 				out = append(out, Diff{Path: path, Status: StatusRemoved})
 				continue
 			}
-			reason, changed, terr := compareEntry(
+			reason, changed, terr := compareEntry(ctx,
 				filepath.Join(aRoot, filepath.FromSlash(path)),
 				filepath.Join(bRoot, filepath.FromSlash(path)),
 				ea, eb, mode)
@@ -288,7 +293,7 @@ func compareMaps(aRoot, bRoot string, a, b map[string]entry, mode Mode, parallel
 			}
 		}
 		if len(pairs) > 0 {
-			hashed, terr := compareHashParallel(aRoot, bRoot, pairs, parallelism)
+			hashed, terr := compareHashParallel(ctx, aRoot, bRoot, pairs, parallelism)
 			if terr != nil {
 				return nil, terr
 			}
@@ -310,7 +315,7 @@ func compareMaps(aRoot, bRoot string, a, b map[string]entry, mode Mode, parallel
 // comparison — partial diff reports are worse than a clear error. Workers
 // short-circuit on first error via the shared `abort` channel; the result
 // is deterministic because we collect into a slice and the caller sorts.
-func compareHashParallel(aRoot, bRoot string, pairs []pairLike, parallelism int) ([]Diff, *tools.Error) {
+func compareHashParallel(ctx context.Context, aRoot, bRoot string, pairs []pairLike, parallelism int) ([]Diff, *tools.Error) {
 	workers := parallelism
 	if workers <= 0 {
 		workers = runtime.GOMAXPROCS(0)
@@ -333,7 +338,7 @@ func compareHashParallel(aRoot, bRoot string, pairs []pairLike, parallelism int)
 		go func() {
 			defer wg.Done()
 			for p := range jobs {
-				reason, changed, terr := compareEntry(
+				reason, changed, terr := compareEntry(ctx,
 					filepath.Join(aRoot, filepath.FromSlash(p.path)),
 					filepath.Join(bRoot, filepath.FromSlash(p.path)),
 					p.ea, p.eb, ModeHash)
@@ -386,7 +391,11 @@ type pairLike struct {
 // first because it's cheap and unambiguous; only when sizes match do we fall
 // through to the mtime or hash strategy. Hash mode reads each file from
 // disk so callers should expect compareMaps to be O(bytes) in that mode.
-func compareEntry(aPath, bPath string, ea, eb entry, mode Mode) (string, bool, *tools.Error) {
+//
+// ctx is honoured between 32 KiB read chunks of each hashed file so a Ctrl+C
+// during a multi-GB pair preempts within a chunk instead of finishing the
+// current file.
+func compareEntry(ctx context.Context, aPath, bPath string, ea, eb entry, mode Mode) (string, bool, *tools.Error) {
 	if ea.Size != eb.Size {
 		return "size", true, nil
 	}
@@ -396,11 +405,11 @@ func compareEntry(aPath, bPath string, ea, eb entry, mode Mode) (string, bool, *
 		}
 		return "", false, nil
 	}
-	ah, err := hashFile(aPath)
+	ah, err := hashFile(ctx, aPath)
 	if err != nil {
 		return "", false, &tools.Error{Code: tools.CodeIO, Message: "hash A side", Detail: err.Error()}
 	}
-	bh, err := hashFile(bPath)
+	bh, err := hashFile(ctx, bPath)
 	if err != nil {
 		return "", false, &tools.Error{Code: tools.CodeIO, Message: "hash B side", Detail: err.Error()}
 	}
@@ -410,19 +419,38 @@ func compareEntry(aPath, bPath string, ea, eb entry, mode Mode) (string, bool, *
 	return "", false, nil
 }
 
+// hashChunk is the read granularity for hashFile's cancellable stream.
+// Mirrors hash.streamCopyChunk — 32 KiB matches io.Copy's default and
+// keeps memory flat across many-file diffs (a 500-file hash-mode pass
+// with a 1 MiB chunk burned ~1 GiB of B/op; 32 KiB drops it back to ~32 MiB).
+
 // hashFile returns a lowercase hex SHA256 of the file at path. Kept local to
 // the package — the internal/tools/hash package's Hash() wraps a Result struct
 // we don't need here, and a tiny inline helper keeps the dependency surface
-// minimal.
-func hashFile(path string) (string, error) {
+// minimal. ctx is checked between 32 KiB read chunks so a long single-file
+// hash can be cancelled without finishing the file.
+func hashFile(ctx context.Context, path string) (string, error) {
 	f, err := os.Open(path) //nolint:gosec // path comes from a walk over the caller-supplied root
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
 	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
+	buf := make([]byte, 32<<10)
+	for {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		n, rerr := f.Read(buf)
+		if n > 0 {
+			h.Write(buf[:n])
+		}
+		if rerr == io.EOF { //nolint:errorlint // io.Reader contract guarantees the sentinel here
+			break
+		}
+		if rerr != nil {
+			return "", rerr
+		}
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }

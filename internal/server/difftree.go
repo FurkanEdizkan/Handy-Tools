@@ -46,7 +46,7 @@ func (h *DiffTreeHandler) Run(ctx context.Context, p DiffTreeParams, emit func(t
 // Inspect is the synchronous form — used by transports that want the full
 // diff slice up front (e.g., an MCP tool that returns the report as JSON
 // instead of replaying a progress stream).
-func (h *DiffTreeHandler) Inspect(p DiffTreeParams) ([]difftree.Diff, error) {
+func (h *DiffTreeHandler) Inspect(ctx context.Context, p DiffTreeParams) ([]difftree.Diff, error) {
 	a, err := h.Opts.CheckPath(p.A)
 	if err != nil {
 		return nil, err
@@ -56,7 +56,7 @@ func (h *DiffTreeHandler) Inspect(p DiffTreeParams) ([]difftree.Diff, error) {
 		return nil, err
 	}
 	mode, _ := difftree.ParseMode(p.Mode)
-	diffs, terr := difftree.Inspect(difftree.Request{A: a, B: b, Mode: mode})
+	diffs, terr := difftree.Inspect(ctx, difftree.Request{A: a, B: b, Mode: mode})
 	if terr != nil {
 		return nil, terr
 	}

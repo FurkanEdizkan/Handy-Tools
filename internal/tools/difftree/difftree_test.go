@@ -39,7 +39,7 @@ func TestInspectAddedRemovedChanged(t *testing.T) {
 		}
 	}
 
-	diffs, terr := Inspect(Request{A: a, B: b})
+	diffs, terr := Inspect(context.Background(), Request{A: a, B: b})
 	if terr != nil {
 		t.Fatalf("inspect: %v", terr)
 	}
@@ -75,7 +75,7 @@ func TestInspectHashCatchesContentChangeWithSameMtimeAndSize(t *testing.T) {
 		}
 	}
 
-	mtimeDiffs, terr := Inspect(Request{A: a, B: b, Mode: ModeMTime})
+	mtimeDiffs, terr := Inspect(context.Background(), Request{A: a, B: b, Mode: ModeMTime})
 	if terr != nil {
 		t.Fatalf("inspect mtime: %v", terr)
 	}
@@ -83,7 +83,7 @@ func TestInspectHashCatchesContentChangeWithSameMtimeAndSize(t *testing.T) {
 		t.Errorf("mtime mode shouldn't notice content-only change, got %+v", mtimeDiffs)
 	}
 
-	hashDiffs, terr := Inspect(Request{A: a, B: b, Mode: ModeHash})
+	hashDiffs, terr := Inspect(context.Background(), Request{A: a, B: b, Mode: ModeHash})
 	if terr != nil {
 		t.Fatalf("inspect hash: %v", terr)
 	}
@@ -112,7 +112,7 @@ func TestInspectSymlinkLoopDoesNotHang(t *testing.T) {
 	var terr *tools.Error
 	go func() {
 		defer close(done)
-		diffs, terr = Inspect(Request{A: a, B: b})
+		diffs, terr = Inspect(context.Background(), Request{A: a, B: b})
 	}()
 	select {
 	case <-done:
@@ -139,17 +139,17 @@ func TestInspectSymlinkLoopDoesNotHang(t *testing.T) {
 }
 
 func TestInspectRejectsBadRequest(t *testing.T) {
-	if _, terr := Inspect(Request{}); terr == nil || terr.Code != tools.CodeBadRequest {
+	if _, terr := Inspect(context.Background(), Request{}); terr == nil || terr.Code != tools.CodeBadRequest {
 		t.Errorf("empty paths should be BAD_REQUEST, got %+v", terr)
 	}
 	// Non-directory root.
 	tmp := t.TempDir()
 	f := filepath.Join(tmp, "f")
 	write(t, f, "x")
-	if _, terr := Inspect(Request{A: f, B: tmp}); terr == nil || terr.Code != tools.CodeBadRequest {
+	if _, terr := Inspect(context.Background(), Request{A: f, B: tmp}); terr == nil || terr.Code != tools.CodeBadRequest {
 		t.Errorf("file-as-root should be BAD_REQUEST, got %+v", terr)
 	}
-	if _, terr := Inspect(Request{A: tmp, B: tmp, Mode: "mystery"}); terr == nil || terr.Code != tools.CodeBadRequest {
+	if _, terr := Inspect(context.Background(), Request{A: tmp, B: tmp, Mode: "mystery"}); terr == nil || terr.Code != tools.CodeBadRequest {
 		t.Errorf("unknown mode should be BAD_REQUEST, got %+v", terr)
 	}
 }
@@ -192,5 +192,46 @@ func TestParseMode(t *testing.T) {
 		if got != tc.want || ok != tc.ok {
 			t.Errorf("ParseMode(%q) = (%q, %v), want (%q, %v)", tc.in, got, ok, tc.want, tc.ok)
 		}
+	}
+}
+
+// TestInspectHonoursContextCancellation locks in the F2 mid-file ctx
+// behavior for ModeHash: when ctx is canceled before Inspect is called,
+// hashFile's per-chunk ctx.Err() check fires and Inspect surfaces an
+// IO_ERROR wrapping the cancellation (not a successful diff).
+//
+// Two same-sized files with different bytes are needed so the comparison
+// reaches hashFile (size mismatch would short-circuit).
+func TestInspectHonoursContextCancellation(t *testing.T) {
+	root := t.TempDir()
+	a := filepath.Join(root, "A")
+	b := filepath.Join(root, "B")
+	// File >hashChunk (1 MiB) so hashFile loops at least once.
+	bigA := make([]byte, 2<<20)
+	bigB := make([]byte, 2<<20)
+	bigB[0] = 1 // different content, same size
+	if err := os.MkdirAll(a, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(b, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(a, "blob.bin"), bigA, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(b, "blob.bin"), bigB, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, terr := Inspect(ctx, Request{A: a, B: b, Mode: ModeHash})
+	if terr == nil {
+		t.Fatal("expected error, got nil diff list")
+	}
+	// hashFile's cancellation surfaces as ctx.Canceled which compareEntry
+	// wraps with CodeIO; either Code is acceptable as long as the error
+	// references the cancellation, not a successful diff.
+	if !strings.Contains(terr.Error(), "context canceled") {
+		t.Fatalf("expected error to mention context canceled, got %q", terr.Error())
 	}
 }

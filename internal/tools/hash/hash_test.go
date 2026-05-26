@@ -39,7 +39,7 @@ func TestHashKnownVectors(t *testing.T) {
 		t.Run(string(v.algo), func(t *testing.T) {
 			p := filepath.Join(dir, "in.bin")
 			writeFile(t, p, v.input)
-			res, terr := Hash(p, v.algo)
+			res, terr := Hash(context.Background(), p, v.algo)
 			if terr != nil {
 				t.Fatalf("hash: %v", terr)
 			}
@@ -123,7 +123,7 @@ func TestVerifyRoundTrip(t *testing.T) {
 		"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad  b.txt\n"
 	writeFile(t, manifest, body)
 
-	entries, terr := Verify(manifest, AlgoSHA256)
+	entries, terr := Verify(context.Background(), manifest, AlgoSHA256)
 	if terr != nil {
 		t.Fatalf("verify: %v", terr)
 	}
@@ -145,7 +145,7 @@ func TestVerifyCatchesMismatch(t *testing.T) {
 	writeFile(t, manifest,
 		"0000000000000000000000000000000000000000000000000000000000000000  a.txt\n")
 
-	entries, terr := Verify(manifest, AlgoSHA256)
+	entries, terr := Verify(context.Background(), manifest, AlgoSHA256)
 	if terr != nil {
 		t.Fatalf("verify: %v", terr)
 	}
@@ -159,7 +159,7 @@ func TestVerifyHandlesMissingFile(t *testing.T) {
 	manifest := filepath.Join(dir, "SHA256SUMS")
 	writeFile(t, manifest,
 		"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad  nope.txt\n")
-	entries, terr := Verify(manifest, AlgoSHA256)
+	entries, terr := Verify(context.Background(), manifest, AlgoSHA256)
 	if terr != nil {
 		t.Fatalf("verify: %v", terr)
 	}
@@ -172,7 +172,7 @@ func TestVerifyRejectsMalformedLine(t *testing.T) {
 	dir := t.TempDir()
 	manifest := filepath.Join(dir, "SHA256SUMS")
 	writeFile(t, manifest, "this line has no separator\n")
-	_, terr := Verify(manifest, AlgoSHA256)
+	_, terr := Verify(context.Background(), manifest, AlgoSHA256)
 	if terr == nil || terr.Code != tools.CodeBadRequest {
 		t.Fatalf("expected BAD_REQUEST for malformed line, got %+v", terr)
 	}
@@ -201,5 +201,30 @@ func TestParseManifestLine(t *testing.T) {
 			t.Errorf("parseManifestLine(%q) = (%q,%q,%v); want (%q,%q,%v)",
 				tc.in, d, p, ok, tc.digest, tc.path, tc.ok)
 		}
+	}
+}
+
+// TestHashHonoursContextCancellation locks in the F2 mid-file ctx behavior:
+// when ctx is already canceled before Hash is called, the function returns
+// CodeAborted instead of completing the hash. The pre-cancel variant is
+// fully deterministic — no timing assertions — and exercises the per-chunk
+// ctx.Err() check at the head of streamInto.
+func TestHashHonoursContextCancellation(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "blob.bin")
+	// File must be larger than streamCopyChunk (1 MiB) so streamInto's loop
+	// gets at least one full chunk and reaches the ctx.Err() check; ~2 MiB
+	// of zero bytes is plenty.
+	if err := os.WriteFile(path, make([]byte, 2<<20), 0o644); err != nil {
+		t.Fatalf("write blob: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, terr := Hash(ctx, path, AlgoSHA256)
+	if terr == nil {
+		t.Fatal("expected aborted error, got nil")
+	}
+	if terr.Code != tools.CodeAborted {
+		t.Fatalf("expected CodeAborted, got %q (%s)", terr.Code, terr.Message)
 	}
 }
