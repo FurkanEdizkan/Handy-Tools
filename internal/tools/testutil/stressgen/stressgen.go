@@ -33,7 +33,7 @@ func EnsureFreeSpace(dir string) error {
 	if err := syscall.Statfs(dir, &st); err != nil {
 		return nil
 	}
-	free := uint64(st.Bavail) * uint64(st.Bsize) //nolint:gosec // values fit
+	free := st.Bavail * uint64(st.Bsize) //nolint:gosec // values fit
 	if free < MinFreeBytes {
 		return fmt.Errorf("stressgen: need at least %d GiB free at %s, have %d MiB",
 			MinFreeBytes>>30, dir, free>>20)

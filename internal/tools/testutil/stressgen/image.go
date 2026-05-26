@@ -51,7 +51,12 @@ func writeRandomJPEG(path string, dims int, seed, idx uint64) error {
 	for by := 0; by < dims; by += block {
 		for bx := 0; bx < dims; bx += block {
 			v := r.Uint32()
-			c := color.RGBA{byte(v), byte(v >> 8), byte(v >> 16), 255}
+			c := color.RGBA{
+				R: byte(v & 0xff),
+				G: byte((v >> 8) & 0xff),
+				B: byte((v >> 16) & 0xff),
+				A: 255,
+			}
 			for y := by; y < by+block && y < dims; y++ {
 				for x := bx; x < bx+block && x < dims; x++ {
 					img.SetRGBA(x, y, c)

@@ -1,6 +1,7 @@
 package stressgen
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math/rand/v2"
 	"os"
@@ -58,8 +59,8 @@ func HashLarge(dir string, size int64, seed uint64) (string, error) {
 }
 
 // writeRandomFile streams size bytes of PRNG-derived data into path. Uses a
-// 1 MiB buffer; the rand.Source produces 8 bytes per call so we copy through
-// a slice instead of calling Uint64 a few hundred million times.
+// 1 MiB buffer filled in 8-byte chunks (binary.LittleEndian) so the rand
+// source's per-call cost amortises across 8 bytes of output.
 func writeRandomFile(path string, size int64, r *rand.Rand) error {
 	f, err := os.Create(path) //nolint:gosec // deterministic stress fixture
 	if err != nil {
@@ -69,17 +70,8 @@ func writeRandomFile(path string, size int64, r *rand.Rand) error {
 	buf := make([]byte, bufSize)
 	var written int64
 	for written < size {
-		// Fill the buffer with 8-byte chunks.
-		for i := 0; i < len(buf); i += 8 {
-			v := r.Uint64()
-			buf[i+0] = byte(v)
-			buf[i+1] = byte(v >> 8)
-			buf[i+2] = byte(v >> 16)
-			buf[i+3] = byte(v >> 24)
-			buf[i+4] = byte(v >> 32)
-			buf[i+5] = byte(v >> 40)
-			buf[i+6] = byte(v >> 48)
-			buf[i+7] = byte(v >> 56)
+		for i := 0; i+8 <= bufSize; i += 8 {
+			binary.LittleEndian.PutUint64(buf[i:i+8], r.Uint64())
 		}
 		remaining := size - written
 		write := int64(bufSize)
