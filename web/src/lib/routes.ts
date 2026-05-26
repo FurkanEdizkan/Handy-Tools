@@ -63,6 +63,27 @@ export const navItems: NavItem[] = [
     section: 'tools',
     matches: (p) => p === '/tool/pdf',
   },
+  {
+    href: '#/tool/hash',
+    label: 'Hash files',
+    glyph: '#',
+    section: 'tools',
+    matches: (p) => p === '/tool/hash',
+  },
+  {
+    href: '#/tool/diff-tree',
+    label: 'Diff two folders',
+    glyph: '⇆',
+    section: 'tools',
+    matches: (p) => p === '/tool/diff-tree',
+  },
+  {
+    href: '#/tool/rename',
+    label: 'Batch rename',
+    glyph: '✎',
+    section: 'tools',
+    matches: (p) => p === '/tool/rename',
+  },
   { href: '#/doctor', label: 'Doctor', glyph: '◊', section: 'system', matches: (p) => p === '/doctor' },
   { href: '#/jobs', label: 'Jobs', glyph: '⌗', section: 'system', matches: (p) => p === '/jobs' },
   {

@@ -109,6 +109,75 @@ export interface CompressRequest {
   password?: string;
 }
 
+export type HashAlgo = 'md5' | 'sha256' | 'blake3';
+
+/** POST /v1/hash. */
+export interface HashRunRequest {
+  sources: FileRef[];
+  algo: HashAlgo;
+}
+
+/** POST /v1/hash/verify. */
+export interface HashVerifyRequest {
+  manifest: FileRef;
+  algo: HashAlgo;
+}
+
+export interface HashVerifyEntry {
+  path: string;
+  expected: string;
+  got?: string;
+  ok: boolean;
+  err?: string;
+}
+
+export interface HashVerifyResponse {
+  entries: HashVerifyEntry[];
+  ok: number;
+  failed: number;
+  missing: number;
+}
+
+export type DiffTreeMode = 'mtime' | 'hash';
+
+/** POST /v1/diff-tree/inspect. */
+export interface DiffTreeInspectRequest {
+  a: FileRef;
+  b: FileRef;
+  mode: DiffTreeMode;
+}
+
+export type DiffStatus = 'added' | 'removed' | 'changed';
+
+export interface DiffEntry {
+  path: string;
+  status: DiffStatus;
+  reason?: string;
+}
+
+export interface DiffTreeInspectResponse {
+  entries: DiffEntry[];
+}
+
+export type RenameCollision = 'error' | 'skip' | 'suffix';
+
+/** POST /v1/rename/inspect and POST /v1/rename/run. */
+export interface RenameRequest {
+  sources: FileRef[];
+  pattern: string;
+  replace: string;
+  onCollision?: RenameCollision;
+}
+
+export interface RenamePlan {
+  from: string;
+  to: string;
+}
+
+export interface RenameInspectResponse {
+  plans: RenamePlan[];
+}
+
 export interface JobResponse {
   jobId: string;
 }
