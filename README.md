@@ -87,9 +87,16 @@ The installer detects your OS/arch, downloads the matching release tarball,
 verifies it against `checksums.txt`, and drops `handy`, `htools`, `htoolsd`,
 and `htools-mcp` into `$HOME/.local/bin`.
 
-After install it lists missing optional system tools. Pass `--install-deps`
-(and optionally `--yes`) to have it run the matching `apt-get` / `dnf` /
-`pacman` / `brew` command.
+On **linux/amd64** it also pulls a second tarball and installs `htools-gui`
+— the Wails desktop app — alongside the CLI binaries. Pass `--no-gui`
+(or `HANDY_TOOLS_NO_GUI=1`) to skip it on headless servers and container
+builds. macOS and linux/arm64 don't get the GUI today; the installer
+prints a one-line note and continues with the CLI binaries.
+
+After install it lists missing optional system tools (and `libwebkit2gtk`
+when the GUI was installed but the runtime library isn't on the system).
+Pass `--install-deps` (and optionally `--yes`) to have it run the
+matching `apt-get` / `dnf` / `pacman` / `brew` command.
 
 ### Uninstall
 
@@ -113,15 +120,20 @@ way it does for install.
 | --------------------------------------------- | ----------------------------------------------------- |
 | `--version 0.2.0` / `HANDY_TOOLS_VERSION`     | Pin a specific version (default: latest).             |
 | `--dir PATH` / `HANDY_TOOLS_INSTALL_DIR`      | Override the install/uninstall directory.             |
-| `--install-deps` / `HANDY_TOOLS_INSTALL_DEPS` | Also install the optional system tools.               |
+| `--install-deps` / `HANDY_TOOLS_INSTALL_DEPS` | Also install the optional system tools + `libwebkit2gtk`. |
+| `--no-gui` / `HANDY_TOOLS_NO_GUI`             | Skip the desktop GUI tarball even on linux/amd64.     |
 | `--uninstall` / `HANDY_TOOLS_UNINSTALL`       | Remove binaries + config + cache, then exit.          |
 | `--yes`                                       | Skip the `[y/N]` prompt (deps install and uninstall). |
 
 ### Manual install
 
-Pick the archive for your OS/arch from the [releases page] (it includes
-`LICENSE`, `README.md`, and `docs/`), extract, put both binaries on your PATH.
-Each release also publishes a `*_source.tar.gz` and a `checksums.txt`.
+Pick the `handy-tools_VERSION_OS_ARCH.tar.gz` archive for your OS/arch from
+the [releases page] (it includes `LICENSE`, `README.md`, and `docs/` plus
+the four CLI binaries), extract it, and put the binaries on your PATH.
+For the desktop app on linux/amd64, also grab
+`handy-tools-gui_VERSION_linux_amd64.tar.gz` from the same release and
+extract `htools-gui` next to the others. Each release publishes a
+`*_source.tar.gz` and a `checksums.txt`.
 
 [releases page]: https://github.com/FurkanEdizkan/Handy-Tools/releases
 
