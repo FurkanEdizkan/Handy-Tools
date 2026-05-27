@@ -25,14 +25,26 @@ func (s *Server) handleArchiveInspect(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, inspectResponse{
 		Format:                archiveFormatName(ins.Format),
 		MultiPart:             ins.MultiPart,
-		DetectedParts:         ins.DetectedParts,
-		MissingParts:          ins.MissingParts,
+		DetectedParts:         orEmpty(ins.DetectedParts),
+		MissingParts:          orEmpty(ins.MissingParts),
 		UncompressedSizeBytes: ins.UncompressedSz,
 		EntryCount:            ins.EntryCount,
 		RequiresPassword:      ins.RequiresPwd,
 		RequiresBinary:        ins.RequiresBinary,
 		BinaryAvailable:       ins.BinaryAvailable,
 	})
+}
+
+// orEmpty replaces a nil string slice with a non-nil empty one. The JSON
+// encoder serializes nil slices as null, which would land on TS clients as
+// `null` and crash anything that does `.length` on the field — exactly what
+// happened to ToolArchiveExtract before. Use this on every []string field of
+// inspectResponse where the underlying tool may return nil.
+func orEmpty(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }
 
 func (s *Server) handleArchiveExtract(w http.ResponseWriter, r *http.Request) {

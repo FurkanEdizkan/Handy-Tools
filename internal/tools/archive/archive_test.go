@@ -87,6 +87,22 @@ func TestExtractZipWritesAllEntries(t *testing.T) {
 	}
 }
 
+// TestOutputDirFlagPerBinary locks in the unrar-vs-7z difference that broke
+// every GUI Extract: unrar interprets `-o<path>` as "overwrite mode <path>"
+// and exits "Unknown option: o<path>", while 7z uses `-o<path>` as the
+// output-dir flag. unrar's actual output-path switch is `-op<path>`.
+func TestOutputDirFlagPerBinary(t *testing.T) {
+	if got := outputDirFlag("unrar", "/dest"); got != "-op/dest" {
+		t.Errorf("unrar: got %q want %q", got, "-op/dest")
+	}
+	if got := outputDirFlag("7z", "/dest"); got != "-o/dest" {
+		t.Errorf("7z: got %q want %q", got, "-o/dest")
+	}
+	if got := outputDirFlag("other", "/dest"); got != "-o/dest" {
+		t.Errorf("default: got %q want %q", got, "-o/dest")
+	}
+}
+
 func TestSafeJoinRejectsTraversal(t *testing.T) {
 	if _, err := safeJoin("/tmp/dest", "../escape.txt"); err == nil {
 		t.Fatal("expected error for ../escape.txt")

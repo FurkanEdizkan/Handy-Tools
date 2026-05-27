@@ -20,6 +20,8 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, healthResponse{
 		Version:        buildinfo.Version,
+		Commit:         buildinfo.Commit,
+		BuildDate:      buildinfo.Date,
 		UptimeSeconds:  int64(time.Since(s.startedAt).Seconds()),
 		Transports:     []string{"grpc", "http"},
 		ToolsAvailable: available,

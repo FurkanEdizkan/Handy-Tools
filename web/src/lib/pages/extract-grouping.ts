@@ -50,11 +50,16 @@ export function groupArchives(
   const errors: InspectedSource[] = [];
 
   for (const { src, ins } of items) {
-    if (ins.multiPart && ins.missingParts.length > 0) {
+    // Go's JSON encoder serializes nil slices as null. The backend was
+    // patched to normalize these to []; the `?? []` here defends older
+    // backends and any other endpoint that hasn't been normalized.
+    const missing = ins.missingParts ?? [];
+    const detected = ins.detectedParts ?? [];
+    if (ins.multiPart && missing.length > 0) {
       errors.push({ src, ins });
       continue;
     }
-    const parts = ins.detectedParts.length > 0 ? ins.detectedParts : [src.path];
+    const parts = detected.length > 0 ? detected : [src.path];
     const existing = parts.map((p) => seen.get(p)).find((g): g is ExtractGroup => !!g);
     if (existing) {
       if (!existing.members.includes(src.path)) existing.members.push(src.path);

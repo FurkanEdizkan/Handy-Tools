@@ -223,6 +223,16 @@ func (q *Queue) Subscribe(ctx context.Context, jobID string) (<-chan tools.Progr
 	return ch, nil
 }
 
+// SubscribeAllCount returns the number of currently-registered SubscribeAll
+// listeners. Exists for tests that need to know when a handler has finished
+// registering before enqueuing a job — SubscribeAll is live-only, so a
+// pre-subscription Enqueue's snapshot is lost.
+func (q *Queue) SubscribeAllCount() int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return len(q.allSubs)
+}
+
 // SubscribeAll streams Job lifecycle snapshots (start, each progress update,
 // completion) across all jobs. The channel is closed when ctx is canceled.
 func (q *Queue) SubscribeAll(ctx context.Context) <-chan Job {
