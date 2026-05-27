@@ -61,7 +61,7 @@ func TestFillFromVCSPopulatesCommit(t *testing.T) {
 		t.Fatalf("Commit core %q is not 7 chars", core)
 	}
 	for _, r := range core {
-		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
 			t.Fatalf("Commit core %q contains non-hex char %q", core, r)
 		}
 	}
