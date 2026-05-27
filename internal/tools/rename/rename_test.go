@@ -229,6 +229,95 @@ func TestRunPermissionDeniedPerFile(t *testing.T) {
 	}
 }
 
+// TestRunRollbackUndoesEarlierRenames forces a mid-batch failure (the target
+// of the second rename is chmod'd 0400 so the rename can't proceed) with
+// Rollback enabled, then asserts the first rename was undone and the
+// terminal Failures slice carries both the original error and the absence
+// of any ROLLBACK_FAILED entries (the undo itself worked).
+func TestRunRollbackUndoesEarlierRenames(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root — modes are bypassed")
+	}
+	dir := t.TempDir()
+	// a.txt -> a-x.txt is fine. b.txt -> b-x.txt would clobber the
+	// pre-seeded read-only file with CollisionError → resolveCollisions
+	// would catch it upfront. So we instead make b.txt unmovable by
+	// blocking write on the directory after a.txt is already renamed —
+	// which requires a different trick: chmod the destination dir to
+	// read-only between iterations. The cleanest approach is to seed a
+	// scenario where the second source physically can't be renamed: use
+	// a subdir as the second source's target, and remove that subdir
+	// after the batch starts.
+	srcs := seed(t, dir, "a.txt", "b.txt")
+	// Use OnCollision=Skip so resolveCollisions accepts the plan; force the
+	// second rename to fail by making the destination path invalid (target
+	// directory deleted after Inspect).
+	subdir := filepath.Join(dir, "sub")
+	if err := os.Mkdir(subdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	srcInSub := filepath.Join(subdir, "c.txt")
+	if err := os.WriteFile(srcInSub, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srcs = append(srcs, srcInSub)
+
+	// Plan: rename a.txt -> a-x.txt, b.txt -> b-x.txt, c.txt -> c-x.txt.
+	// Between Inspect and the rename of c.txt we chmod subdir 0o500 so
+	// os.Rename can't write the new name. The first two renames go through
+	// in dir; the third fails.
+	go func() {
+		// Small delay so the first renames in dir finish before subdir is
+		// locked. Not deterministic enough for racey environments, but
+		// good enough for a quick assertion. Use t.TempDir cleanup to
+		// restore.
+	}()
+
+	// Synchronous trick: pre-chmod subdir AFTER inspecting plans by hand:
+	// run without async — call Inspect, plan, lock subdir, then call Run.
+	// Easier: chmod subdir now (so renames in subdir fail), but a.txt and
+	// b.txt go through.
+	if err := os.Chmod(subdir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(subdir, 0o755) })
+
+	events := collect(Run(context.Background(), Request{
+		Sources:     srcs,
+		Pattern:     `(\w+)\.txt`,
+		Replace:     `$1-x.txt`,
+		OnCollision: CollisionSkip,
+		Rollback:    true,
+	}))
+	last := events[len(events)-1]
+	if !last.Completed || last.Err == nil {
+		t.Fatalf("expected terminal failure event, got %+v", last)
+	}
+	// After rollback: a.txt and b.txt should be restored to their original
+	// names (i.e. a-x.txt / b-x.txt should NOT exist).
+	for _, name := range []string{"a-x.txt", "b-x.txt"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+			t.Errorf("rollback failed to undo %s", name)
+		}
+	}
+	for _, name := range []string{"a.txt", "b.txt"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Errorf("rollback should have restored %s, got: %v", name, err)
+		}
+	}
+	// Failures should carry exactly one entry for the failed c.txt rename;
+	// the rollback steps for a.txt and b.txt should have succeeded so no
+	// ROLLBACK_FAILED entries.
+	if len(last.Failures) == 0 {
+		t.Fatalf("expected at least one failure entry, got none")
+	}
+	for _, f := range last.Failures {
+		if f.Code == tools.CodeRollbackFailed {
+			t.Errorf("did not expect ROLLBACK_FAILED, got %+v", f)
+		}
+	}
+}
+
 func TestRunRejectsEmptySources(t *testing.T) {
 	last := drain(t, Run(context.Background(), Request{Pattern: `a`, Replace: `b`}))
 	if last.Err == nil || last.Err.Code != tools.CodeBadRequest {

@@ -25,6 +25,7 @@ func cmdRename(ctx context.Context, _ config.Config, args []string) int {
 	collision := fs.String("on-collision", "error", "what to do when the target exists: error|skip|suffix")
 	dryRun := fs.Bool("dry-run", false, "print the rename plan and exit; do not move anything")
 	strict := fs.Bool("strict", false, "abort before any rename when preflight reports missing/unreadable sources or unwritable targets")
+	rollback := fs.Bool("rollback-on-error", false, "abort on first rename failure and undo every rename already done in this batch")
 	quiet := fs.Bool("quiet", false, "suppress per-event progress lines")
 	asJSON := fs.Bool("json", false, "emit one JSON object per progress event")
 	positional, err := parseFlags(fs, args)
@@ -60,6 +61,7 @@ func cmdRename(ctx context.Context, _ config.Config, args []string) int {
 		Pattern:     *pattern,
 		Replace:     *replace,
 		OnCollision: mode,
+		Rollback:    *rollback,
 	}
 
 	opts := progressOpts{quiet: *quiet, json: *asJSON, strict: *strict}

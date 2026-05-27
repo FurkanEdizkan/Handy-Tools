@@ -16,14 +16,23 @@ import (
 // SDK's typed handler picks this up and serialises it as the result's
 // structuredContent, so an LLM can read either the prose or the JSON.
 type runResult struct {
-	Tool      string   `json:"tool"`
-	Action    string   `json:"action"`
-	OK        bool     `json:"ok"`
-	Messages  []string `json:"messages,omitempty"`
-	Summary   string   `json:"summary,omitempty"`
-	ErrorCode string   `json:"error_code,omitempty"`
-	ErrorMsg  string   `json:"error_message,omitempty"`
-	ErrorHint string   `json:"error_hint,omitempty"`
+	Tool      string             `json:"tool"`
+	Action    string             `json:"action"`
+	OK        bool               `json:"ok"`
+	Messages  []string           `json:"messages,omitempty"`
+	Summary   string             `json:"summary,omitempty"`
+	ErrorCode string             `json:"error_code,omitempty"`
+	ErrorMsg  string             `json:"error_message,omitempty"`
+	ErrorHint string             `json:"error_hint,omitempty"`
+	Failures  []runResultFailure `json:"failures,omitempty"`
+}
+
+// runResultFailure is the JSON-wire shape of one per-file failure carried on
+// the terminal Progress event.
+type runResultFailure struct {
+	Path    string `json:"path"`
+	Code    string `json:"code"`
+	Message string `json:"message,omitempty"`
 }
 
 // drainProgress invokes fn(emit) and accumulates every tools.Progress event.
@@ -52,6 +61,12 @@ func drainProgress(ctx context.Context, toolName, action string, fn func(emit fu
 			} else {
 				res.OK = true
 				res.Summary = strings.TrimSpace(p.Message)
+			}
+			if len(p.Failures) > 0 {
+				res.Failures = make([]runResultFailure, len(p.Failures))
+				for i, f := range p.Failures {
+					res.Failures[i] = runResultFailure{Path: f.Path, Code: f.Code, Message: f.Message}
+				}
 			}
 		}
 		return nil

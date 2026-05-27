@@ -170,7 +170,8 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 		var (
 			wg        sync.WaitGroup
 			completed atomic.Int64
-			failed    atomic.Int64
+			failuresM sync.Mutex
+			failures  []tools.Failure
 		)
 
 		for w := 0; w < workers; w++ {
@@ -184,7 +185,9 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 					res, terr := Hash(ctx, src, req.Algo)
 					done := completed.Add(1)
 					if terr != nil {
-						failed.Add(1)
+						failuresM.Lock()
+						failures = append(failures, tools.Failure{Path: src, Code: terr.Code, Message: terr.Message})
+						failuresM.Unlock()
 						emit(tools.Progress{
 							Level:       tools.SeverityError,
 							CurrentItem: filepath.Base(src),
@@ -218,20 +221,20 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 		if err := ctx.Err(); err != nil {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
 				Code: tools.CodeAborted, Message: "hash canceled",
-			}})
+			}, Failures: failures})
 			return
 		}
-		nFailed := int(failed.Load())
+		nFailed := len(failures)
 		summary := fmt.Sprintf("hashed %d/%d file(s) with %s", total-nFailed, total, req.Algo)
 		if nFailed == total {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
-				Code: tools.CodeIO, Message: "all hashes failed", Detail: summary,
-			}})
+				Code: tools.CoalesceFailureCode(failures), Message: "all hashes failed", Detail: summary,
+			}, Failures: failures})
 			return
 		}
 		emit(tools.Progress{
 			Completed: true, Fraction: 1, Level: tools.SeverityInfo,
-			Message: summary,
+			Message: summary, Failures: failures,
 		})
 	}()
 	return ch

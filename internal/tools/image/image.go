@@ -221,7 +221,8 @@ func BatchConvert(ctx context.Context, req BatchConvertRequest) <-chan tools.Pro
 		var (
 			wg        sync.WaitGroup
 			completed atomic.Int64
-			failed    atomic.Int64
+			failuresM sync.Mutex
+			failures  []tools.Failure
 		)
 
 		for w := 0; w < workers; w++ {
@@ -242,12 +243,15 @@ func BatchConvert(ctx context.Context, req BatchConvertRequest) <-chan tools.Pro
 					})
 					done := completed.Add(1)
 					if terr != nil {
-						failed.Add(1)
+						failuresM.Lock()
+						failures = append(failures, tools.Failure{Path: j.src, Code: terr.Code, Message: terr.Message})
+						failuresM.Unlock()
 						emit(tools.Progress{
 							Level:       tools.SeverityError,
 							CurrentItem: name,
 							Fraction:    float64(done) / float64(total),
-							Message:     fmt.Sprintf("[%d/%d] %s: %s", done, total, name, terr.Message),
+							Message:     fmt.Sprintf("[%d/%d] %s: %s (%s)", done, total, name, terr.Message, terr.Code),
+							Err:         terr,
 						})
 						continue
 					}
@@ -276,19 +280,20 @@ func BatchConvert(ctx context.Context, req BatchConvertRequest) <-chan tools.Pro
 		if err := ctx.Err(); err != nil {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
 				Code: tools.CodeAborted, Message: "batch convert canceled",
-			}})
+			}, Failures: failures})
 			return
 		}
-		nFailed := int(failed.Load())
+		nFailed := len(failures)
 		if nFailed == total {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
-				Code: tools.CodeIO, Message: fmt.Sprintf("all %d conversion(s) failed", total),
-			}})
+				Code: tools.CoalesceFailureCode(failures), Message: fmt.Sprintf("all %d conversion(s) failed", total),
+			}, Failures: failures})
 			return
 		}
 		emit(tools.Progress{
 			Completed: true, Fraction: 1, Level: tools.SeverityInfo,
-			Message: fmt.Sprintf("converted %d/%d image(s)", total-nFailed, total),
+			Message:  fmt.Sprintf("converted %d/%d image(s)", total-nFailed, total),
+			Failures: failures,
 		})
 	}()
 	return ch

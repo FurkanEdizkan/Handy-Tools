@@ -75,6 +75,7 @@ func streamProgress(ch <-chan tools.Progress, opts progressOpts) int {
 				Completed:   ev.Completed,
 				ErrorCode:   errCode(ev.Err),
 				ErrorDetail: errDetail(ev.Err),
+				Failures:    failuresJSON(ev.Failures),
 			})
 			continue
 		}
@@ -96,13 +97,41 @@ func finalize(last tools.Progress, opts progressOpts) int {
 	if last.Err != nil {
 		if !opts.json {
 			fmt.Fprintf(os.Stderr, "error: %s\n", last.Err.Error())
+			renderFailures(last.Failures, opts)
 		}
 		return exitCode(last.Err)
 	}
-	if !opts.quiet && !opts.json && last.Message != "" {
-		fmt.Fprintln(os.Stdout, last.Message)
+	if !opts.quiet && !opts.json {
+		if last.Message != "" {
+			fmt.Fprintln(os.Stdout, last.Message)
+		}
+		renderFailures(last.Failures, opts)
 	}
 	return 0
+}
+
+// renderFailures prints one line per per-file failure to stderr in text
+// mode. Skipped when --quiet or --json (JSON consumers see the failures
+// field on the terminal progressJSON event).
+func renderFailures(failures []tools.Failure, opts progressOpts) {
+	if len(failures) == 0 || opts.quiet || opts.json {
+		return
+	}
+	for _, f := range failures {
+		fmt.Fprintf(os.Stderr, "  %s: %s %s\n", f.Path, f.Code, f.Message)
+	}
+}
+
+// failuresJSON converts the in-package Failure slice to the JSON-wire shape.
+func failuresJSON(failures []tools.Failure) []failureJSON {
+	if len(failures) == 0 {
+		return nil
+	}
+	out := make([]failureJSON, len(failures))
+	for i, f := range failures {
+		out[i] = failureJSON{Path: f.Path, Code: f.Code, Message: f.Message}
+	}
+	return out
 }
 
 // exitCode maps a structured tools.Error to a process exit code.
@@ -146,15 +175,22 @@ func severityName(s tools.Severity) string {
 }
 
 type progressJSON struct {
-	Tool        string  `json:"tool,omitempty"`
-	Action      string  `json:"action,omitempty"`
-	Item        string  `json:"item,omitempty"`
-	Fraction    float64 `json:"fraction,omitempty"`
-	Level       string  `json:"level,omitempty"`
-	Message     string  `json:"message,omitempty"`
-	Completed   bool    `json:"completed,omitempty"`
-	ErrorCode   string  `json:"error_code,omitempty"`
-	ErrorDetail string  `json:"error_detail,omitempty"`
+	Tool        string        `json:"tool,omitempty"`
+	Action      string        `json:"action,omitempty"`
+	Item        string        `json:"item,omitempty"`
+	Fraction    float64       `json:"fraction,omitempty"`
+	Level       string        `json:"level,omitempty"`
+	Message     string        `json:"message,omitempty"`
+	Completed   bool          `json:"completed,omitempty"`
+	ErrorCode   string        `json:"error_code,omitempty"`
+	ErrorDetail string        `json:"error_detail,omitempty"`
+	Failures    []failureJSON `json:"failures,omitempty"`
+}
+
+type failureJSON struct {
+	Path    string `json:"path"`
+	Code    string `json:"code"`
+	Message string `json:"message,omitempty"`
 }
 
 // usageErr reports a flag-parsing problem and returns exit code 1.
