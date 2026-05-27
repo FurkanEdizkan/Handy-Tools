@@ -550,7 +550,7 @@ func extractViaBinary(ctx context.Context, name string, baseArgs []string, sourc
 	if password != "" {
 		args = append(args, "-p"+password)
 	}
-	args = append(args, source, "-o"+dest)
+	args = append(args, source, outputDirFlag(name, dest))
 
 	cmd := exec.CommandContext(ctx, r.UsedAlias, args...) //nolint:gosec
 	stdout, err := cmd.StdoutPipe()
@@ -566,6 +566,19 @@ func extractViaBinary(ctx context.Context, name string, baseArgs []string, sourc
 		emit(tools.Progress{Level: tools.SeverityInfo, Message: scanner.Text()})
 	}
 	return cmd.Wait()
+}
+
+// outputDirFlag formats the output-directory CLI argument for each extractor
+// binary. 7z accepts `-o<dir>` as one token, but unrar interprets `-o` as the
+// overwrite-mode switch (-o+ / -o- / -or) and rejects `-o<path>` with
+// "Unknown option: o<path>" — its dedicated output-path switch is `-op<dir>`.
+// The mismatch silently turned every GUI extract into "MkdirAll the dest dir,
+// then immediately fail" until this was fixed.
+func outputDirFlag(binary, dest string) string {
+	if binary == "unrar" {
+		return "-op" + dest
+	}
+	return "-o" + dest
 }
 
 // safeJoin prevents Zip-Slip by ensuring the joined path stays under base.
