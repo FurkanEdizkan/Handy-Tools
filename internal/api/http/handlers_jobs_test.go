@@ -5,11 +5,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -152,19 +152,55 @@ func TestJobsEventsStream(t *testing.T) {
 	}
 }
 
-// noFlusherWriter wraps a backing ResponseWriter to hide any Flusher
-// implementation underneath, mirroring the Wails Linux AssetServer
-// ResponseWriter (pkg/assetserver/webview/responsewriter_linux.go) which
-// only satisfies http.ResponseWriter — no Flusher. Crucially, Wails'
-// Write is unbuffered (straight through a Unix pipe to WebKit), so the
-// inner is an httptest.ResponseRecorder which is likewise unbuffered.
+// noFlusherWriter is a goroutine-safe ResponseWriter that explicitly does NOT
+// implement http.Flusher, mirroring the Wails Linux AssetServer ResponseWriter
+// (pkg/assetserver/webview/responsewriter_linux.go) which only satisfies
+// http.ResponseWriter. Wails' Write is unbuffered (straight through a Unix
+// pipe to WebKit), and we capture into a mutex-guarded buffer here so the
+// test goroutine can poll the body concurrently with the handler goroutine
+// writing to it.
 type noFlusherWriter struct {
-	rr *httptest.ResponseRecorder
+	mu      sync.Mutex
+	headers http.Header
+	body    bytes.Buffer
+	code    int
 }
 
-func (n *noFlusherWriter) Header() http.Header         { return n.rr.Header() }
-func (n *noFlusherWriter) Write(b []byte) (int, error) { return n.rr.Write(b) }
-func (n *noFlusherWriter) WriteHeader(code int)        { n.rr.WriteHeader(code) }
+func (n *noFlusherWriter) Header() http.Header {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.headers == nil {
+		n.headers = http.Header{}
+	}
+	return n.headers
+}
+
+func (n *noFlusherWriter) Write(b []byte) (int, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.code == 0 {
+		n.code = http.StatusOK
+	}
+	return n.body.Write(b)
+}
+
+func (n *noFlusherWriter) WriteHeader(code int) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.code == 0 {
+		n.code = code
+	}
+}
+
+func (n *noFlusherWriter) Snapshot() (code int, body string, contentType string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	ct := ""
+	if n.headers != nil {
+		ct = n.headers.Get("Content-Type")
+	}
+	return n.code, n.body.String(), ct
+}
 
 // TestJobsEventsAcceptsWriterWithoutFlusher locks in the fix for the GUI's
 // "Jobs queue stays at 0" bug. Wails' Linux AssetServer ResponseWriter does
@@ -179,8 +215,7 @@ func (n *noFlusherWriter) WriteHeader(code int)        { n.rr.WriteHeader(code) 
 func TestJobsEventsAcceptsWriterWithoutFlusher(t *testing.T) {
 	s := New(server.Options{AllowRoots: []string{t.TempDir()}}, queue.New())
 
-	rec := httptest.NewRecorder()
-	wrapped := &noFlusherWriter{rr: rec}
+	wrapped := &noFlusherWriter{}
 	ctx, cancel := context.WithCancel(context.Background())
 	req := httptest.NewRequest(http.MethodGet, "/v1/jobs/events", nil).WithContext(ctx)
 
@@ -205,10 +240,16 @@ func TestJobsEventsAcceptsWriterWithoutFlusher(t *testing.T) {
 
 	id := s.Queue.Enqueue("archive", "extract", func(_ context.Context, _ func(tools.Progress)) {})
 
-	// Wait for the job's terminal "done" snapshot to be written to the
-	// recorder, then tear down. Poll body so we don't sleep arbitrarily.
+	// Wait for the job's terminal snapshot to land in the sink, then tear
+	// down. noFlusherWriter is mutex-guarded so concurrent polling here is
+	// safe with the handler's writes.
+	want := `"job_id":"` + id + `"`
 	deadline = time.Now().Add(2 * time.Second)
-	for !strings.Contains(rec.Body.String(), `"job_id":"`+id+`"`) {
+	for {
+		_, body, _ := wrapped.Snapshot()
+		if strings.Contains(body, want) {
+			break
+		}
 		if time.Now().After(deadline) {
 			break
 		}
@@ -217,14 +258,14 @@ func TestJobsEventsAcceptsWriterWithoutFlusher(t *testing.T) {
 	cancel()
 	<-done
 
-	if rec.Code != http.StatusOK {
-		body, _ := io.ReadAll(rec.Body)
-		t.Fatalf("status: got %d want 200 (handler must accept no-Flusher writers); body=%s", rec.Code, body)
+	code, body, ct := wrapped.Snapshot()
+	if code != http.StatusOK {
+		t.Fatalf("status: got %d want 200 (handler must accept no-Flusher writers); body=%s", code, body)
 	}
-	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
+	if ct != "text/event-stream" {
 		t.Fatalf("content-type: got %q want text/event-stream", ct)
 	}
-	if !strings.Contains(rec.Body.String(), `"job_id":"`+id+`"`) {
-		t.Fatalf("SSE body missing job %s: %q", id, rec.Body.String())
+	if !strings.Contains(body, want) {
+		t.Fatalf("SSE body missing job %s: %q", id, body)
 	}
 }
