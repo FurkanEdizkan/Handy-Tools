@@ -11,7 +11,7 @@
   import type { InspectResponse } from '../api/types';
   import { basenameOf, resolveSources, runJob, type ResolvedSource } from './run';
   import { groupArchives } from './extract-grouping';
-  import { pushPopup } from '../stores/notifications';
+  import { pushPopup, dismissPopup } from '../stores/notifications';
 
   let sources = $state<PickedFile[]>([]);
   let destMode = $state<ExtractDestMode>('into');
@@ -45,13 +45,48 @@
 
   async function run(): Promise<void> {
     if (!ready || running) return;
+    // Immediate sticky breadcrumb so the user knows the click registered —
+    // when extract paths are silently failing (e.g. server hang, JS error
+    // mid-chain) the only thing visibly distinguishing "click did nothing"
+    // from "click happened but error swallowed" is whether this appears.
+    // Replaced by the success/failure popup at the end of run().
+    const runId = `extract-run:${Date.now()}`;
+    pushPopup({
+      id: runId,
+      tone: 'info',
+      sticky: true,
+      title: `Inspecting ${sources.length} archive${sources.length === 1 ? '' : 's'}…`,
+      message: 'Reading headers and grouping multi-part volumes.',
+    });
+    try {
+      await runInner(runId);
+    } catch (err) {
+      dismissPopup(runId);
+      pushPopup({
+        id: `extract-crash:${Date.now()}`,
+        tone: 'error',
+        sticky: true,
+        title: 'Extract crashed',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      running = false;
+    }
+  }
+
+  async function runInner(runId: string): Promise<void> {
     let resolved;
     try {
       resolved = resolveSources(sources);
     } catch (e) {
-      toastMsg = e instanceof ApiError ? e.message : 'Could not start the job.';
-      toastTone = 'error';
-      toastVisible = true;
+      dismissPopup(runId);
+      pushPopup({
+        id: `extract-resolve:${Date.now()}`,
+        tone: 'error',
+        sticky: true,
+        title: 'Could not resolve sources',
+        message: e instanceof ApiError ? e.message : (e instanceof Error ? e.message : 'Unknown error.'),
+      });
       return;
     }
     running = true;
@@ -101,10 +136,16 @@
     }
 
     if (groups.length === 0) {
-      running = false;
-      toastMsg = errors.length > 0 ? 'Nothing extracted — see the popup at the top.' : 'No archives to extract.';
-      toastTone = 'error';
-      toastVisible = true;
+      dismissPopup(runId);
+      pushPopup({
+        id: `extract-empty:${Date.now()}`,
+        tone: 'error',
+        sticky: true,
+        title: 'Nothing to extract',
+        message: errors.length > 0
+          ? `${errors.length} archive(s) had problems — see the other popups.`
+          : 'No archives produced a runnable extract group.',
+      });
       return;
     }
 
@@ -125,11 +166,24 @@
       ),
     );
 
-    running = false;
-    if (outcome.ok) clearSources();
-    toastMsg = outcome.message;
-    toastTone = outcome.ok ? 'info' : 'error';
-    toastVisible = true;
+    dismissPopup(runId);
+    if (outcome.ok) {
+      clearSources();
+      toastMsg = outcome.message;
+      toastTone = 'info';
+      toastVisible = true;
+    } else {
+      // Surface failed POSTs as a sticky popup so the user can't miss them
+      // (the bottom Toast auto-dismisses in 2.6s). The popup shows the
+      // exact server error.
+      pushPopup({
+        id: `extract-post:${Date.now()}`,
+        tone: 'error',
+        sticky: true,
+        title: 'Extract failed to start',
+        message: outcome.message,
+      });
+    }
   }
 </script>
 
