@@ -152,44 +152,79 @@ func TestJobsEventsStream(t *testing.T) {
 	}
 }
 
-// noFlusherRecorder is an httptest.ResponseRecorder wrapper that explicitly
-// does NOT implement http.Flusher, mimicking the Wails Linux AssetServer
-// ResponseWriter. The handler must still stream and not 500.
-type noFlusherRecorder struct {
+// noFlusherWriter wraps a backing ResponseWriter to hide any Flusher
+// implementation underneath, mirroring the Wails Linux AssetServer
+// ResponseWriter (pkg/assetserver/webview/responsewriter_linux.go) which
+// only satisfies http.ResponseWriter — no Flusher. Crucially, Wails'
+// Write is unbuffered (straight through a Unix pipe to WebKit), so the
+// inner is an httptest.ResponseRecorder which is likewise unbuffered.
+type noFlusherWriter struct {
 	rr *httptest.ResponseRecorder
 }
 
-func (n *noFlusherRecorder) Header() http.Header         { return n.rr.Header() }
-func (n *noFlusherRecorder) Write(b []byte) (int, error) { return n.rr.Write(b) }
-func (n *noFlusherRecorder) WriteHeader(code int)        { n.rr.WriteHeader(code) }
+func (n *noFlusherWriter) Header() http.Header         { return n.rr.Header() }
+func (n *noFlusherWriter) Write(b []byte) (int, error) { return n.rr.Write(b) }
+func (n *noFlusherWriter) WriteHeader(code int)        { n.rr.WriteHeader(code) }
 
 // TestJobsEventsAcceptsWriterWithoutFlusher locks in the fix for the GUI's
 // "Jobs queue stays at 0" bug. Wails' Linux AssetServer ResponseWriter does
 // not implement http.Flusher, so when the handler hard-required Flusher every
-// GUI SSE subscription got 500'd and the dock never received any updates.
+// GUI SSE subscription got 500'd at handshake and the dock never received any
+// updates.
+//
+// The handler is called directly (not via an httptest.NewServer) so we
+// bypass the net/http chunked-encoder, which buffers without explicit
+// Flush — that buffering is a net/http property, not a Wails one, so
+// exercising it would test the wrong thing.
 func TestJobsEventsAcceptsWriterWithoutFlusher(t *testing.T) {
 	s := New(server.Options{AllowRoots: []string{t.TempDir()}}, queue.New())
 
-	// Enqueue a no-op job; it completes immediately, producing a job-start
-	// and a job-done snapshot on the all-jobs stream.
+	rec := httptest.NewRecorder()
+	wrapped := &noFlusherWriter{rr: rec}
+	ctx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequest(http.MethodGet, "/v1/jobs/events", nil).WithContext(ctx)
+
+	done := make(chan struct{})
+	go func() {
+		s.handleJobsEvents(wrapped, req)
+		close(done)
+	}()
+
+	// SubscribeAll is live-only: it has to register before the Enqueue's
+	// broadcast for the snapshot to land in the recorder. Wait until the
+	// handler has registered its subscription with the queue.
+	deadline := time.Now().Add(2 * time.Second)
+	for s.Queue.SubscribeAllCount() == 0 {
+		if time.Now().After(deadline) {
+			cancel()
+			<-done
+			t.Fatal("handler never subscribed to the queue")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
 	id := s.Queue.Enqueue("archive", "extract", func(_ context.Context, _ func(tools.Progress)) {})
 
-	rec := httptest.NewRecorder()
-	wrapped := &noFlusherRecorder{rr: rec}
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
-	req := httptest.NewRequest(http.MethodGet, "/v1/jobs/events", nil).WithContext(ctx)
-	s.handleJobsEvents(wrapped, req)
+	// Wait for the job's terminal "done" snapshot to be written to the
+	// recorder, then tear down. Poll body so we don't sleep arbitrarily.
+	deadline = time.Now().Add(2 * time.Second)
+	for !strings.Contains(rec.Body.String(), `"job_id":"`+id+`"`) {
+		if time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	cancel()
+	<-done
 
 	if rec.Code != http.StatusOK {
 		body, _ := io.ReadAll(rec.Body)
-		t.Fatalf("status: got %d want 200; body=%s", rec.Code, body)
+		t.Fatalf("status: got %d want 200 (handler must accept no-Flusher writers); body=%s", rec.Code, body)
 	}
 	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
 		t.Fatalf("content-type: got %q want text/event-stream", ct)
 	}
-	body := rec.Body.String()
-	if !strings.Contains(body, `"job_id":"`+id+`"`) {
-		t.Fatalf("SSE body missing job %s: %q", id, body)
+	if !strings.Contains(rec.Body.String(), `"job_id":"`+id+`"`) {
+		t.Fatalf("SSE body missing job %s: %q", id, rec.Body.String())
 	}
 }
