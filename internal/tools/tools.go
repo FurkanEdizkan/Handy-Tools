@@ -40,6 +40,24 @@ type Progress struct {
 	Message     string
 	Completed   bool
 	Err         *Error
+
+	// Failures is populated only on the terminal event (Completed: true).
+	// Each entry is one per-file failure that did NOT abort the run — e.g.
+	// in a rename / hash / image-batch batch where some files succeed and
+	// others fail with PERMISSION_DENIED / NOT_FOUND / IO_ERROR. Callers
+	// rendering a UI use this to list "which files failed and why" instead
+	// of just a count. When the whole batch fails Err is non-nil; Failures
+	// may still be populated to enumerate per-file reasons.
+	Failures []Failure
+}
+
+// Failure is one per-item failure inside a multi-item batch. Path is the
+// affected file. Code is one of the CodeXxx constants. Message is the
+// short human-readable reason (typically the underlying error's text).
+type Failure struct {
+	Path    string
+	Code    string
+	Message string
 }
 
 // Error is a structured failure reported by a tool.
@@ -68,6 +86,11 @@ const (
 	CodePermissionDenied = "PERMISSION_DENIED"
 	CodeNotFound         = "NOT_FOUND"
 	CodeAborted          = "ABORTED"
+
+	// CodeRollbackFailed is set on a Failure entry when an opt-in rollback
+	// step (e.g. un-renaming a file in a --rollback-on-error rename batch)
+	// itself failed. The Path is the path the rollback step targeted.
+	CodeRollbackFailed = "ROLLBACK_FAILED"
 )
 
 // PathIssue is a preflight-detected problem with a single input or output
@@ -120,6 +143,23 @@ func CheckOutputDirWritable(dir string) *PathIssue {
 	_ = f.Close()
 	_ = os.Remove(probe)
 	return nil
+}
+
+// CoalesceFailureCode returns the unanimous Code across all Failures, or
+// CodeIO when the slice is empty or the codes disagree. Used for the
+// terminal Progress.Err.Code on "all files failed" paths so a batch where
+// every file hit PERMISSION_DENIED reports that — not the generic IO_ERROR.
+func CoalesceFailureCode(failures []Failure) string {
+	if len(failures) == 0 {
+		return CodeIO
+	}
+	code := failures[0].Code
+	for _, f := range failures[1:] {
+		if f.Code != code {
+			return CodeIO
+		}
+	}
+	return code
 }
 
 // ClassifyFSError returns the most specific tools code for a filesystem error.

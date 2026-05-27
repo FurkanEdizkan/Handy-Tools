@@ -293,8 +293,14 @@ func TestBatchConvertAllFail(t *testing.T) {
 		TargetFormat: FormatJPEG,
 		OutputDir:    t.TempDir(),
 	}))
-	if last := progress[len(progress)-1]; last.Err == nil || last.Err.Code != tools.CodeIO {
-		t.Fatalf("expected IO_ERROR when every file fails, got %+v", last)
+	last := progress[len(progress)-1]
+	// Every file failed with the same NOT_FOUND classification, so the
+	// terminal Code should coalesce to that — not collapse to IO_ERROR.
+	if last.Err == nil || last.Err.Code != tools.CodeNotFound {
+		t.Fatalf("expected NOT_FOUND when every file vanishes, got %+v", last)
+	}
+	if len(last.Failures) != 2 {
+		t.Errorf("expected 2 failure entries on terminal event, got %d: %+v", len(last.Failures), last.Failures)
 	}
 }
 

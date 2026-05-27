@@ -232,3 +232,54 @@ func TestCompressEmptySourcesRejected(t *testing.T) {
 		t.Fatalf("expected BAD_REQUEST for empty sources, got %+v", last.Err)
 	}
 }
+
+// TestCompressNoPartialOnSuccess verifies the .partial staging file is
+// cleaned up after a successful pack — only the final output should remain
+// on disk, never a sibling .partial.
+func TestCompressNoPartialOnSuccess(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(src, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "out.zip")
+	last := runCompress(t, CompressRequest{
+		Sources: []string{src}, Format: FormatZip, Output: out,
+	})
+	if last.Err != nil {
+		t.Fatalf("compress failed: %+v", last.Err)
+	}
+	if _, err := os.Stat(out); err != nil {
+		t.Errorf("expected final output to exist: %v", err)
+	}
+	if _, err := os.Stat(out + ".partial"); !os.IsNotExist(err) {
+		t.Errorf("expected no .partial leftover, got stat err = %v", err)
+	}
+}
+
+// TestCompressRemovesPartialOnFailure forces a finalize-rename failure
+// (output path is a directory) and confirms the .partial staging file is
+// removed rather than left as an orphan.
+func TestCompressRemovesPartialOnFailure(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(src, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Make the final output path a directory so os.Rename(staged, final)
+	// must fail. The .partial file is the rename's source; whatever happens
+	// in the renamer, the cleanup branch should still remove it.
+	finalOutput := filepath.Join(dir, "out.zip")
+	if err := os.Mkdir(finalOutput, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	last := runCompress(t, CompressRequest{
+		Sources: []string{src}, Format: FormatZip, Output: finalOutput,
+	})
+	if last.Err == nil {
+		t.Fatalf("expected failure when output path is a directory, got success")
+	}
+	if _, err := os.Stat(finalOutput + ".partial"); !os.IsNotExist(err) {
+		t.Errorf("expected .partial to be cleaned up, got stat err = %v", err)
+	}
+}

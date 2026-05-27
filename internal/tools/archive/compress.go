@@ -122,23 +122,35 @@ func Compress(ctx context.Context, req CompressRequest) <-chan tools.Progress {
 		emit(tools.Progress{Level: tools.SeverityInfo,
 			Message: fmt.Sprintf("packing %d file(s) into %s", len(entries), req.Format)})
 
+		// Write to <output>.partial first, then atomically rename on success.
+		// This guarantees the user never sees a half-written archive at the
+		// final path: either it's there in full, or it isn't. On any failure
+		// the .partial file is removed so retries don't see a stale stub.
+		// 7z is delegated to the external binary but we still hand it the
+		// .partial path so the pattern is uniform across formats.
+		finalOutput := req.Output
+		stagedReq := req
+		stagedReq.Output = finalOutput + ".partial"
+		_ = os.Remove(stagedReq.Output) // pre-clean any leftover from an aborted run
+
 		switch req.Format {
 		case FormatRar:
 			emit(compressFail(tools.CodeUnsupportedInput, "cannot create RAR archives",
 				"RAR is proprietary; no creation tool is bundled"))
 			return
 		case FormatSevenZ:
-			err = compressSevenZ(ctx, req, emit)
+			err = compressSevenZ(ctx, stagedReq, emit)
 		case FormatZip:
-			err = writeZip(ctx, req, entries, emit)
+			err = writeZip(ctx, stagedReq, entries, emit)
 		case FormatTar, FormatTarGz, FormatTarBz2, FormatTarZst:
-			err = writeTarArchive(ctx, req, entries, emit)
+			err = writeTarArchive(ctx, stagedReq, entries, emit)
 		default:
 			emit(compressFail(tools.CodeUnsupportedInput, "unsupported archive format",
 				req.Format.String()))
 			return
 		}
 		if err != nil {
+			_ = os.Remove(stagedReq.Output)
 			var terr *tools.Error
 			if errors.As(err, &terr) {
 				emit(tools.Progress{Completed: true, Err: terr})
@@ -147,8 +159,13 @@ func Compress(ctx context.Context, req CompressRequest) <-chan tools.Progress {
 			}
 			return
 		}
+		if err := os.Rename(stagedReq.Output, finalOutput); err != nil {
+			_ = os.Remove(stagedReq.Output)
+			emit(compressFail(tools.ClassifyFSError(err), "finalize archive", err.Error()))
+			return
+		}
 		emit(tools.Progress{Completed: true, Fraction: 1, Level: tools.SeverityInfo,
-			Message: "wrote " + req.Output})
+			Message: "wrote " + finalOutput})
 	}()
 	return ch
 }

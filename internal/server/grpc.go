@@ -368,6 +368,16 @@ func progressToProto(p tools.Progress) *handytoolsv1.Progress {
 			Detail:  p.Err.Detail,
 		}
 	}
+	if len(p.Failures) > 0 {
+		out.Failures = make([]*handytoolsv1.Failure, len(p.Failures))
+		for i, f := range p.Failures {
+			out.Failures[i] = &handytoolsv1.Failure{
+				Path:    f.Path,
+				Code:    f.Code,
+				Message: f.Message,
+			}
+		}
+	}
 	return out
 }
 

@@ -43,6 +43,13 @@ type Request struct {
 	Pattern     string
 	Replace     string
 	OnCollision Collision
+
+	// Rollback enables best-effort undo: on the first os.Rename failure the
+	// batch stops, and every successful rename so far is reversed (in
+	// reverse order). Reverse-rename failures are surfaced as Failure
+	// entries tagged ROLLBACK_FAILED but do not block further reversal.
+	// Off by default — preserves the existing skip-and-continue behaviour.
+	Rollback bool
 }
 
 // Plan is one row of a rename batch — the source path and the path it would
@@ -156,13 +163,15 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 			return
 		}
 
-		var renamed, skipped, failed int
+		var renamed, skipped int
+		var failures []tools.Failure
+		var rollback tools.RollbackStack
 		total := len(plans)
 		for i, p := range plans {
 			if err := ctx.Err(); err != nil {
 				emit(tools.Progress{Completed: true, Err: &tools.Error{
 					Code: tools.CodeAborted, Message: "rename canceled",
-				}})
+				}, Failures: failures})
 				return
 			}
 			if p.From == p.To {
@@ -176,8 +185,8 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 				continue
 			}
 			if err := os.Rename(p.From, p.To); err != nil {
-				failed++
 				code := tools.ClassifyFSError(err)
+				failures = append(failures, tools.Failure{Path: p.From, Code: code, Message: err.Error()})
 				emit(tools.Progress{
 					Level:       tools.SeverityError,
 					CurrentItem: filepath.Base(p.From),
@@ -185,9 +194,31 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 					Message:     fmt.Sprintf("[%d/%d] failed %s -> %s: %s (%s)", i+1, total, filepath.Base(p.From), filepath.Base(p.To), err.Error(), code),
 					Err:         &tools.Error{Code: code, Message: "rename failed", Detail: err.Error()},
 				})
+				if req.Rollback {
+					// Stop the batch and undo the renames we've already done.
+					// Each undo failure becomes its own Failure entry tagged
+					// CodeRollbackFailed so the caller can see exactly which
+					// reversals didn't take.
+					undoFailures := rollback.Replay()
+					failures = append(failures, undoFailures...)
+					for _, uf := range undoFailures {
+						emit(tools.Progress{
+							Level:   tools.SeverityError,
+							Message: fmt.Sprintf("rollback: %s: %s", uf.Path, uf.Message),
+						})
+					}
+					emit(tools.Progress{Completed: true, Err: &tools.Error{
+						Code: code, Message: "rename aborted with rollback", Detail: err.Error(),
+					}, Failures: failures})
+					return
+				}
 				continue
 			}
 			renamed++
+			if req.Rollback {
+				from, to := p.From, p.To
+				rollback.Push(tools.RollbackStep{Undo: func() error { return os.Rename(to, from) }, Note: to + " -> " + from})
+			}
 			emit(tools.Progress{
 				Level:       tools.SeverityInfo,
 				CurrentItem: filepath.Base(p.To),
@@ -196,14 +227,14 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 			})
 		}
 
-		summary := fmt.Sprintf("renamed %d, skipped %d, failed %d", renamed, skipped, failed)
-		if failed == total {
+		summary := fmt.Sprintf("renamed %d, skipped %d, failed %d", renamed, skipped, len(failures))
+		if len(failures) == total {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
-				Code: tools.CodeIO, Message: "all renames failed", Detail: summary,
-			}})
+				Code: tools.CoalesceFailureCode(failures), Message: "all renames failed", Detail: summary,
+			}, Failures: failures})
 			return
 		}
-		emit(tools.Progress{Completed: true, Fraction: 1, Level: tools.SeverityInfo, Message: summary})
+		emit(tools.Progress{Completed: true, Fraction: 1, Level: tools.SeverityInfo, Message: summary, Failures: failures})
 	}()
 	return ch
 }
