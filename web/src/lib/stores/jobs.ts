@@ -27,6 +27,13 @@ export const jobs: Writable<Job[]> = writable([]);
 
 export const expandedJobs: Writable<Set<string>> = writable(new Set());
 
+/**
+ * focusedJobId is set by deep-link sources (e.g. the failure popup in
+ * NotificationStack) to ask the Jobs page to scroll the matching card into
+ * view. The page reads it once on mount and clears it.
+ */
+export const focusedJobId: Writable<string | null> = writable(null);
+
 export function toggleJobExpanded(id: string): void {
   expandedJobs.update((set) => {
     const next = new Set(set);

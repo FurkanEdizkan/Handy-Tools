@@ -96,14 +96,35 @@ export function archivePackSummary(
   return `ready: ${fileCount} ${noun} → ${output.trim()} (${format})`;
 }
 
-/** archiveExtractReady enables ToolArchiveExtract's Run. */
-export function archiveExtractReady(source: string, destination: string): boolean {
-  return source.trim() !== '' && destination.trim() !== '';
+/** Destination mode for ToolArchiveExtract — kept here so toolform stays
+ *  the single source of truth for the page's form-state shape. */
+export type ExtractDestMode = 'into' | 'alongside';
+
+/**
+ * archiveExtractReady enables ToolArchiveExtract's Run. Needs at least one
+ * picked archive; in `into` mode also needs a destination path. In
+ * `alongside` mode the destination is derived from each archive's parent
+ * folder, so the text input is irrelevant.
+ */
+export function archiveExtractReady(
+  sourceCount: number,
+  mode: ExtractDestMode,
+  destination: string,
+): boolean {
+  if (sourceCount <= 0) return false;
+  if (mode === 'alongside') return true;
+  return destination.trim() !== '';
 }
 
 /** archiveExtractSummary is ToolArchiveExtract's summary line. */
-export function archiveExtractSummary(source: string, destination: string): string {
-  if (source.trim() === '') return 'choose an archive to extract';
-  if (destination.trim() === '') return 'choose a destination folder';
-  return `ready: extract ${source.trim()} → ${destination.trim()}`;
+export function archiveExtractSummary(
+  sourceCount: number,
+  mode: ExtractDestMode,
+  destination: string,
+): string {
+  if (sourceCount <= 0) return 'choose one or more archives to extract';
+  if (mode === 'into' && destination.trim() === '') return 'choose a destination folder';
+  const noun = sourceCount === 1 ? 'archive' : 'archives';
+  if (mode === 'alongside') return `ready: extract ${sourceCount} ${noun} alongside each source`;
+  return `ready: extract ${sourceCount} ${noun} → ${destination.trim()}`;
 }
