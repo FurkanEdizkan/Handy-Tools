@@ -246,6 +246,11 @@ export interface ErrorEnvelope {
  */
 export interface HealthResponse {
   version: string;
+  /** Short git commit hash (7 chars, may have "-dirty" suffix). Empty in
+   *  release-cut builds with no VCS metadata baked in. */
+  commit?: string;
+  /** RFC3339 build timestamp. Empty when no VCS metadata is available. */
+  buildDate?: string;
   uptimeSeconds: number;
   transports: string[];
   toolsAvailable: string[];

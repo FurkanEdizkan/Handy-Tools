@@ -20,7 +20,13 @@
     return { running, fail };
   });
 
-  const version = $derived($health.version ? `v${$health.version}` : 'desktop');
+  // Version label shown under the brand. The commit suffix (when present)
+  // is how a dev can tell two `make gui` builds apart — without it every
+  // local build looks like the identical "v0.0.0-dev".
+  const version = $derived.by(() => {
+    const v = $health.version ? `v${$health.version}` : 'desktop';
+    return $health.commit ? `${v} · ${$health.commit}` : v;
+  });
 
   function visible(section: NavItem['section']): NavItem[] {
     const q = search.trim().toLowerCase();

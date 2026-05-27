@@ -35,6 +35,8 @@ describe('probe', () => {
   it('maps a successful /v1/health response to online', async () => {
     fetchHealth.mockResolvedValueOnce({
       version: 'v9.9.9',
+      commit: 'abc1234',
+      buildDate: '2026-05-27T19:00:00Z',
       uptimeSeconds: 123,
       transports: ['grpc', 'http'],
       toolsAvailable: [],
@@ -42,8 +44,24 @@ describe('probe', () => {
     const snap = await probe();
     expect(snap.level).toBe('online');
     expect(snap.version).toBe('v9.9.9');
+    expect(snap.commit).toBe('abc1234');
+    expect(snap.buildDate).toBe('2026-05-27T19:00:00Z');
     expect(snap.uptimeSeconds).toBe(123);
     expect(snap.lastSuccessAt).toBeInstanceOf(Date);
+  });
+
+  it('treats an empty-string commit / buildDate as absent', async () => {
+    fetchHealth.mockResolvedValueOnce({
+      version: 'v9.9.9',
+      commit: '',
+      buildDate: '',
+      uptimeSeconds: 1,
+      transports: ['http'],
+      toolsAvailable: [],
+    });
+    const snap = await probe();
+    expect(snap.commit).toBeNull();
+    expect(snap.buildDate).toBeNull();
   });
 
   it('collapses any fetch error to offline', async () => {
@@ -51,6 +69,8 @@ describe('probe', () => {
     const snap = await probe();
     expect(snap.level).toBe('offline');
     expect(snap.version).toBeNull();
+    expect(snap.commit).toBeNull();
+    expect(snap.buildDate).toBeNull();
     expect(snap.uptimeSeconds).toBeNull();
   });
 });

@@ -677,6 +677,12 @@ func TestHealthEndpoint(t *testing.T) {
 	if hr.Version != buildinfo.Version {
 		t.Errorf("version: got %q want %q", hr.Version, buildinfo.Version)
 	}
+	if hr.Commit != buildinfo.Commit {
+		t.Errorf("commit: got %q want %q", hr.Commit, buildinfo.Commit)
+	}
+	if hr.BuildDate != buildinfo.Date {
+		t.Errorf("build_date: got %q want %q", hr.BuildDate, buildinfo.Date)
+	}
 	if hr.UptimeSeconds < 1 {
 		t.Errorf("uptime_seconds: got %d, want > 0", hr.UptimeSeconds)
 	}
