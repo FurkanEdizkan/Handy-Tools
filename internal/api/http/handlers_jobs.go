@@ -59,14 +59,13 @@ func (s *Server) handleJobsList(w http.ResponseWriter, _ *http.Request) {
 // callers fetch the initial state via GET /v1/jobs, then subscribe here for
 // live updates.
 func (s *Server) handleJobsEvents(w http.ResponseWriter, r *http.Request) {
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeError(w, &tools.Error{
-			Code:    tools.CodeIO,
-			Message: "streaming not supported by transport",
-		})
-		return
-	}
+	// Flusher is optional: net/http supplies one and we must call it to push
+	// each chunk through the HTTP/1.1 chunked encoder, but Wails' AssetServer
+	// ResponseWriter writes straight through a Unix pipe to WebKit — no
+	// userspace buffer to flush. Hard-requiring Flusher here was breaking the
+	// desktop GUI's Jobs panel entirely (dock counter frozen at 0 because the
+	// SSE stream never opened).
+	flusher, _ := w.(http.Flusher) //nolint:errcheck // ok=false is handled by flush() being a no-op
 
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")
@@ -74,9 +73,15 @@ func (s *Server) handleJobsEvents(w http.ResponseWriter, r *http.Request) {
 	h.Set("Connection", "keep-alive")
 	h.Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
+	if flusher != nil {
+		flusher.Flush()
+	}
 
-	flush := func() { flusher.Flush() }
+	flush := func() {
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
 	for j := range s.Queue.SubscribeAll(r.Context()) {
 		if err := writeSSEJSON(w, flush, jobToWire(j)); err != nil {
 			return
@@ -100,14 +105,8 @@ func (s *Server) handleJobEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeError(w, &tools.Error{
-			Code:    tools.CodeIO,
-			Message: "streaming not supported by transport",
-		})
-		return
-	}
+	// Flusher is optional — see handleJobsEvents above for the rationale.
+	flusher, _ := w.(http.Flusher) //nolint:errcheck // ok=false is handled by flush() being a no-op
 
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")
@@ -117,9 +116,15 @@ func (s *Server) handleJobEvents(w http.ResponseWriter, r *http.Request) {
 	// so SSE frames arrive promptly when htoolsd sits behind a reverse proxy.
 	h.Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
+	if flusher != nil {
+		flusher.Flush()
+	}
 
-	flush := func() { flusher.Flush() }
+	flush := func() {
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
 	for p := range ch {
 		if err := writeSSEEvent(w, flush, p); err != nil {
 			return

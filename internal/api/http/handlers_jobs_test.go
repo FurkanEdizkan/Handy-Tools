@@ -5,11 +5,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/furkandedizkan/handy-tools/internal/queue"
+	"github.com/furkandedizkan/handy-tools/internal/server"
+	"github.com/furkandedizkan/handy-tools/internal/tools"
 )
 
 // getJobs fetches GET /v1/jobs and decodes the envelope.
@@ -143,5 +149,47 @@ func TestJobsEventsStream(t *testing.T) {
 	}
 	if !sawDone {
 		t.Fatalf("did not observe job %s reaching done on the all-jobs stream", id)
+	}
+}
+
+// noFlusherRecorder is an httptest.ResponseRecorder wrapper that explicitly
+// does NOT implement http.Flusher, mimicking the Wails Linux AssetServer
+// ResponseWriter. The handler must still stream and not 500.
+type noFlusherRecorder struct {
+	rr *httptest.ResponseRecorder
+}
+
+func (n *noFlusherRecorder) Header() http.Header         { return n.rr.Header() }
+func (n *noFlusherRecorder) Write(b []byte) (int, error) { return n.rr.Write(b) }
+func (n *noFlusherRecorder) WriteHeader(code int)        { n.rr.WriteHeader(code) }
+
+// TestJobsEventsAcceptsWriterWithoutFlusher locks in the fix for the GUI's
+// "Jobs queue stays at 0" bug. Wails' Linux AssetServer ResponseWriter does
+// not implement http.Flusher, so when the handler hard-required Flusher every
+// GUI SSE subscription got 500'd and the dock never received any updates.
+func TestJobsEventsAcceptsWriterWithoutFlusher(t *testing.T) {
+	s := New(server.Options{AllowRoots: []string{t.TempDir()}}, queue.New())
+
+	// Enqueue a no-op job; it completes immediately, producing a job-start
+	// and a job-done snapshot on the all-jobs stream.
+	id := s.Queue.Enqueue("archive", "extract", func(_ context.Context, _ func(tools.Progress)) {})
+
+	rec := httptest.NewRecorder()
+	wrapped := &noFlusherRecorder{rr: rec}
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	req := httptest.NewRequest(http.MethodGet, "/v1/jobs/events", nil).WithContext(ctx)
+	s.handleJobsEvents(wrapped, req)
+
+	if rec.Code != http.StatusOK {
+		body, _ := io.ReadAll(rec.Body)
+		t.Fatalf("status: got %d want 200; body=%s", rec.Code, body)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Fatalf("content-type: got %q want text/event-stream", ct)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"job_id":"`+id+`"`) {
+		t.Fatalf("SSE body missing job %s: %q", id, body)
 	}
 }
