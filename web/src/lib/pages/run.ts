@@ -22,6 +22,57 @@ export function stemOf(path: string): string {
   return dot > 0 ? base.slice(0, dot) : base;
 }
 
+/**
+ * basenameOf returns the trailing path component (after the final / or \).
+ */
+export function basenameOf(path: string): string {
+  return path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1);
+}
+
+/**
+ * archiveStem mirrors the backend's multi-part recognition (see findRarParts /
+ * findSevenZParts in internal/tools/archive/archive.go) so a per-archive output
+ * subfolder is named after the *set*, not the individual volume:
+ *
+ *   foo.tar.gz      → foo        (compound extension)
+ *   foo.part01.rar  → foo        (RAR multi-part)
+ *   foo.7z.001      → foo        (7z multi-part)
+ *   foo.r05         → foo        (legacy RAR continuation)
+ *   foo.zip         → foo        (single-extension fallback)
+ */
+const COMPOUND_EXTS = /\.(tar\.(gz|bz2|zst|xz))$/i;
+const RAR_PART_RE = /\.part\d+\.rar$/i;
+const SEVENZ_VOL_RE = /\.7z\.\d+$/i;
+const LEGACY_RAR_RE = /\.r\d+$/i;
+
+export function archiveStem(path: string): string {
+  const base = basenameOf(path);
+  if (COMPOUND_EXTS.test(base)) return base.replace(COMPOUND_EXTS, '');
+  if (RAR_PART_RE.test(base)) return base.replace(RAR_PART_RE, '');
+  if (SEVENZ_VOL_RE.test(base)) return base.replace(SEVENZ_VOL_RE, '');
+  if (LEGACY_RAR_RE.test(base)) return base.replace(LEGACY_RAR_RE, '');
+  const dot = base.lastIndexOf('.');
+  return dot > 0 ? base.slice(0, dot) : base;
+}
+
+export type ExtractDestMode = 'into' | 'alongside';
+
+/**
+ * computeExtractDestDir picks the per-archive output directory. `into` mode
+ * appends the archive's stem as a subfolder under the user-chosen path so
+ * multiple independent archives never collide. `alongside` mode anchors that
+ * subfolder next to the archive itself.
+ */
+export function computeExtractDestDir(
+  sourcePath: string,
+  mode: ExtractDestMode,
+  userDir: string,
+): string {
+  const stem = archiveStem(sourcePath);
+  const base = mode === 'alongside' ? dirOf(sourcePath) : userDir.replace(/[/\\]+$/, '');
+  return `${base}/${stem}`;
+}
+
 export interface RunOutcome {
   ok: boolean;
   message: string;

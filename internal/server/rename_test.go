@@ -16,7 +16,7 @@ func TestRenameHandlerInspectReturnsPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := &RenameHandler{Opts: Options{AllowRoots: []string{dir}}}
-	plans, err := h.Inspect(RenameParams{
+	ins, err := h.Inspect(RenameParams{
 		Sources: []string{src},
 		Pattern: `^old\.txt$`,
 		Replace: "new.txt",
@@ -24,8 +24,8 @@ func TestRenameHandlerInspectReturnsPlan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Inspect: %v", err)
 	}
-	if len(plans) != 1 || plans[0].To != filepath.Join(dir, "new.txt") {
-		t.Fatalf("unexpected plan: %#v", plans)
+	if len(ins.Plans) != 1 || ins.Plans[0].To != filepath.Join(dir, "new.txt") {
+		t.Fatalf("unexpected plan: %#v", ins.Plans)
 	}
 }
 

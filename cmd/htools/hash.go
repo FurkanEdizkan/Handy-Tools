@@ -26,6 +26,8 @@ func cmdHash(ctx context.Context, _ config.Config, args []string) int {
 	fs.SetOutput(os.Stderr)
 	algoStr := fs.String("algo", "sha256", "digest algorithm: md5, sha256, blake3")
 	check := fs.String("check", "", "path to a sha256sum-format manifest; verify mode")
+	strict := fs.Bool("strict", false, "abort before hashing when preflight reports missing/unreadable sources")
+	dryRun := fs.Bool("dry-run", false, "report preflight issues for the source list and exit; do not hash anything")
 	quiet := fs.Bool("quiet", false, "suppress the trailing summary on stderr")
 	asJSON := fs.Bool("json", false, "emit one JSON object per file / verify-entry")
 	positional, err := parseFlags(fs, args)
@@ -45,6 +47,23 @@ func cmdHash(ctx context.Context, _ config.Config, args []string) int {
 	}
 	if len(positional) == 0 {
 		return usageErr(os.Stderr, "hash", "need at least one source (or --check MANIFEST)")
+	}
+	opts := progressOpts{quiet: *quiet, json: *asJSON, strict: *strict}
+	if *dryRun || *strict {
+		ins, terr := hash.Inspect(hash.Request{Sources: positional, Algo: algo})
+		if terr != nil {
+			fmt.Fprintf(os.Stderr, "hash: %s\n", terr.Error())
+			return exitCode(terr)
+		}
+		if code := runPreflight(ins.Issues, opts); code != 0 {
+			return code
+		}
+		if *dryRun {
+			if !*quiet {
+				fmt.Fprintf(os.Stderr, "dry-run: %d source(s) ready, %d issue(s)\n", len(positional)-len(ins.Issues), len(ins.Issues))
+			}
+			return 0
+		}
 	}
 	return runHash(ctx, positional, algo, *quiet, *asJSON)
 }

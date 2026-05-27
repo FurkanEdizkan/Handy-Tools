@@ -65,7 +65,7 @@ func ToImage(ctx context.Context, req ToImageRequest) <-chan tools.Progress {
 
 		if err := os.MkdirAll(req.OutputDir, 0o755); err != nil {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
-				Code: tools.CodeIO, Message: "create output dir", Detail: err.Error(),
+				Code: tools.ClassifyFSError(err), Message: "create output dir", Detail: err.Error(),
 			}})
 			return
 		}
@@ -257,7 +257,7 @@ func Split(ctx context.Context, req SplitRequest) <-chan tools.Progress {
 
 		if err := os.MkdirAll(req.OutputDir, 0o755); err != nil {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
-				Code: tools.CodeIO, Message: "create output dir", Detail: err.Error(),
+				Code: tools.ClassifyFSError(err), Message: "create output dir", Detail: err.Error(),
 			}})
 			return
 		}

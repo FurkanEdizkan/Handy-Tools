@@ -78,15 +78,25 @@ describe('archivePack', () => {
 });
 
 describe('archiveExtract', () => {
-  it('needs both a source and a destination', () => {
-    expect(archiveExtractReady('', '/out')).toBe(false);
-    expect(archiveExtractReady('a.zip', '  ')).toBe(false);
-    expect(archiveExtractReady('a.zip', '/out')).toBe(true);
+  it('needs at least one source, and a destination in "into" mode', () => {
+    expect(archiveExtractReady(0, 'into', '/out')).toBe(false);
+    expect(archiveExtractReady(1, 'into', '  ')).toBe(false);
+    expect(archiveExtractReady(1, 'into', '/out')).toBe(true);
+  });
+
+  it('ignores the destination input in "alongside" mode', () => {
+    expect(archiveExtractReady(0, 'alongside', '')).toBe(false);
+    expect(archiveExtractReady(1, 'alongside', '')).toBe(true);
+    expect(archiveExtractReady(3, 'alongside', 'ignored')).toBe(true);
   });
 
   it('summarises the disabled and ready states', () => {
-    expect(archiveExtractSummary('', '/out')).toBe('choose an archive to extract');
-    expect(archiveExtractSummary('a.zip', '')).toBe('choose a destination folder');
-    expect(archiveExtractSummary('a.zip', '/out')).toBe('ready: extract a.zip → /out');
+    expect(archiveExtractSummary(0, 'into', '/out')).toBe('choose one or more archives to extract');
+    expect(archiveExtractSummary(2, 'into', '')).toBe('choose a destination folder');
+    expect(archiveExtractSummary(1, 'into', '/out')).toBe('ready: extract 1 archive → /out');
+    expect(archiveExtractSummary(3, 'into', '/out')).toBe('ready: extract 3 archives → /out');
+    expect(archiveExtractSummary(1, 'alongside', '')).toBe(
+      'ready: extract 1 archive alongside each source',
+    );
   });
 });

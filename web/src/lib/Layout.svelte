@@ -5,7 +5,9 @@
   import Sidebar from './Sidebar.svelte';
   import Topbar from './Topbar.svelte';
   import Dock from './Dock.svelte';
+  import NotificationStack from './components/NotificationStack.svelte';
   import { startJobsFeed } from './stores/jobs';
+  import { subscribeJobsForFailures } from './stores/notifications';
 
   interface Props {
     children?: Snippet;
@@ -16,7 +18,14 @@
   // and mascot all read the shared `jobs` store.
   onMount(() => {
     const ac = startJobsFeed();
-    return () => ac.abort();
+    // Subscribe AFTER the feed so the initial snapshot replay seeds the
+    // popup subscriber's "last seen status" map without firing spurious
+    // failure popups for jobs that already failed before this session.
+    const unsubFailures = subscribeJobsForFailures();
+    return () => {
+      ac.abort();
+      unsubFailures();
+    };
   });
 </script>
 
@@ -29,4 +38,5 @@
     </div>
     <Dock />
   </div>
+  <NotificationStack />
 </div>

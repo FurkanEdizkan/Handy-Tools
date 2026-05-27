@@ -111,7 +111,7 @@ func Inspect(ctx context.Context, req Request) ([]Diff, *tools.Error) {
 	for _, root := range []string{req.A, req.B} {
 		info, err := os.Stat(root)
 		if err != nil {
-			return nil, &tools.Error{Code: tools.CodeIO, Message: "stat root", Detail: err.Error()}
+			return nil, &tools.Error{Code: tools.ClassifyFSError(err), Message: "stat root", Detail: err.Error()}
 		}
 		if !info.IsDir() {
 			return nil, &tools.Error{Code: tools.CodeBadRequest, Message: "root is not a directory", Detail: root}
@@ -229,7 +229,7 @@ func walkRoot(root string) (map[string]entry, *tools.Error) {
 		return nil
 	})
 	if err != nil {
-		return nil, &tools.Error{Code: tools.CodeIO, Message: "walk", Detail: err.Error()}
+		return nil, &tools.Error{Code: tools.ClassifyFSError(err), Message: "walk", Detail: err.Error()}
 	}
 	return out, nil
 }
@@ -407,11 +407,11 @@ func compareEntry(ctx context.Context, aPath, bPath string, ea, eb entry, mode M
 	}
 	ah, err := hashFile(ctx, aPath)
 	if err != nil {
-		return "", false, &tools.Error{Code: tools.CodeIO, Message: "hash A side", Detail: err.Error()}
+		return "", false, &tools.Error{Code: tools.ClassifyFSError(err), Message: "hash A side", Detail: err.Error()}
 	}
 	bh, err := hashFile(ctx, bPath)
 	if err != nil {
-		return "", false, &tools.Error{Code: tools.CodeIO, Message: "hash B side", Detail: err.Error()}
+		return "", false, &tools.Error{Code: tools.ClassifyFSError(err), Message: "hash B side", Detail: err.Error()}
 	}
 	if ah != bh {
 		return "hash", true, nil

@@ -8,12 +8,18 @@
 *Convert images · Slice PDFs · Crack open weird archives*
 
 [![CI](https://github.com/FurkanEdizkan/Handy-Tools/actions/workflows/ci.yml/badge.svg)](https://github.com/FurkanEdizkan/Handy-Tools/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/furkandedizkan/handy-tools)](https://goreportcard.com/report/github.com/furkandedizkan/handy-tools)
+[![Go Report Card](https://goreportcard.com/badge/github.com/FurkanEdizkan/Handy-Tools)](https://goreportcard.com/report/github.com/FurkanEdizkan/Handy-Tools)
 [![Go Reference](https://pkg.go.dev/badge/github.com/furkandedizkan/handy-tools.svg)](https://pkg.go.dev/github.com/furkandedizkan/handy-tools)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Conventional Commits](https://img.shields.io/badge/conventional%20commits-1.0.0-orange.svg)](https://www.conventionalcommits.org/en/v1.0.0/)
 
 </div>
+
+---
+
+**Personal Note:** I really don't like uploading stuff to random websites in order to convert file types, also I deal with a lot of multi part archived files, multi part renames and other stuff. So we (me and claude) decided to build something simple which can be used locally both as app and in terminal, so we protect our privacy and I don't have to remember all of the complex terminal commands for each file conversion type.
+
+Hope it will be helpful for someone, open for any feedback or fix.
 
 ---
 
@@ -58,7 +64,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 [internal/server/server.go](internal/server/server.go) for the exact
 path-safety contract.
 
-## Get it running in 60 seconds
+## Get it running
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/install.sh | sh
@@ -117,6 +123,10 @@ longer-horizon roadmap.
   and defaults.
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — the layered design
   and how the four surfaces share one core.
+- **[docs/FAILURE_HANDLING.md](docs/FAILURE_HANDLING.md)** — what
+  happens when one file in a batch can't be processed: error codes,
+  the structured `failures` field, preflight `--strict`, and opt-in
+  rollback.
 - **[AGENTS.md](AGENTS.md)** — the MCP / chatbot guide.
 - **[docs/RELEASES.md](docs/RELEASES.md)** — calver scheme and the
   automated release pipeline.

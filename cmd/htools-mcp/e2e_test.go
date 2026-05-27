@@ -467,6 +467,92 @@ func TestE2E_RenameInspect(t *testing.T) {
 	}
 }
 
+// TestE2E_HashFailuresInRunResult drives the hash tool with a mixed batch
+// (one good, one chmod-blocked, one missing) and asserts the MCP runResult
+// carries a structured failures array with the right classified codes.
+//
+// Companion to internal/tools/hash:TestHashRunMixedBatchScenario (in-process
+// contract) and internal/api/http:TestHashRunFailuresCrossTheWire (HTTP
+// SSE contract). Together they cover the same scenario at every layer.
+func TestE2E_HashFailuresInRunResult(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root — file modes are bypassed")
+	}
+	dir := t.TempDir()
+	good := filepath.Join(dir, "ok.txt")
+	if err := os.WriteFile(good, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	blocked := filepath.Join(dir, "blocked.txt")
+	if err := os.WriteFile(blocked, []byte("nope"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(blocked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(blocked, 0o644) })
+	missing := filepath.Join(dir, "ghost.txt")
+
+	client := newMCPClient(t, "/")
+	res := client.callTool(t, "hash", map[string]any{
+		"sources": []string{good, blocked, missing},
+		"algo":    "sha256",
+	})
+	if res.Structured == nil {
+		t.Fatal("hash: missing structuredContent")
+	}
+	failures, ok := res.Structured["failures"].([]any)
+	if !ok || len(failures) != 2 {
+		t.Fatalf("hash: expected 2 failures in structuredContent, got %T = %v", res.Structured["failures"], res.Structured["failures"])
+	}
+	codes := map[string]string{}
+	for _, f := range failures {
+		fm, _ := f.(map[string]any)
+		p, _ := fm["path"].(string)
+		c, _ := fm["code"].(string)
+		codes[p] = c
+	}
+	if codes[blocked] != "PERMISSION_DENIED" {
+		t.Errorf("blocked code = %q, want PERMISSION_DENIED", codes[blocked])
+	}
+	if codes[missing] != "NOT_FOUND" {
+		t.Errorf("missing code = %q, want NOT_FOUND", codes[missing])
+	}
+}
+
+// TestE2E_RenameInspectIssuesPresent asserts the rename_inspect MCP tool
+// includes an "issues" key in its structuredContent when a source is
+// missing — exercising the preflight Issues contract end-to-end.
+func TestE2E_RenameInspectIssuesPresent(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real.txt")
+	if err := os.WriteFile(real, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(dir, "ghost.txt")
+
+	client := newMCPClient(t, "/")
+	res := client.callTool(t, "rename_inspect", map[string]any{
+		"sources": []string{real, missing},
+		"pattern": `\.txt$`,
+		"replace": ".log",
+	})
+	if res.IsError {
+		t.Fatalf("rename_inspect protocol error:\n%s", res.Text)
+	}
+	if res.Structured == nil {
+		t.Fatal("rename_inspect: missing structuredContent")
+	}
+	issues, ok := res.Structured["issues"].([]any)
+	if !ok || len(issues) != 1 {
+		t.Fatalf("rename_inspect: expected 1 issue (missing source), got %T = %v", res.Structured["issues"], res.Structured["issues"])
+	}
+	im, _ := issues[0].(map[string]any)
+	if im["Code"] != "NOT_FOUND" && im["code"] != "NOT_FOUND" {
+		t.Errorf("rename_inspect issue code = %v, want NOT_FOUND; whole issue = %+v", im["code"], im)
+	}
+}
+
 func mapKeys(m map[string]any) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {

@@ -48,7 +48,7 @@ func TestInspectEmptyPattern(t *testing.T) {
 func TestInspectMatchesBasenameOnly(t *testing.T) {
 	dir := t.TempDir()
 	srcs := seed(t, dir, "IMG_0001.JPG", "notes.txt")
-	plans, terr := Inspect(Request{
+	ins, terr := Inspect(Request{
 		Sources: srcs,
 		Pattern: `IMG_(\d+)\.JPG`,
 		Replace: `photo-$1.jpg`,
@@ -56,16 +56,41 @@ func TestInspectMatchesBasenameOnly(t *testing.T) {
 	if terr != nil {
 		t.Fatalf("inspect: %v", terr)
 	}
-	if len(plans) != 2 {
-		t.Fatalf("want 2 plans, got %d", len(plans))
+	if len(ins.Plans) != 2 {
+		t.Fatalf("want 2 plans, got %d", len(ins.Plans))
 	}
 	want := filepath.Join(dir, "photo-0001.jpg")
-	if plans[0].To != want {
-		t.Errorf("plan[0].To = %q, want %q", plans[0].To, want)
+	if ins.Plans[0].To != want {
+		t.Errorf("plan[0].To = %q, want %q", ins.Plans[0].To, want)
 	}
 	// notes.txt did not match — its plan row is a no-op.
-	if plans[1].From != plans[1].To {
-		t.Errorf("plan[1] should be a no-op, got %+v", plans[1])
+	if ins.Plans[1].From != ins.Plans[1].To {
+		t.Errorf("plan[1] should be a no-op, got %+v", ins.Plans[1])
+	}
+	if len(ins.Issues) != 0 {
+		t.Errorf("expected no preflight issues for readable sources, got %+v", ins.Issues)
+	}
+}
+
+// TestInspectReportsMissingSource confirms Inspect populates Issues for a
+// source path that doesn't exist, without failing the whole call.
+func TestInspectReportsMissingSource(t *testing.T) {
+	dir := t.TempDir()
+	srcs := seed(t, dir, "real.jpg")
+	srcs = append(srcs, filepath.Join(dir, "ghost.jpg"))
+	ins, terr := Inspect(Request{
+		Sources: srcs,
+		Pattern: `\.jpg`,
+		Replace: `.jpeg`,
+	})
+	if terr != nil {
+		t.Fatalf("inspect: %v", terr)
+	}
+	if len(ins.Issues) != 1 {
+		t.Fatalf("want 1 issue for missing ghost.jpg, got %d: %+v", len(ins.Issues), ins.Issues)
+	}
+	if ins.Issues[0].Code != tools.CodeNotFound {
+		t.Errorf("want NOT_FOUND, got %q", ins.Issues[0].Code)
 	}
 }
 
@@ -166,6 +191,185 @@ func TestRunCollisionSkip(t *testing.T) {
 	body, err := os.ReadFile(filepath.Join(dir, "shared.txt"))
 	if err != nil || string(body) != "existing" {
 		t.Errorf("shared.txt was clobbered: body=%q err=%v", string(body), err)
+	}
+}
+
+// TestRunMixedBatchScenario is the canonical multi-file scenario test for
+// the situation that motivated structured failure reporting: a batch with
+// one moveable file plus one in a directory the process can't write to
+// (target dir chmod 0500). The contract:
+//
+//   - The batch continues past the per-file failure.
+//   - The terminal event is Completed and Err == nil (partial success).
+//   - Terminal Failures lists the locked path with PERMISSION_DENIED.
+//
+// Sibling tests in internal/tools/{hash,image,stripmeta,archive} and the
+// HTTP layer assert the same contract through every transport.
+func TestRunMixedBatchScenario(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root — file modes are bypassed")
+	}
+	root := t.TempDir()
+	good := filepath.Join(root, "ok.txt")
+	if err := os.WriteFile(good, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Locked subdir holds a file the regex matches, but the dir is r/o so
+	// os.Rename fails with EACCES.
+	locked := filepath.Join(root, "locked")
+	if err := os.Mkdir(locked, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lockedFile := filepath.Join(locked, "trapped.txt")
+	if err := os.WriteFile(lockedFile, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(locked, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+
+	last := drain(t, Run(context.Background(), Request{
+		Sources: []string{good, lockedFile},
+		Pattern: `(\w+)\.txt`,
+		Replace: `$1-renamed.txt`,
+	}))
+	if last.Err != nil {
+		t.Fatalf("expected partial-success terminal, got %+v", last.Err)
+	}
+	if len(last.Failures) != 1 {
+		t.Fatalf("want 1 failure entry, got %d: %+v", len(last.Failures), last.Failures)
+	}
+	if got := last.Failures[0]; got.Code != tools.CodePermissionDenied || got.Path != lockedFile {
+		t.Errorf("failure[0] = %+v; want PERMISSION_DENIED for %s", got, lockedFile)
+	}
+	// The good file actually got renamed.
+	if _, err := os.Stat(filepath.Join(root, "ok-renamed.txt")); err != nil {
+		t.Errorf("expected ok.txt to be renamed despite the locked sibling, got %v", err)
+	}
+}
+
+// TestRunPermissionDeniedPerFile chmod-blocks the parent directory so os.Rename
+// returns EACCES on every file; the per-file SeverityError events must carry
+// PERMISSION_DENIED in their Err.Code so callers can distinguish "user can't
+// write here" from a generic disk failure.
+func TestRunPermissionDeniedPerFile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root — file modes are bypassed")
+	}
+	dir := t.TempDir()
+	srcs := seed(t, dir, "IMG_0001.JPG")
+	// Make the directory read-only so os.Rename inside it fails with EACCES.
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+
+	events := collect(Run(context.Background(), Request{
+		Sources: srcs,
+		Pattern: `IMG_(\d+)\.JPG`,
+		Replace: `photo-$1.jpg`,
+	}))
+	var sawPerFile bool
+	for _, ev := range events {
+		if ev.Completed {
+			continue
+		}
+		if ev.Level == tools.SeverityError && ev.Err != nil && ev.Err.Code == tools.CodePermissionDenied {
+			sawPerFile = true
+		}
+	}
+	if !sawPerFile {
+		t.Fatalf("expected per-file event with PERMISSION_DENIED, got %d events: %+v", len(events), events)
+	}
+}
+
+// TestRunRollbackUndoesEarlierRenames forces a mid-batch failure (the target
+// of the second rename is chmod'd 0400 so the rename can't proceed) with
+// Rollback enabled, then asserts the first rename was undone and the
+// terminal Failures slice carries both the original error and the absence
+// of any ROLLBACK_FAILED entries (the undo itself worked).
+func TestRunRollbackUndoesEarlierRenames(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root — modes are bypassed")
+	}
+	dir := t.TempDir()
+	// a.txt -> a-x.txt is fine. b.txt -> b-x.txt would clobber the
+	// pre-seeded read-only file with CollisionError → resolveCollisions
+	// would catch it upfront. So we instead make b.txt unmovable by
+	// blocking write on the directory after a.txt is already renamed —
+	// which requires a different trick: chmod the destination dir to
+	// read-only between iterations. The cleanest approach is to seed a
+	// scenario where the second source physically can't be renamed: use
+	// a subdir as the second source's target, and remove that subdir
+	// after the batch starts.
+	srcs := seed(t, dir, "a.txt", "b.txt")
+	// Use OnCollision=Skip so resolveCollisions accepts the plan; force the
+	// second rename to fail by making the destination path invalid (target
+	// directory deleted after Inspect).
+	subdir := filepath.Join(dir, "sub")
+	if err := os.Mkdir(subdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	srcInSub := filepath.Join(subdir, "c.txt")
+	if err := os.WriteFile(srcInSub, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srcs = append(srcs, srcInSub)
+
+	// Plan: rename a.txt -> a-x.txt, b.txt -> b-x.txt, c.txt -> c-x.txt.
+	// Between Inspect and the rename of c.txt we chmod subdir 0o500 so
+	// os.Rename can't write the new name. The first two renames go through
+	// in dir; the third fails.
+	go func() {
+		// Small delay so the first renames in dir finish before subdir is
+		// locked. Not deterministic enough for racey environments, but
+		// good enough for a quick assertion. Use t.TempDir cleanup to
+		// restore.
+	}()
+
+	// Synchronous trick: pre-chmod subdir AFTER inspecting plans by hand:
+	// run without async — call Inspect, plan, lock subdir, then call Run.
+	// Easier: chmod subdir now (so renames in subdir fail), but a.txt and
+	// b.txt go through.
+	if err := os.Chmod(subdir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(subdir, 0o755) })
+
+	events := collect(Run(context.Background(), Request{
+		Sources:     srcs,
+		Pattern:     `(\w+)\.txt`,
+		Replace:     `$1-x.txt`,
+		OnCollision: CollisionSkip,
+		Rollback:    true,
+	}))
+	last := events[len(events)-1]
+	if !last.Completed || last.Err == nil {
+		t.Fatalf("expected terminal failure event, got %+v", last)
+	}
+	// After rollback: a.txt and b.txt should be restored to their original
+	// names (i.e. a-x.txt / b-x.txt should NOT exist).
+	for _, name := range []string{"a-x.txt", "b-x.txt"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+			t.Errorf("rollback failed to undo %s", name)
+		}
+	}
+	for _, name := range []string{"a.txt", "b.txt"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Errorf("rollback should have restored %s, got: %v", name, err)
+		}
+	}
+	// Failures should carry exactly one entry for the failed c.txt rename;
+	// the rollback steps for a.txt and b.txt should have succeeded so no
+	// ROLLBACK_FAILED entries.
+	if len(last.Failures) == 0 {
+		t.Fatalf("expected at least one failure entry, got none")
+	}
+	for _, f := range last.Failures {
+		if f.Code == tools.CodeRollbackFailed {
+			t.Errorf("did not expect ROLLBACK_FAILED, got %+v", f)
+		}
 	}
 }
 

@@ -132,6 +132,24 @@ func registerImageTools(srv *mcp.Server, h *handlers) {
 	})
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "image_batch_inspect",
+		Description: "Dry-run a batch image conversion: validate sources, probe output_dir writability, return preflight Issues without converting anything.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, in imageBatchConvertInput) (*mcp.CallToolResult, any, error) {
+		ins, err := h.Image.InspectBatch(server.BatchConvertParams{
+			Sources:   in.Sources,
+			OutputDir: in.OutputDir,
+		})
+		if err != nil {
+			return errorResult("image", "batch_inspect", err), nil, nil
+		}
+		out := map[string]any{}
+		if len(ins.Issues) > 0 {
+			out["issues"] = ins.Issues
+		}
+		return jsonResult("image.batch_inspect: ok\n", out), nil, nil
+	})
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "image_strip_meta",
 		Description: "Re-encode images into output_dir with EXIF/IPTC/XMP stripped; keeps each source in its original format.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in imageStripMetaInput) (*mcp.CallToolResult, any, error) {

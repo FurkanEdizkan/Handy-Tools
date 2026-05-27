@@ -100,6 +100,30 @@ type Result struct {
 	Algo   Algo   `json:"algo"`
 }
 
+// Inspection is the result of Inspect: a preflight list of sources that
+// won't be hashable (missing, unreadable). Empty when every source stats
+// cleanly. Inspect never reads file contents — only os.Stat — so it's safe
+// to call on a large batch without IO load.
+type Inspection struct {
+	Issues []tools.PathIssue
+}
+
+// Inspect is the dry-run / preflight for Run: it validates the algo and
+// stats every source, returning Issues for any that don't exist or aren't
+// readable. Used by `htools hash --dry-run` and the `hash_inspect` MCP
+// tool. Returns a *tools.Error only for the prelude failures (empty
+// Sources, unknown Algo); per-file problems are reported as Issues so the
+// caller can decide whether to abort.
+func Inspect(req Request) (Inspection, *tools.Error) {
+	if len(req.Sources) == 0 {
+		return Inspection{}, &tools.Error{Code: tools.CodeBadRequest, Message: "hash needs at least one source"}
+	}
+	if _, terr := newHasher(req.Algo); terr != nil {
+		return Inspection{}, terr
+	}
+	return Inspection{Issues: tools.StatInputs(req.Sources)}, nil
+}
+
 // Run hashes Sources concurrently, streaming one Progress event per file
 // plus a terminal summary. The per-file event's Message holds the
 // `<digest>  <path>` line so a `--quiet` CLI can still capture it via the
@@ -146,7 +170,8 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 		var (
 			wg        sync.WaitGroup
 			completed atomic.Int64
-			failed    atomic.Int64
+			failuresM sync.Mutex
+			failures  []tools.Failure
 		)
 
 		for w := 0; w < workers; w++ {
@@ -160,12 +185,15 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 					res, terr := Hash(ctx, src, req.Algo)
 					done := completed.Add(1)
 					if terr != nil {
-						failed.Add(1)
+						failuresM.Lock()
+						failures = append(failures, tools.Failure{Path: src, Code: terr.Code, Message: terr.Message})
+						failuresM.Unlock()
 						emit(tools.Progress{
 							Level:       tools.SeverityError,
 							CurrentItem: filepath.Base(src),
 							Fraction:    float64(done) / float64(total),
-							Message:     fmt.Sprintf("[%d/%d] %s: %s", done, total, src, terr.Message),
+							Message:     fmt.Sprintf("[%d/%d] %s: %s (%s)", done, total, src, terr.Message, terr.Code),
+							Err:         terr,
 						})
 						continue
 					}
@@ -193,20 +221,20 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 		if err := ctx.Err(); err != nil {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
 				Code: tools.CodeAborted, Message: "hash canceled",
-			}})
+			}, Failures: failures})
 			return
 		}
-		nFailed := int(failed.Load())
+		nFailed := len(failures)
 		summary := fmt.Sprintf("hashed %d/%d file(s) with %s", total-nFailed, total, req.Algo)
 		if nFailed == total {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
-				Code: tools.CodeIO, Message: "all hashes failed", Detail: summary,
-			}})
+				Code: tools.CoalesceFailureCode(failures), Message: "all hashes failed", Detail: summary,
+			}, Failures: failures})
 			return
 		}
 		emit(tools.Progress{
 			Completed: true, Fraction: 1, Level: tools.SeverityInfo,
-			Message: summary,
+			Message: summary, Failures: failures,
 		})
 	}()
 	return ch
@@ -227,7 +255,7 @@ func Hash(ctx context.Context, path string, algo Algo) (*Result, *tools.Error) {
 	}
 	f, err := os.Open(path) //nolint:gosec // caller-supplied path; CLI / HTTP layer enforces path safety
 	if err != nil {
-		return nil, &tools.Error{Code: tools.CodeIO, Message: "open file", Detail: err.Error()}
+		return nil, &tools.Error{Code: tools.ClassifyFSError(err), Message: "open file", Detail: err.Error()}
 	}
 	defer f.Close()
 	if terr := streamInto(ctx, h, f); terr != nil {
@@ -264,7 +292,7 @@ func streamInto(ctx context.Context, h hash.Hash, r io.Reader) *tools.Error {
 			return nil
 		}
 		if err != nil {
-			return &tools.Error{Code: tools.CodeIO, Message: "read file", Detail: err.Error()}
+			return &tools.Error{Code: tools.ClassifyFSError(err), Message: "read file", Detail: err.Error()}
 		}
 	}
 }
@@ -296,7 +324,7 @@ func Verify(ctx context.Context, manifestPath string, algo Algo) ([]VerifyEntry,
 	}
 	f, err := os.Open(manifestPath) //nolint:gosec // caller-supplied path
 	if err != nil {
-		return nil, &tools.Error{Code: tools.CodeIO, Message: "open manifest", Detail: err.Error()}
+		return nil, &tools.Error{Code: tools.ClassifyFSError(err), Message: "open manifest", Detail: err.Error()}
 	}
 	defer f.Close()
 
@@ -340,7 +368,7 @@ func Verify(ctx context.Context, manifestPath string, algo Algo) ([]VerifyEntry,
 		entries = append(entries, entry)
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, &tools.Error{Code: tools.CodeIO, Message: "read manifest", Detail: err.Error()}
+		return nil, &tools.Error{Code: tools.ClassifyFSError(err), Message: "read manifest", Detail: err.Error()}
 	}
 	return entries, nil
 }

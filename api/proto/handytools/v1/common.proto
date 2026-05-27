@@ -33,6 +33,11 @@ message Progress {
   string message = 7;            // human-readable status / log line
   bool completed = 8;
   Error error = 9;               // set only on terminal failure
+  // Populated only on the terminal event (completed=true). Carries per-item
+  // failures that did NOT abort the run — e.g. some files in a batch failed
+  // with PERMISSION_DENIED while others succeeded. proto3 omits empty
+  // repeated fields on the wire, so non-terminal events pay no cost.
+  repeated Failure failures = 10;
 }
 
 // Error reported by a tool when an operation fails.
@@ -40,6 +45,15 @@ message Error {
   string code = 1;   // stable machine-readable code, e.g. "MISSING_BINARY"
   string message = 2;
   string detail = 3;  // optional extra context
+}
+
+// Failure is one per-item failure inside a multi-item batch. Populated on
+// the terminal Progress event so callers can render "which files failed and
+// why" instead of relying on the streaming per-file events.
+message Failure {
+  string path = 1;
+  string code = 2;     // one of the Error.code values
+  string message = 3;
 }
 
 // Where output should land. Tools may also fall back to a configured default.

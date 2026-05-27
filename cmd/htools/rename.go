@@ -24,6 +24,8 @@ func cmdRename(ctx context.Context, _ config.Config, args []string) int {
 	recurse := fs.Bool("recurse", false, "descend into subdirectories")
 	collision := fs.String("on-collision", "error", "what to do when the target exists: error|skip|suffix")
 	dryRun := fs.Bool("dry-run", false, "print the rename plan and exit; do not move anything")
+	strict := fs.Bool("strict", false, "abort before any rename when preflight reports missing/unreadable sources or unwritable targets")
+	rollback := fs.Bool("rollback-on-error", false, "abort on first rename failure and undo every rename already done in this batch")
 	quiet := fs.Bool("quiet", false, "suppress per-event progress lines")
 	asJSON := fs.Bool("json", false, "emit one JSON object per progress event")
 	positional, err := parseFlags(fs, args)
@@ -59,27 +61,43 @@ func cmdRename(ctx context.Context, _ config.Config, args []string) int {
 		Pattern:     *pattern,
 		Replace:     *replace,
 		OnCollision: mode,
+		Rollback:    *rollback,
 	}
 
+	opts := progressOpts{quiet: *quiet, json: *asJSON, strict: *strict}
 	if *dryRun {
-		return runRenameDryRun(req)
+		return runRenameDryRun(req, opts)
+	}
+	if *strict {
+		ins, terr := rename.Inspect(req)
+		if terr != nil {
+			fmt.Fprintf(os.Stderr, "rename: %s\n", terr.Error())
+			return exitCode(terr)
+		}
+		if code := runPreflight(ins.Issues, opts); code != 0 {
+			return code
+		}
 	}
 	ch := rename.Run(ctx, req)
-	return streamProgress(ch, progressOpts{quiet: *quiet, json: *asJSON})
+	return streamProgress(ch, opts)
 }
 
 // runRenameDryRun prints the rename plan as `from -> to` lines (or as one
 // JSON object per row when --json is set later — for now plain text).
 // Returns 0 on a successful inspection regardless of whether any renames
-// would happen — the caller can grep the output to decide.
-func runRenameDryRun(req rename.Request) int {
-	plans, terr := rename.Inspect(req)
+// would happen — the caller can grep the output to decide. When --strict is
+// set, preflight issues abort with exit 2 before any plan is printed.
+func runRenameDryRun(req rename.Request, opts progressOpts) int {
+	ins, terr := rename.Inspect(req)
 	if terr != nil {
 		fmt.Fprintf(os.Stderr, "rename: %s\n", terr.Error())
 		return exitCode(terr)
 	}
+	if code := runPreflight(ins.Issues, opts); code != 0 {
+		return code
+	}
 	var moved int
-	for _, p := range plans {
+	for _, p := range ins.Plans {
 		if p.From == p.To {
 			fmt.Fprintf(os.Stdout, "skip  %s\n", p.From)
 			continue
@@ -87,7 +105,7 @@ func runRenameDryRun(req rename.Request) int {
 		fmt.Fprintf(os.Stdout, "move  %s -> %s\n", p.From, p.To)
 		moved++
 	}
-	fmt.Fprintf(os.Stderr, "dry-run: %d planned, %d skipped\n", moved, len(plans)-moved)
+	fmt.Fprintf(os.Stderr, "dry-run: %d planned, %d skipped\n", moved, len(ins.Plans)-moved)
 	return 0
 }
 

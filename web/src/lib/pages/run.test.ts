@@ -1,6 +1,14 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { dirOf, resolveSources, runJob, stemOf } from './run';
+import {
+  archiveStem,
+  basenameOf,
+  computeExtractDestDir,
+  dirOf,
+  resolveSources,
+  runJob,
+  stemOf,
+} from './run';
 import type { PickedFile } from './toolform';
 
 describe('dirOf / stemOf', () => {
@@ -35,6 +43,57 @@ describe('runJob', () => {
     });
     expect(res.ok).toBe(false);
     expect(res.jobIds).toEqual([]);
+  });
+});
+
+describe('basenameOf', () => {
+  it('returns the trailing component', () => {
+    expect(basenameOf('/a/b/c.zip')).toBe('c.zip');
+    expect(basenameOf(String.raw`c:\a\b\c.zip`)).toBe('c.zip');
+    expect(basenameOf('c.zip')).toBe('c.zip');
+  });
+});
+
+describe('archiveStem', () => {
+  it('strips compound tar extensions', () => {
+    expect(archiveStem('/x/y/foo.tar.gz')).toBe('foo');
+    expect(archiveStem('foo.TAR.BZ2')).toBe('foo');
+    expect(archiveStem('foo.tar.zst')).toBe('foo');
+    expect(archiveStem('foo.tar.xz')).toBe('foo');
+  });
+
+  it('strips RAR multi-part volume suffixes', () => {
+    expect(archiveStem('/x/Crusade.part01.rar')).toBe('Crusade');
+    expect(archiveStem('Crusade.PART9.rar')).toBe('Crusade');
+  });
+
+  it('strips 7z multi-part volume suffixes', () => {
+    expect(archiveStem('foo.7z.001')).toBe('foo');
+    expect(archiveStem('/x/foo.7z.123')).toBe('foo');
+  });
+
+  it('strips legacy RAR continuation suffixes', () => {
+    expect(archiveStem('foo.r00')).toBe('foo');
+    expect(archiveStem('foo.r99')).toBe('foo');
+  });
+
+  it('falls back to a single extension strip', () => {
+    expect(archiveStem('foo.zip')).toBe('foo');
+    expect(archiveStem('/x/y/foo.7z')).toBe('foo');
+    expect(archiveStem('plain')).toBe('plain');
+  });
+});
+
+describe('computeExtractDestDir', () => {
+  it('appends archive stem to the user-chosen dir in "into" mode', () => {
+    expect(computeExtractDestDir('/in/foo.zip', 'into', '/out')).toBe('/out/foo');
+    expect(computeExtractDestDir('/in/big.tar.gz', 'into', '/out/')).toBe('/out/big');
+    expect(computeExtractDestDir('/in/set.part01.rar', 'into', '/out')).toBe('/out/set');
+  });
+
+  it('anchors next to the source in "alongside" mode', () => {
+    expect(computeExtractDestDir('/in/foo.zip', 'alongside', '')).toBe('/in/foo');
+    expect(computeExtractDestDir('/in/sub/big.tar.gz', 'alongside', '/other')).toBe('/in/sub/big');
   });
 });
 

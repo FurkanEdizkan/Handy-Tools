@@ -287,14 +287,78 @@ func TestBatchConvertPartialFailureContinues(t *testing.T) {
 	}
 }
 
+// TestBatchConvertMixedBatchScenario is the canonical multi-file failure
+// scenario for image batch convert: one decodable PNG, one chmod-blocked
+// PNG, and one missing path. Verifies:
+//
+//   - The batch continues past the failed files.
+//   - Terminal Completed event has Err == nil (partial success).
+//   - Terminal Failures lists exactly the blocked and missing paths with
+//     PERMISSION_DENIED and NOT_FOUND codes respectively.
+//
+// Sibling tests in internal/tools/{hash,rename,stripmeta,archive} and the
+// HTTP layer assert the same contract.
+func TestBatchConvertMixedBatchScenario(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root — file modes are bypassed")
+	}
+	dir := t.TempDir()
+	out := t.TempDir()
+	good := filepath.Join(dir, "good.png")
+	writeNamedPNG(t, good)
+	blocked := filepath.Join(dir, "blocked.png")
+	writeNamedPNG(t, blocked)
+	if err := os.Chmod(blocked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(blocked, 0o644) })
+	missing := filepath.Join(dir, "ghost.png")
+
+	progress := collect(BatchConvert(context.Background(), BatchConvertRequest{
+		Sources:      []string{good, blocked, missing},
+		TargetFormat: FormatJPEG,
+		OutputDir:    out,
+		Opts:         Options{Quality: 80},
+	}))
+	last := progress[len(progress)-1]
+	if last.Err != nil {
+		t.Fatalf("expected partial-success terminal, got %+v", last.Err)
+	}
+	if len(last.Failures) != 2 {
+		t.Fatalf("want 2 failures, got %d: %+v", len(last.Failures), last.Failures)
+	}
+	// Match by path; order isn't guaranteed because workers complete in
+	// parallel for non-trivial Parallelism, and even at Parallelism=0 the
+	// scheduler isn't fixed.
+	codes := map[string]string{}
+	for _, f := range last.Failures {
+		codes[f.Path] = f.Code
+	}
+	if codes[blocked] != tools.CodePermissionDenied {
+		t.Errorf("blocked: want PERMISSION_DENIED, got %q", codes[blocked])
+	}
+	if codes[missing] != tools.CodeNotFound {
+		t.Errorf("missing: want NOT_FOUND, got %q", codes[missing])
+	}
+	if _, err := os.Stat(filepath.Join(out, "good.jpg")); err != nil {
+		t.Errorf("good output missing: %v", err)
+	}
+}
+
 func TestBatchConvertAllFail(t *testing.T) {
 	progress := collect(BatchConvert(context.Background(), BatchConvertRequest{
 		Sources:      []string{"/nope-1.png", "/nope-2.png"},
 		TargetFormat: FormatJPEG,
 		OutputDir:    t.TempDir(),
 	}))
-	if last := progress[len(progress)-1]; last.Err == nil || last.Err.Code != tools.CodeIO {
-		t.Fatalf("expected IO_ERROR when every file fails, got %+v", last)
+	last := progress[len(progress)-1]
+	// Every file failed with the same NOT_FOUND classification, so the
+	// terminal Code should coalesce to that — not collapse to IO_ERROR.
+	if last.Err == nil || last.Err.Code != tools.CodeNotFound {
+		t.Fatalf("expected NOT_FOUND when every file vanishes, got %+v", last)
+	}
+	if len(last.Failures) != 2 {
+		t.Errorf("expected 2 failure entries on terminal event, got %d: %+v", len(last.Failures), last.Failures)
 	}
 }
 

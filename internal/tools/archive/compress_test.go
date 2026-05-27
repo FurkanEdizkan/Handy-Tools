@@ -232,3 +232,106 @@ func TestCompressEmptySourcesRejected(t *testing.T) {
 		t.Fatalf("expected BAD_REQUEST for empty sources, got %+v", last.Err)
 	}
 }
+
+// TestCompressMixedSourceScenario verifies the multi-source preflight for
+// pack: InspectCompress flags the missing path and the chmod-blocked
+// destination without trying to write anything. Pack is a single-archive
+// operation (not a per-file batch) so it doesn't have a Failures slice in
+// the streaming sense — its preflight is the Inspection.Issues slice
+// instead. Mirrors the mixed-batch scenario tests in
+// internal/tools/{hash,rename,image,stripmeta}.
+func TestCompressMixedSourceScenario(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root — file modes are bypassed")
+	}
+	dir := t.TempDir()
+	good := filepath.Join(dir, "good.txt")
+	if err := os.WriteFile(good, []byte("data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(dir, "ghost.txt")
+	// Read-only output dir so CheckOutputDirWritable surfaces the issue.
+	outDir := filepath.Join(dir, "out-ro")
+	if err := os.Mkdir(outDir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(outDir, 0o755) })
+
+	ins, terr := InspectCompress(CompressRequest{
+		Sources: []string{good, missing},
+		Format:  FormatZip,
+		Output:  filepath.Join(outDir, "out.zip"),
+	})
+	if terr != nil {
+		t.Fatalf("InspectCompress prelude error: %v", terr)
+	}
+	if len(ins.Issues) < 2 {
+		t.Fatalf("want at least 2 issues (missing source + unwritable output), got %d: %+v", len(ins.Issues), ins.Issues)
+	}
+	var sawMissing, sawUnwritable bool
+	for _, iss := range ins.Issues {
+		if iss.Path == missing && iss.Code == "NOT_FOUND" {
+			sawMissing = true
+		}
+		if iss.Path == outDir && iss.Code == "PERMISSION_DENIED" {
+			sawUnwritable = true
+		}
+	}
+	if !sawMissing {
+		t.Errorf("missing source not flagged: %+v", ins.Issues)
+	}
+	if !sawUnwritable {
+		t.Errorf("unwritable output dir not flagged: %+v", ins.Issues)
+	}
+}
+
+// TestCompressNoPartialOnSuccess verifies the .partial staging file is
+// cleaned up after a successful pack — only the final output should remain
+// on disk, never a sibling .partial.
+func TestCompressNoPartialOnSuccess(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(src, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "out.zip")
+	last := runCompress(t, CompressRequest{
+		Sources: []string{src}, Format: FormatZip, Output: out,
+	})
+	if last.Err != nil {
+		t.Fatalf("compress failed: %+v", last.Err)
+	}
+	if _, err := os.Stat(out); err != nil {
+		t.Errorf("expected final output to exist: %v", err)
+	}
+	if _, err := os.Stat(out + ".partial"); !os.IsNotExist(err) {
+		t.Errorf("expected no .partial leftover, got stat err = %v", err)
+	}
+}
+
+// TestCompressRemovesPartialOnFailure forces a finalize-rename failure
+// (output path is a directory) and confirms the .partial staging file is
+// removed rather than left as an orphan.
+func TestCompressRemovesPartialOnFailure(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(src, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Make the final output path a directory so os.Rename(staged, final)
+	// must fail. The .partial file is the rename's source; whatever happens
+	// in the renamer, the cleanup branch should still remove it.
+	finalOutput := filepath.Join(dir, "out.zip")
+	if err := os.Mkdir(finalOutput, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	last := runCompress(t, CompressRequest{
+		Sources: []string{src}, Format: FormatZip, Output: finalOutput,
+	})
+	if last.Err == nil {
+		t.Fatalf("expected failure when output path is a directory, got success")
+	}
+	if _, err := os.Stat(finalOutput + ".partial"); !os.IsNotExist(err) {
+		t.Errorf("expected .partial to be cleaned up, got stat err = %v", err)
+	}
+}

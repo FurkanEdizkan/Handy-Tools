@@ -104,7 +104,7 @@ func Convert(ctx context.Context, req ConvertRequest) <-chan tools.Progress {
 		img, err := decode(req.Source)
 		if err != nil {
 			emit(tools.Progress{Completed: true, Level: tools.SeverityError, Err: &tools.Error{
-				Code: tools.CodeIO, Message: "decode failed", Detail: err.Error(),
+				Code: tools.ClassifyFSError(err), Message: "decode failed", Detail: err.Error(),
 			}})
 			return
 		}
@@ -147,6 +147,29 @@ type BatchConvertRequest struct {
 	// 0 (the default) auto-sizes to runtime.GOMAXPROCS(0). 1 forces
 	// serial — useful in tests that depend on event ordering.
 	Parallelism int
+}
+
+// BatchInspection is the result of InspectBatch.
+type BatchInspection struct {
+	Issues []tools.PathIssue
+}
+
+// InspectBatch is the dry-run / preflight for BatchConvert: it stats every
+// source and probes the output directory for writability, returning Issues
+// without touching any image data. Use this from `htools convert --dry-run`
+// and the `image_batch_inspect` MCP tool to surface "this file disappeared"
+// or "you can't write here" before a long batch starts.
+func InspectBatch(req BatchConvertRequest) (BatchInspection, *tools.Error) {
+	if len(req.Sources) == 0 {
+		return BatchInspection{}, &tools.Error{Code: tools.CodeBadRequest, Message: "batch needs at least one source"}
+	}
+	issues := tools.StatInputs(req.Sources)
+	if req.OutputDir != "" {
+		if issue := tools.CheckOutputDirWritable(req.OutputDir); issue != nil {
+			issues = append(issues, *issue)
+		}
+	}
+	return BatchInspection{Issues: issues}, nil
 }
 
 // BatchConvert converts every source concurrently and emits one
@@ -198,7 +221,8 @@ func BatchConvert(ctx context.Context, req BatchConvertRequest) <-chan tools.Pro
 		var (
 			wg        sync.WaitGroup
 			completed atomic.Int64
-			failed    atomic.Int64
+			failuresM sync.Mutex
+			failures  []tools.Failure
 		)
 
 		for w := 0; w < workers; w++ {
@@ -219,12 +243,15 @@ func BatchConvert(ctx context.Context, req BatchConvertRequest) <-chan tools.Pro
 					})
 					done := completed.Add(1)
 					if terr != nil {
-						failed.Add(1)
+						failuresM.Lock()
+						failures = append(failures, tools.Failure{Path: j.src, Code: terr.Code, Message: terr.Message})
+						failuresM.Unlock()
 						emit(tools.Progress{
 							Level:       tools.SeverityError,
 							CurrentItem: name,
 							Fraction:    float64(done) / float64(total),
-							Message:     fmt.Sprintf("[%d/%d] %s: %s", done, total, name, terr.Message),
+							Message:     fmt.Sprintf("[%d/%d] %s: %s (%s)", done, total, name, terr.Message, terr.Code),
+							Err:         terr,
 						})
 						continue
 					}
@@ -253,19 +280,20 @@ func BatchConvert(ctx context.Context, req BatchConvertRequest) <-chan tools.Pro
 		if err := ctx.Err(); err != nil {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
 				Code: tools.CodeAborted, Message: "batch convert canceled",
-			}})
+			}, Failures: failures})
 			return
 		}
-		nFailed := int(failed.Load())
+		nFailed := len(failures)
 		if nFailed == total {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
-				Code: tools.CodeIO, Message: fmt.Sprintf("all %d conversion(s) failed", total),
-			}})
+				Code: tools.CoalesceFailureCode(failures), Message: fmt.Sprintf("all %d conversion(s) failed", total),
+			}, Failures: failures})
 			return
 		}
 		emit(tools.Progress{
 			Completed: true, Fraction: 1, Level: tools.SeverityInfo,
-			Message: fmt.Sprintf("converted %d/%d image(s)", total-nFailed, total),
+			Message:  fmt.Sprintf("converted %d/%d image(s)", total-nFailed, total),
+			Failures: failures,
 		})
 	}()
 	return ch
@@ -277,7 +305,7 @@ func BatchConvert(ctx context.Context, req BatchConvertRequest) <-chan tools.Pro
 func convertOne(req ConvertRequest) (outPath string, terr *tools.Error) {
 	img, err := decode(req.Source)
 	if err != nil {
-		return "", &tools.Error{Code: tools.CodeIO, Message: "decode failed", Detail: err.Error()}
+		return "", &tools.Error{Code: tools.ClassifyFSError(err), Message: "decode failed", Detail: err.Error()}
 	}
 	if req.Opts.MaxWidth > 0 || req.Opts.MaxHeight > 0 {
 		img = resize(img, req.Opts.MaxWidth, req.Opts.MaxHeight)
@@ -383,7 +411,7 @@ func encodeError(err error) *tools.Error {
 	if errors.As(err, &te) {
 		return te
 	}
-	return &tools.Error{Code: tools.CodeIO, Message: "encode failed", Detail: err.Error()}
+	return &tools.Error{Code: tools.ClassifyFSError(err), Message: "encode failed", Detail: err.Error()}
 }
 
 // encodeViaMagick writes a PNG to a temp file, then asks magick to convert it

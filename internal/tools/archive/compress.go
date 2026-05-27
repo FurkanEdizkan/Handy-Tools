@@ -32,6 +32,43 @@ type CompressRequest struct {
 	CompressionLevel int      // 0 = format default; 1 = fastest .. 9 = smallest
 }
 
+// CompressInspection is the result of InspectCompress.
+type CompressInspection struct {
+	Format     Format            // resolved format (from req.Format or req.Output extension)
+	EntryCount int               // best-effort count of files that would be packed
+	Issues     []tools.PathIssue // preflight: sources missing/unreadable, output dir unwritable
+}
+
+// InspectCompress is the dry-run / preflight for Compress. It verifies that
+// every source can be stat'd and that the output directory accepts writes,
+// returning a structured Issues slice. It does not open the output file or
+// pack anything. Callers use this for `--dry-run` and `--strict` flows.
+func InspectCompress(req CompressRequest) (CompressInspection, *tools.Error) {
+	if len(req.Sources) == 0 {
+		return CompressInspection{}, &tools.Error{Code: tools.CodeBadRequest, Message: "no sources to compress"}
+	}
+	if req.Output == "" {
+		return CompressInspection{}, &tools.Error{Code: tools.CodeBadRequest, Message: "no output path given"}
+	}
+	ins := CompressInspection{Format: req.Format}
+	if ins.Format == FormatUnknown {
+		ins.Format = detectFormat(req.Output)
+	}
+	ins.Issues = append(ins.Issues, tools.StatInputs(req.Sources)...)
+	if issue := tools.CheckOutputDirWritable(filepath.Dir(req.Output)); issue != nil {
+		ins.Issues = append(ins.Issues, *issue)
+	}
+	// EntryCount is best-effort: if every source stats cleanly, walk them to
+	// get the actual file count. If anything failed, leave it at zero so the
+	// caller doesn't make claims it can't back up.
+	if len(ins.Issues) == 0 {
+		if entries, err := gatherEntries(req.Sources); err == nil {
+			ins.EntryCount = len(entries)
+		}
+	}
+	return ins, nil
+}
+
 // Compress packs Sources into a single archive at req.Output. zip, tar,
 // tar.gz, tar.bz2 and tar.zst are produced in pure Go; directory sources are
 // added recursively. RAR creation is unsupported (proprietary); 7z creation
@@ -74,7 +111,7 @@ func Compress(ctx context.Context, req CompressRequest) <-chan tools.Progress {
 
 		entries, err := gatherEntries(req.Sources)
 		if err != nil {
-			emit(compressFail(tools.CodeIO, "scan sources", err.Error()))
+			emit(compressFail(tools.ClassifyFSError(err), "scan sources", err.Error()))
 			return
 		}
 		if len(entries) == 0 {
@@ -85,33 +122,50 @@ func Compress(ctx context.Context, req CompressRequest) <-chan tools.Progress {
 		emit(tools.Progress{Level: tools.SeverityInfo,
 			Message: fmt.Sprintf("packing %d file(s) into %s", len(entries), req.Format)})
 
+		// Write to <output>.partial first, then atomically rename on success.
+		// This guarantees the user never sees a half-written archive at the
+		// final path: either it's there in full, or it isn't. On any failure
+		// the .partial file is removed so retries don't see a stale stub.
+		// 7z is delegated to the external binary but we still hand it the
+		// .partial path so the pattern is uniform across formats.
+		finalOutput := req.Output
+		stagedReq := req
+		stagedReq.Output = finalOutput + ".partial"
+		_ = os.Remove(stagedReq.Output) // pre-clean any leftover from an aborted run
+
 		switch req.Format {
 		case FormatRar:
 			emit(compressFail(tools.CodeUnsupportedInput, "cannot create RAR archives",
 				"RAR is proprietary; no creation tool is bundled"))
 			return
 		case FormatSevenZ:
-			err = compressSevenZ(ctx, req, emit)
+			err = compressSevenZ(ctx, stagedReq, emit)
 		case FormatZip:
-			err = writeZip(ctx, req, entries, emit)
+			err = writeZip(ctx, stagedReq, entries, emit)
 		case FormatTar, FormatTarGz, FormatTarBz2, FormatTarZst:
-			err = writeTarArchive(ctx, req, entries, emit)
+			err = writeTarArchive(ctx, stagedReq, entries, emit)
 		default:
 			emit(compressFail(tools.CodeUnsupportedInput, "unsupported archive format",
 				req.Format.String()))
 			return
 		}
 		if err != nil {
+			_ = os.Remove(stagedReq.Output)
 			var terr *tools.Error
 			if errors.As(err, &terr) {
 				emit(tools.Progress{Completed: true, Err: terr})
 			} else {
-				emit(compressFail(tools.CodeIO, "compress failed", err.Error()))
+				emit(compressFail(tools.ClassifyFSError(err), "compress failed", err.Error()))
 			}
 			return
 		}
+		if err := os.Rename(stagedReq.Output, finalOutput); err != nil {
+			_ = os.Remove(stagedReq.Output)
+			emit(compressFail(tools.ClassifyFSError(err), "finalize archive", err.Error()))
+			return
+		}
 		emit(tools.Progress{Completed: true, Fraction: 1, Level: tools.SeverityInfo,
-			Message: "wrote " + req.Output})
+			Message: "wrote " + finalOutput})
 	}()
 	return ch
 }

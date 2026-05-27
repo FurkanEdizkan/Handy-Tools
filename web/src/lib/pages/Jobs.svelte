@@ -1,9 +1,28 @@
 <script lang="ts">
   /* Jobs — the full live queue, streamed over SSE from htoolsd. */
-  import { jobs, expandedJobs, toggleJobExpanded, type JobStatus } from '../stores/jobs';
+  import { tick, onMount } from 'svelte';
+  import {
+    jobs,
+    expandedJobs,
+    focusedJobId,
+    toggleJobExpanded,
+    type JobStatus,
+  } from '../stores/jobs';
 
   type Filter = 'all' | JobStatus;
   let filter = $state<Filter>('all');
+
+  // When the page is opened via a deep-link (e.g. a failure popup), reset
+  // the filter so the target row is visible, then scroll it into view and
+  // clear the marker so subsequent visits don't re-scroll.
+  onMount(async () => {
+    const id = $focusedJobId;
+    if (!id) return;
+    focusedJobId.set(null);
+    filter = 'all';
+    await tick();
+    document.getElementById(`job-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  });
 
   const counts = $derived.by(() => {
     const c: Record<JobStatus, number> = { wait: 0, running: 0, done: 0, fail: 0 };
@@ -70,7 +89,7 @@
   {:else}
     {#each filtered as job (job.id)}
       {@const open = $expandedJobs.has(job.id)}
-      <div class="job-card {job.status}">
+      <div class="job-card {job.status}" id={`job-${job.id}`}>
         <div
           class="job-row {job.status}"
           role="button"

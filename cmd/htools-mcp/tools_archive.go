@@ -97,4 +97,26 @@ func registerArchiveTools(srv *mcp.Server, h *handlers) {
 		})
 		return res, nil, nil
 	})
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "archive_pack_inspect",
+		Description: "Dry-run an archive pack: validate sources, probe output directory writability, return preflight Issues without writing the archive.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, in archiveCompressInput) (*mcp.CallToolResult, any, error) {
+		ins, err := h.Archive.InspectCompress(server.CompressParams{
+			Sources: in.Sources,
+			Format:  parseArchiveFormat(in.Format),
+			Output:  in.Output,
+		})
+		if err != nil {
+			return errorResult("archive", "pack_inspect", err), nil, nil
+		}
+		out := map[string]any{
+			"format":      ins.Format.String(),
+			"entry_count": ins.EntryCount,
+		}
+		if len(ins.Issues) > 0 {
+			out["issues"] = ins.Issues
+		}
+		return jsonResult("archive.pack_inspect: ok\n", out), nil, nil
+	})
 }
