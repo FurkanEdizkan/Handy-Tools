@@ -53,8 +53,10 @@ export interface InspectRequest {
 export interface InspectResponse {
   format: string;
   multiPart: boolean;
-  detectedParts: string[];
-  missingParts: string[];
+  /** Backend normalizes nil → [], but treat as possibly-null for safety
+   *  against older binaries or other endpoints that haven't been normalized. */
+  detectedParts: string[] | null;
+  missingParts: string[] | null;
   uncompressedSizeBytes: number;
   entryCount: number;
   requiresPassword: boolean;

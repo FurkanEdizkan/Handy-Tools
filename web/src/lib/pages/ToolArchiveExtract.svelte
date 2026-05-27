@@ -126,12 +126,13 @@
     const { groups, errors } = groupArchives(okItems, destMode, destination);
 
     for (const e of errors) {
+      const missing = e.ins.missingParts ?? [];
       pushPopup({
         id: `preflight:${e.src.path}`,
         tone: 'error',
         sticky: true,
         title: `Missing volumes for ${basenameOf(e.src.path)}`,
-        message: `Multi-part archive needs ${e.ins.missingParts.length} more volume(s): ${e.ins.missingParts.join(', ')}`,
+        message: `Multi-part archive needs ${missing.length} more volume(s): ${missing.join(', ')}`,
       });
     }
 

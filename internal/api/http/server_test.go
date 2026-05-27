@@ -1,6 +1,7 @@
 package http
 
 import (
+	"archive/zip"
 	"bufio"
 	"bytes"
 	"context"
@@ -688,5 +689,75 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 	if len(hr.Transports) == 0 {
 		t.Errorf("transports empty; want grpc + http")
+	}
+}
+
+// TestArchiveInspectSerializesEmptySlicesAsArrays locks in the fix for the
+// silent crash on the GUI's Extract page: archive.Inspect returns a nil
+// MissingParts for any archive with no missing volumes, which Go's JSON
+// encoder serializes as `null`. The TS client did `.length` on the field and
+// blew up. The handler must always emit `[]` for these fields so clients
+// can iterate them unconditionally.
+func TestArchiveInspectSerializesEmptySlicesAsArrays(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "tiny.zip")
+	writeTinyZip(t, zipPath)
+
+	ts := newTestServer(t, dir)
+	body, _ := json.Marshal(inspectRequest{Source: fileRef{Path: zipPath}})
+	resp, err := http.Post(ts.URL+"/v1/archive/inspect", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status: got %d want 200; body=%s", resp.StatusCode, raw)
+	}
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if bytes.Contains(raw, []byte(`"missing_parts":null`)) {
+		t.Fatalf("missing_parts serialized as null; want []: %s", raw)
+	}
+	if bytes.Contains(raw, []byte(`"detected_parts":null`)) {
+		t.Fatalf("detected_parts serialized as null; want [...]: %s", raw)
+	}
+	// Also assert the typed shape: missing_parts is an empty array, detected_parts has the source.
+	var ir inspectResponse
+	if err := json.Unmarshal(raw, &ir); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if ir.MissingParts == nil {
+		t.Errorf("MissingParts decoded as nil; want non-nil empty slice")
+	}
+	if len(ir.MissingParts) != 0 {
+		t.Errorf("MissingParts: got %v want []", ir.MissingParts)
+	}
+	if len(ir.DetectedParts) == 0 {
+		t.Errorf("DetectedParts: got %v want at least the source path", ir.DetectedParts)
+	}
+}
+
+// writeTinyZip writes a single-entry valid zip at path so archive.Inspect
+// can identify it without parsing actual data.
+func writeTinyZip(t *testing.T, path string) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create zip: %v", err)
+	}
+	defer f.Close()
+	zw := zip.NewWriter(f)
+	w, err := zw.Create("hello.txt")
+	if err != nil {
+		t.Fatalf("zip entry: %v", err)
+	}
+	if _, err := w.Write([]byte("hi")); err != nil {
+		t.Fatalf("write entry: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close zip: %v", err)
 	}
 }
