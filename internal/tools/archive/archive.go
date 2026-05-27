@@ -150,7 +150,7 @@ func Extract(ctx context.Context, req ExtractRequest) <-chan tools.Progress {
 
 		if err := os.MkdirAll(req.Destination, 0o755); err != nil {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
-				Code: tools.CodeIO, Message: "create destination", Detail: err.Error()},
+				Code: tools.ClassifyFSError(err), Message: "create destination", Detail: err.Error()},
 			})
 			return
 		}
@@ -162,7 +162,7 @@ func Extract(ctx context.Context, req ExtractRequest) <-chan tools.Progress {
 		ins, err := inspect(req.Source, false)
 		if err != nil {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
-				Code: tools.CodeIO, Message: "inspect failed", Detail: err.Error()},
+				Code: tools.ClassifyFSError(err), Message: "inspect failed", Detail: err.Error()},
 			})
 			return
 		}
@@ -209,7 +209,7 @@ func Extract(ctx context.Context, req ExtractRequest) <-chan tools.Progress {
 				emit(tools.Progress{Completed: true, Err: terr})
 			} else {
 				emit(tools.Progress{Completed: true, Err: &tools.Error{
-					Code: tools.CodeIO, Message: "extract failed", Detail: err.Error(),
+					Code: tools.ClassifyFSError(err), Message: "extract failed", Detail: err.Error(),
 				}})
 			}
 			return

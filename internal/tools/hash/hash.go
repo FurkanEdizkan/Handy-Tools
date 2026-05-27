@@ -165,7 +165,8 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 							Level:       tools.SeverityError,
 							CurrentItem: filepath.Base(src),
 							Fraction:    float64(done) / float64(total),
-							Message:     fmt.Sprintf("[%d/%d] %s: %s", done, total, src, terr.Message),
+							Message:     fmt.Sprintf("[%d/%d] %s: %s (%s)", done, total, src, terr.Message, terr.Code),
+							Err:         terr,
 						})
 						continue
 					}
@@ -227,7 +228,7 @@ func Hash(ctx context.Context, path string, algo Algo) (*Result, *tools.Error) {
 	}
 	f, err := os.Open(path) //nolint:gosec // caller-supplied path; CLI / HTTP layer enforces path safety
 	if err != nil {
-		return nil, &tools.Error{Code: tools.CodeIO, Message: "open file", Detail: err.Error()}
+		return nil, &tools.Error{Code: tools.ClassifyFSError(err), Message: "open file", Detail: err.Error()}
 	}
 	defer f.Close()
 	if terr := streamInto(ctx, h, f); terr != nil {
@@ -264,7 +265,7 @@ func streamInto(ctx context.Context, h hash.Hash, r io.Reader) *tools.Error {
 			return nil
 		}
 		if err != nil {
-			return &tools.Error{Code: tools.CodeIO, Message: "read file", Detail: err.Error()}
+			return &tools.Error{Code: tools.ClassifyFSError(err), Message: "read file", Detail: err.Error()}
 		}
 	}
 }
@@ -296,7 +297,7 @@ func Verify(ctx context.Context, manifestPath string, algo Algo) ([]VerifyEntry,
 	}
 	f, err := os.Open(manifestPath) //nolint:gosec // caller-supplied path
 	if err != nil {
-		return nil, &tools.Error{Code: tools.CodeIO, Message: "open manifest", Detail: err.Error()}
+		return nil, &tools.Error{Code: tools.ClassifyFSError(err), Message: "open manifest", Detail: err.Error()}
 	}
 	defer f.Close()
 
@@ -340,7 +341,7 @@ func Verify(ctx context.Context, manifestPath string, algo Algo) ([]VerifyEntry,
 		entries = append(entries, entry)
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, &tools.Error{Code: tools.CodeIO, Message: "read manifest", Detail: err.Error()}
+		return nil, &tools.Error{Code: tools.ClassifyFSError(err), Message: "read manifest", Detail: err.Error()}
 	}
 	return entries, nil
 }

@@ -74,7 +74,7 @@ func Compress(ctx context.Context, req CompressRequest) <-chan tools.Progress {
 
 		entries, err := gatherEntries(req.Sources)
 		if err != nil {
-			emit(compressFail(tools.CodeIO, "scan sources", err.Error()))
+			emit(compressFail(tools.ClassifyFSError(err), "scan sources", err.Error()))
 			return
 		}
 		if len(entries) == 0 {
@@ -106,7 +106,7 @@ func Compress(ctx context.Context, req CompressRequest) <-chan tools.Progress {
 			if errors.As(err, &terr) {
 				emit(tools.Progress{Completed: true, Err: terr})
 			} else {
-				emit(compressFail(tools.CodeIO, "compress failed", err.Error()))
+				emit(compressFail(tools.ClassifyFSError(err), "compress failed", err.Error()))
 			}
 			return
 		}

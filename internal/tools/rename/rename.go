@@ -147,11 +147,13 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 			}
 			if err := os.Rename(p.From, p.To); err != nil {
 				failed++
+				code := tools.ClassifyFSError(err)
 				emit(tools.Progress{
 					Level:       tools.SeverityError,
 					CurrentItem: filepath.Base(p.From),
 					Fraction:    float64(i+1) / float64(total),
-					Message:     fmt.Sprintf("[%d/%d] failed %s -> %s: %s", i+1, total, filepath.Base(p.From), filepath.Base(p.To), err.Error()),
+					Message:     fmt.Sprintf("[%d/%d] failed %s -> %s: %s (%s)", i+1, total, filepath.Base(p.From), filepath.Base(p.To), err.Error(), code),
+					Err:         &tools.Error{Code: code, Message: "rename failed", Detail: err.Error()},
 				})
 				continue
 			}
@@ -191,7 +193,7 @@ func resolveCollisions(plans []Plan, mode Collision) *tools.Error {
 		_, prev, batchHit := lookupBatch(taken, p.To)
 		diskHit, statErr := existsOnDisk(p.To)
 		if statErr != nil {
-			return &tools.Error{Code: tools.CodeIO, Message: "stat target", Detail: statErr.Error()}
+			return &tools.Error{Code: tools.ClassifyFSError(statErr), Message: "stat target", Detail: statErr.Error()}
 		}
 		if !batchHit && !diskHit {
 			taken[p.To] = i
@@ -253,7 +255,7 @@ func disambiguateAgainst(path string, taken map[string]int) (string, *tools.Erro
 		}
 		exists, err := existsOnDisk(candidate)
 		if err != nil {
-			return "", &tools.Error{Code: tools.CodeIO, Message: "stat candidate", Detail: err.Error()}
+			return "", &tools.Error{Code: tools.ClassifyFSError(err), Message: "stat candidate", Detail: err.Error()}
 		}
 		if !exists {
 			return candidate, nil

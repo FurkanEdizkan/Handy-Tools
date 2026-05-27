@@ -50,6 +50,10 @@ func statusForCode(code string) int {
 		return http.StatusUnsupportedMediaType
 	case tools.CodeMissingBinary:
 		return http.StatusServiceUnavailable
+	case tools.CodePermissionDenied:
+		return http.StatusForbidden
+	case tools.CodeNotFound:
+		return http.StatusNotFound
 	case tools.CodeAborted:
 		// Mirrors the nginx "client closed request" semantics: the work
 		// stopped due to a caller-side action (timeout / cancel) and the
