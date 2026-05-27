@@ -53,17 +53,27 @@ type Plan struct {
 	To   string
 }
 
+// Inspection is the result of Inspect: the per-source rename plan plus a
+// preflight list of paths that won't be touched cleanly (sources that don't
+// exist or aren't readable, target directories that aren't writable).
+// Issues is informational; Inspect does NOT fail when sources are missing —
+// it surfaces them so the caller can decide whether to abort.
+type Inspection struct {
+	Plans  []Plan
+	Issues []tools.PathIssue
+}
+
 // Inspect compiles the pattern, walks the source list, and returns the
-// rename plan plus any collisions detected within the batch. It performs no
-// filesystem mutation. Used as the preflight for --dry-run and the UI
-// preview pane.
-func Inspect(req Request) ([]Plan, *tools.Error) {
+// rename plan plus a preflight list of unreadable / missing sources and
+// unwritable target directories. It performs no filesystem mutation. Used
+// as the preflight for --dry-run, --strict, and the UI preview pane.
+func Inspect(req Request) (Inspection, *tools.Error) {
 	if req.Pattern == "" {
-		return nil, &tools.Error{Code: tools.CodeBadRequest, Message: "pattern is required"}
+		return Inspection{}, &tools.Error{Code: tools.CodeBadRequest, Message: "pattern is required"}
 	}
 	re, err := regexp.Compile(req.Pattern)
 	if err != nil {
-		return nil, &tools.Error{
+		return Inspection{}, &tools.Error{
 			Code:    tools.CodeBadRequest,
 			Message: "invalid regex pattern",
 			Detail:  err.Error(),
@@ -83,7 +93,26 @@ func Inspect(req Request) ([]Plan, *tools.Error) {
 		}
 		plans = append(plans, Plan{From: src, To: filepath.Join(dir, newBase)})
 	}
-	return plans, nil
+
+	// Preflight: surface missing/unreadable sources and unwritable target
+	// directories. Dedupe destination dirs so a 100-file batch into one
+	// directory doesn't produce 100 duplicate output-dir issues.
+	issues := tools.StatInputs(req.Sources)
+	seenDirs := make(map[string]struct{})
+	for _, p := range plans {
+		if p.From == p.To {
+			continue
+		}
+		d := filepath.Dir(p.To)
+		if _, ok := seenDirs[d]; ok {
+			continue
+		}
+		seenDirs[d] = struct{}{}
+		if issue := tools.CheckOutputDirWritable(d); issue != nil {
+			issues = append(issues, *issue)
+		}
+	}
+	return Inspection{Plans: plans, Issues: issues}, nil
 }
 
 // Run executes the rename batch and streams progress on the returned channel.
@@ -112,11 +141,12 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 			return
 		}
 
-		plans, terr := Inspect(req)
+		ins, terr := Inspect(req)
 		if terr != nil {
 			emit(tools.Progress{Completed: true, Err: terr})
 			return
 		}
+		plans := ins.Plans
 
 		// Pre-pass: resolve in-batch collisions and existing-target collisions
 		// up front so we don't half-move a batch only to abort. Mutates plans

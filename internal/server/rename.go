@@ -47,22 +47,25 @@ func (h *RenameHandler) validateSources(p RenameParams) ([]string, error) {
 	return srcs, nil
 }
 
-// Inspect returns the rename plan without touching the filesystem.
-func (h *RenameHandler) Inspect(p RenameParams) ([]rename.Plan, error) {
+// Inspect returns the rename plan plus a preflight list of missing or
+// unreadable sources (and unwritable target directories) without touching
+// the filesystem. The Issues slice is informational; callers decide whether
+// to abort or proceed.
+func (h *RenameHandler) Inspect(p RenameParams) (rename.Inspection, error) {
 	srcs, err := h.validateSources(p)
 	if err != nil {
-		return nil, err
+		return rename.Inspection{}, err
 	}
-	plans, terr := rename.Inspect(rename.Request{
+	ins, terr := rename.Inspect(rename.Request{
 		Sources:     srcs,
 		Pattern:     p.Pattern,
 		Replace:     p.Replace,
 		OnCollision: parseCollision(p.OnCollision),
 	})
 	if terr != nil {
-		return nil, terr
+		return rename.Inspection{}, terr
 	}
-	return plans, nil
+	return ins, nil
 }
 
 // Run executes the rename batch and streams per-file progress.

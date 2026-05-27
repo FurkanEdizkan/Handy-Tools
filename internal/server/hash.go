@@ -51,6 +51,26 @@ func (h *HashHandler) Run(ctx context.Context, p HashRunParams, emit func(tools.
 	return nil
 }
 
+// Inspect is the dry-run / preflight for Run: it path-validates every source
+// (via the same allow-root check as Run) and stats them, returning Issues
+// for any that don't exist or aren't readable. No file contents are read.
+func (h *HashHandler) Inspect(p HashRunParams) (hash.Inspection, error) {
+	srcs := make([]string, 0, len(p.Sources))
+	for _, s := range p.Sources {
+		v, err := h.Opts.CheckPath(s)
+		if err != nil {
+			return hash.Inspection{}, err
+		}
+		srcs = append(srcs, v)
+	}
+	algo, _ := hash.ParseAlgo(p.Algo)
+	ins, terr := hash.Inspect(hash.Request{Sources: srcs, Algo: algo})
+	if terr != nil {
+		return hash.Inspection{}, terr
+	}
+	return ins, nil
+}
+
 // HashVerifyParams drives HashHandler.Verify.
 type HashVerifyParams struct {
 	Manifest string

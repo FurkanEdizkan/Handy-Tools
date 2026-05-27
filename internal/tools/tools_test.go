@@ -33,6 +33,61 @@ func TestClassifyFSError(t *testing.T) {
 	}
 }
 
+func TestStatInputs(t *testing.T) {
+	dir := t.TempDir()
+	good := filepath.Join(dir, "ok.txt")
+	if err := os.WriteFile(good, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(dir, "nope.txt")
+
+	issues := StatInputs([]string{good, missing, good})
+	if len(issues) != 1 {
+		t.Fatalf("want 1 issue (one missing), got %d: %+v", len(issues), issues)
+	}
+	if issues[0].Path != missing {
+		t.Errorf("issue path = %q, want %q", issues[0].Path, missing)
+	}
+	if issues[0].Code != CodeNotFound {
+		t.Errorf("issue code = %q, want %q", issues[0].Code, CodeNotFound)
+	}
+
+	if got := StatInputs([]string{good}); got != nil {
+		t.Errorf("expected nil for all-good paths, got %+v", got)
+	}
+}
+
+func TestCheckOutputDirWritable(t *testing.T) {
+	dir := t.TempDir()
+	if issue := CheckOutputDirWritable(dir); issue != nil {
+		t.Errorf("expected nil for writable tempdir, got %+v", issue)
+	}
+
+	missing := filepath.Join(dir, "no-such-dir")
+	if issue := CheckOutputDirWritable(missing); issue == nil || issue.Code != CodeNotFound {
+		t.Errorf("expected NOT_FOUND for missing dir, got %+v", issue)
+	}
+
+	file := filepath.Join(dir, "file.txt")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if issue := CheckOutputDirWritable(file); issue == nil || issue.Code != CodeBadRequest {
+		t.Errorf("expected BAD_REQUEST when path is a file, got %+v", issue)
+	}
+
+	if os.Geteuid() != 0 {
+		readOnly := filepath.Join(dir, "ro")
+		if err := os.Mkdir(readOnly, 0o500); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(readOnly, 0o755) })
+		if issue := CheckOutputDirWritable(readOnly); issue == nil || issue.Code != CodePermissionDenied {
+			t.Errorf("expected PERMISSION_DENIED for read-only dir, got %+v", issue)
+		}
+	}
+}
+
 // TestClassifyFSError_RealOSError exercises the helper against an os.PathError
 // produced by a real syscall (chmod-000 file). This catches accidental
 // regressions where the helper would only work against synthetic fs.Err* but

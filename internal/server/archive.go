@@ -106,3 +106,31 @@ func (h *ArchiveHandler) Compress(ctx context.Context, p CompressParams, emit fu
 	}
 	return nil
 }
+
+// InspectCompress is the dry-run / preflight for Compress: it path-validates
+// every source and the output, then checks that each source can be stat'd
+// and the output directory is writable. Returns the resolved format, the
+// projected entry count, and any Issues — no archive bytes are written.
+func (h *ArchiveHandler) InspectCompress(p CompressParams) (archive.CompressInspection, error) {
+	srcs := make([]string, 0, len(p.Sources))
+	for _, s := range p.Sources {
+		v, err := h.Opts.CheckPath(s)
+		if err != nil {
+			return archive.CompressInspection{}, err
+		}
+		srcs = append(srcs, v)
+	}
+	out, err := h.Opts.CheckPath(p.Output)
+	if err != nil {
+		return archive.CompressInspection{}, err
+	}
+	ins, terr := archive.InspectCompress(archive.CompressRequest{
+		Sources: srcs,
+		Format:  p.Format,
+		Output:  out,
+	})
+	if terr != nil {
+		return archive.CompressInspection{}, terr
+	}
+	return ins, nil
+}

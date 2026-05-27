@@ -71,6 +71,25 @@ func registerMiscTools(srv *mcp.Server, h *handlers) {
 	})
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "hash_inspect",
+		Description: "Dry-run a hash batch: validate algo, stat every source, return preflight Issues for missing/unreadable files without reading any content.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, in hashRunInput) (*mcp.CallToolResult, any, error) {
+		algo := in.Algo
+		if algo == "" {
+			algo = "sha256"
+		}
+		ins, err := h.Hash.Inspect(server.HashRunParams{Sources: in.Sources, Algo: algo})
+		if err != nil {
+			return errorResult("hash", "inspect", err), nil, nil
+		}
+		out := map[string]any{}
+		if len(ins.Issues) > 0 {
+			out["issues"] = ins.Issues
+		}
+		return jsonResult("hash.inspect: ok\n", out), nil, nil
+	})
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "hash_verify",
 		Description: "Verify a sha256sum-format manifest: recomputes each entry's digest and reports OK / failed / missing counts plus per-row detail.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in hashVerifyInput) (*mcp.CallToolResult, any, error) {
@@ -103,7 +122,7 @@ func registerMiscTools(srv *mcp.Server, h *handlers) {
 		Name:        "rename_inspect",
 		Description: "Dry-run a regex-based rename batch and return the plan (no filesystem mutation).",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in renameInspectInput) (*mcp.CallToolResult, any, error) {
-		plans, err := h.Rename.Inspect(server.RenameParams{
+		ins, err := h.Rename.Inspect(server.RenameParams{
 			Sources:     in.Sources,
 			Pattern:     in.Pattern,
 			Replace:     in.Replace,
@@ -113,9 +132,14 @@ func registerMiscTools(srv *mcp.Server, h *handlers) {
 			return errorResult("rename", "inspect", err), nil, nil
 		}
 		// MCP spec: structuredContent must be a JSON object, not an array.
-		// Wrap the slice so strict clients (e.g. the official Go SDK
-		// validator) accept the response.
-		return jsonResult("rename.inspect: ok\n", map[string]any{"plans": plans}), nil, nil
+		// Wrap so strict clients (e.g. the official Go SDK validator) accept
+		// the response. Issues is omitted from the JSON when empty so clients
+		// that don't care don't see noise.
+		out := map[string]any{"plans": ins.Plans}
+		if len(ins.Issues) > 0 {
+			out["issues"] = ins.Issues
+		}
+		return jsonResult("rename.inspect: ok\n", out), nil, nil
 	})
 
 	mcp.AddTool(srv, &mcp.Tool{

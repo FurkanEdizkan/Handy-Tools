@@ -55,13 +55,32 @@ type Inspection struct {
 	RequiresPwd     bool
 	RequiresBinary  string // "" if pure Go can handle it
 	BinaryAvailable bool
+	Issues          []tools.PathIssue // preflight: source missing/unreadable
 }
 
 // Inspect describes an archive without extracting it. For multi-part archives
 // it walks the directory looking for sibling parts. Use the result to confirm
 // with the user before kicking off Extract.
+//
+// When the source path can't be stat'd, the error is returned (so existing
+// callers that bubble it still fail-closed) AND the returned *Inspection is
+// non-nil with a populated Issues slice so callers that prefer structured
+// preflight info don't need to errors.Is the raw error.
 func Inspect(_ context.Context, source string) (*Inspection, error) {
-	return inspect(source, true)
+	ins, err := inspect(source, true)
+	if err != nil {
+		return &Inspection{
+			Format:         detectFormat(source),
+			UncompressedSz: -1,
+			EntryCount:     -1,
+			Issues: []tools.PathIssue{{
+				Path:   source,
+				Code:   tools.ClassifyFSError(err),
+				Detail: err.Error(),
+			}},
+		}, err
+	}
+	return ins, nil
 }
 
 // inspect is the shared implementation. summary controls whether the

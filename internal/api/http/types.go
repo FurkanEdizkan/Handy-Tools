@@ -206,7 +206,16 @@ type renamePlan struct {
 
 // renameInspectResponse is the body of 200 from POST /v1/rename/inspect.
 type renameInspectResponse struct {
-	Plans []renamePlan `json:"plans"`
+	Plans  []renamePlan `json:"plans"`
+	Issues []pathIssue  `json:"issues,omitempty"`
+}
+
+// pathIssue mirrors tools.PathIssue on the wire — a preflight-detected
+// problem with one input or output path (missing, unreadable, unwritable).
+type pathIssue struct {
+	Path   string `json:"path"`
+	Code   string `json:"code"`
+	Detail string `json:"detail,omitempty"`
 }
 
 // jobResponse is the body of 202 from any async POST endpoint.

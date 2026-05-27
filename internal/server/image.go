@@ -115,3 +115,27 @@ func (h *ImageHandler) BatchConvert(ctx context.Context, p BatchConvertParams, e
 	}
 	return nil
 }
+
+// InspectBatch is the dry-run / preflight for BatchConvert: it path-validates
+// every source and the output directory, then stats each source and probes
+// the output dir for writability. Returns Issues without performing any
+// conversion.
+func (h *ImageHandler) InspectBatch(p BatchConvertParams) (image.BatchInspection, error) {
+	srcs := make([]string, 0, len(p.Sources))
+	for _, s := range p.Sources {
+		v, err := h.Opts.CheckPath(s)
+		if err != nil {
+			return image.BatchInspection{}, err
+		}
+		srcs = append(srcs, v)
+	}
+	out, err := h.Opts.CheckPath(p.OutputDir)
+	if err != nil {
+		return image.BatchInspection{}, err
+	}
+	ins, terr := image.InspectBatch(image.BatchConvertRequest{Sources: srcs, OutputDir: out})
+	if terr != nil {
+		return image.BatchInspection{}, terr
+	}
+	return ins, nil
+}

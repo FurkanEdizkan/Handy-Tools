@@ -21,7 +21,7 @@ func (s *Server) handleRenameInspect(w http.ResponseWriter, r *http.Request) {
 	for _, sref := range req.Sources {
 		srcs = append(srcs, sref.Path)
 	}
-	plans, err := s.Rename.Inspect(server.RenameParams{
+	ins, err := s.Rename.Inspect(server.RenameParams{
 		Sources:     srcs,
 		Pattern:     req.Pattern,
 		Replace:     req.Replace,
@@ -31,11 +31,15 @@ func (s *Server) handleRenameInspect(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	out := make([]renamePlan, 0, len(plans))
-	for _, p := range plans {
+	out := make([]renamePlan, 0, len(ins.Plans))
+	for _, p := range ins.Plans {
 		out = append(out, renamePlan{From: p.From, To: p.To})
 	}
-	writeJSON(w, http.StatusOK, renameInspectResponse{Plans: out})
+	issues := make([]pathIssue, 0, len(ins.Issues))
+	for _, iss := range ins.Issues {
+		issues = append(issues, pathIssue{Path: iss.Path, Code: iss.Code, Detail: iss.Detail})
+	}
+	writeJSON(w, http.StatusOK, renameInspectResponse{Plans: out, Issues: issues})
 }
 
 // handleRenameRun executes the batch and streams one Progress event per file.
