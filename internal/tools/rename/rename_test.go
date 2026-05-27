@@ -194,6 +194,61 @@ func TestRunCollisionSkip(t *testing.T) {
 	}
 }
 
+// TestRunMixedBatchScenario is the canonical multi-file scenario test for
+// the situation that motivated structured failure reporting: a batch with
+// one moveable file plus one in a directory the process can't write to
+// (target dir chmod 0500). The contract:
+//
+//   - The batch continues past the per-file failure.
+//   - The terminal event is Completed and Err == nil (partial success).
+//   - Terminal Failures lists the locked path with PERMISSION_DENIED.
+//
+// Sibling tests in internal/tools/{hash,image,stripmeta,archive} and the
+// HTTP layer assert the same contract through every transport.
+func TestRunMixedBatchScenario(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root — file modes are bypassed")
+	}
+	root := t.TempDir()
+	good := filepath.Join(root, "ok.txt")
+	if err := os.WriteFile(good, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Locked subdir holds a file the regex matches, but the dir is r/o so
+	// os.Rename fails with EACCES.
+	locked := filepath.Join(root, "locked")
+	if err := os.Mkdir(locked, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lockedFile := filepath.Join(locked, "trapped.txt")
+	if err := os.WriteFile(lockedFile, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(locked, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+
+	last := drain(t, Run(context.Background(), Request{
+		Sources: []string{good, lockedFile},
+		Pattern: `(\w+)\.txt`,
+		Replace: `$1-renamed.txt`,
+	}))
+	if last.Err != nil {
+		t.Fatalf("expected partial-success terminal, got %+v", last.Err)
+	}
+	if len(last.Failures) != 1 {
+		t.Fatalf("want 1 failure entry, got %d: %+v", len(last.Failures), last.Failures)
+	}
+	if got := last.Failures[0]; got.Code != tools.CodePermissionDenied || got.Path != lockedFile {
+		t.Errorf("failure[0] = %+v; want PERMISSION_DENIED for %s", got, lockedFile)
+	}
+	// The good file actually got renamed.
+	if _, err := os.Stat(filepath.Join(root, "ok-renamed.txt")); err != nil {
+		t.Errorf("expected ok.txt to be renamed despite the locked sibling, got %v", err)
+	}
+}
+
 // TestRunPermissionDeniedPerFile chmod-blocks the parent directory so os.Rename
 // returns EACCES on every file; the per-file SeverityError events must carry
 // PERMISSION_DENIED in their Err.Code so callers can distinguish "user can't

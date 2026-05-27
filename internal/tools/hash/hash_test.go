@@ -9,6 +9,101 @@ import (
 	"github.com/furkandedizkan/handy-tools/internal/tools"
 )
 
+// drainEvents reads every event from a hash.Run channel into a slice and
+// returns the slice plus the terminal event.
+func drainEvents(t *testing.T, ch <-chan tools.Progress) ([]tools.Progress, tools.Progress) {
+	t.Helper()
+	var events []tools.Progress
+	for ev := range ch {
+		events = append(events, ev)
+	}
+	if len(events) == 0 {
+		t.Fatal("no events on progress channel")
+	}
+	last := events[len(events)-1]
+	if !last.Completed {
+		t.Fatalf("last event not terminal: %+v", last)
+	}
+	return events, last
+}
+
+// findFailure looks up a Failure by path in the terminal Failures slice.
+// Returns nil when not present so tests can assert on absence too.
+func findFailure(failures []tools.Failure, path string) *tools.Failure {
+	for i := range failures {
+		if failures[i].Path == path {
+			return &failures[i]
+		}
+	}
+	return nil
+}
+
+// TestHashRunMixedBatchScenario exercises the situation the original PR was
+// motivated by: a user selects multiple files, one of which the process
+// can't read (chmod 0) and another doesn't exist. We assert the documented
+// contract:
+//
+//   - The batch continues past the per-file failures.
+//   - Per-file SeverityError events carry classified codes.
+//   - The terminal event is Completed with Err == nil (partial success).
+//   - Terminal Failures lists exactly the two failed paths with the right
+//     codes (PERMISSION_DENIED and NOT_FOUND).
+//
+// This is the canonical "mixed batch" pattern — see the sibling tests in
+// internal/tools/{rename,image,stripmeta,archive} for the same scenario
+// against each multi-file tool, and internal/api/http for the wire end.
+func TestHashRunMixedBatchScenario(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root — file modes are bypassed")
+	}
+	dir := t.TempDir()
+	good := filepath.Join(dir, "ok.txt")
+	writeFile(t, good, "hello")
+	blocked := filepath.Join(dir, "blocked.txt")
+	writeFile(t, blocked, "secret")
+	if err := os.Chmod(blocked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(blocked, 0o644) })
+	missing := filepath.Join(dir, "ghost.txt")
+
+	_, last := drainEvents(t, Run(context.Background(), Request{
+		Sources: []string{good, blocked, missing},
+		Algo:    AlgoSHA256,
+	}))
+
+	if last.Err != nil {
+		t.Fatalf("expected partial-success terminal (Err=nil), got %+v", last.Err)
+	}
+	if len(last.Failures) != 2 {
+		t.Fatalf("want 2 failures, got %d: %+v", len(last.Failures), last.Failures)
+	}
+	if f := findFailure(last.Failures, blocked); f == nil || f.Code != tools.CodePermissionDenied {
+		t.Errorf("blocked: want PERMISSION_DENIED, got %+v", f)
+	}
+	if f := findFailure(last.Failures, missing); f == nil || f.Code != tools.CodeNotFound {
+		t.Errorf("missing: want NOT_FOUND, got %+v", f)
+	}
+}
+
+// TestHashRunUnanimousNotFoundCoalesces verifies that when every per-file
+// failure shares the same Code, the terminal Err.Code surfaces that code
+// instead of falling back to IO_ERROR. This is what makes
+// `htools hash /missing-1 /missing-2` exit with NOT_FOUND on the wire,
+// rather than IO_ERROR swallowing the actual reason.
+func TestHashRunUnanimousNotFoundCoalesces(t *testing.T) {
+	_, last := drainEvents(t, Run(context.Background(), Request{
+		Sources: []string{"/no/such/file/1", "/no/such/file/2"},
+		Algo:    AlgoSHA256,
+	}))
+	if last.Err == nil || last.Err.Code != tools.CodeNotFound {
+		t.Fatalf("expected coalesced NOT_FOUND on terminal, got %+v", last.Err)
+	}
+	if len(last.Failures) != 2 {
+		t.Errorf("want 2 failure entries on terminal, got %d", len(last.Failures))
+	}
+}
+
 // Known-vector pairs for the algorithms we expose. "abc" was chosen because
 // it appears in the official NIST / RFC test vectors for both MD5 and
 // SHA-256 (and is small enough to keep this table easy to read), with the

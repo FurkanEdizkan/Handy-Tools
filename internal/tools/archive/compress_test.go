@@ -233,6 +233,58 @@ func TestCompressEmptySourcesRejected(t *testing.T) {
 	}
 }
 
+// TestCompressMixedSourceScenario verifies the multi-source preflight for
+// pack: InspectCompress flags the missing path and the chmod-blocked
+// destination without trying to write anything. Pack is a single-archive
+// operation (not a per-file batch) so it doesn't have a Failures slice in
+// the streaming sense — its preflight is the Inspection.Issues slice
+// instead. Mirrors the mixed-batch scenario tests in
+// internal/tools/{hash,rename,image,stripmeta}.
+func TestCompressMixedSourceScenario(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root — file modes are bypassed")
+	}
+	dir := t.TempDir()
+	good := filepath.Join(dir, "good.txt")
+	if err := os.WriteFile(good, []byte("data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(dir, "ghost.txt")
+	// Read-only output dir so CheckOutputDirWritable surfaces the issue.
+	outDir := filepath.Join(dir, "out-ro")
+	if err := os.Mkdir(outDir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(outDir, 0o755) })
+
+	ins, terr := InspectCompress(CompressRequest{
+		Sources: []string{good, missing},
+		Format:  FormatZip,
+		Output:  filepath.Join(outDir, "out.zip"),
+	})
+	if terr != nil {
+		t.Fatalf("InspectCompress prelude error: %v", terr)
+	}
+	if len(ins.Issues) < 2 {
+		t.Fatalf("want at least 2 issues (missing source + unwritable output), got %d: %+v", len(ins.Issues), ins.Issues)
+	}
+	var sawMissing, sawUnwritable bool
+	for _, iss := range ins.Issues {
+		if iss.Path == missing && iss.Code == "NOT_FOUND" {
+			sawMissing = true
+		}
+		if iss.Path == outDir && iss.Code == "PERMISSION_DENIED" {
+			sawUnwritable = true
+		}
+	}
+	if !sawMissing {
+		t.Errorf("missing source not flagged: %+v", ins.Issues)
+	}
+	if !sawUnwritable {
+		t.Errorf("unwritable output dir not flagged: %+v", ins.Issues)
+	}
+}
+
 // TestCompressNoPartialOnSuccess verifies the .partial staging file is
 // cleaned up after a successful pack — only the final output should remain
 // on disk, never a sibling .partial.

@@ -63,7 +63,24 @@ handy diff-tree ./before ./after --mode mtime
 # Regex rename (dry-run first):
 handy rename --inspect '*.jpeg' --pattern '\.jpeg$' --replace '.jpg'
 handy rename '*.jpeg' --pattern '\.jpeg$' --replace '.jpg'
+
+# Preflight + abort on any unreadable/missing source or unwritable target:
+handy rename --strict --pattern '\.JPG$' --replace '.jpg' /photos
+handy hash   --strict /backup/*
+
+# All-or-nothing rename: stop on first failure and undo every move so far.
+handy rename --rollback-on-error --pattern 'IMG_(\d+)\.JPG' --replace 'photo-$1.jpg' /photos
+
+# Strip metadata with rollback (in-place + .handy-bak snapshots):
+handy strip-meta --in-place --rollback-on-error /photos/*.jpg
 ```
+
+See [FAILURE_HANDLING.md](FAILURE_HANDLING.md) for the full contract:
+when a batch partially fails, the terminal Progress event carries a
+structured `failures` list (visible in `--json`, MCP `structuredContent`,
+and HTTP SSE), and the exit code reflects the unanimous failure code
+(`PERMISSION_DENIED` and `NOT_FOUND` both exit 2; `BAD_REQUEST`,
+`UNSUPPORTED_INPUT`, `MISSING_BINARY` exit 1).
 
 ## Service mode
 

@@ -130,6 +130,54 @@ func TestRunInPlaceRollbackRestoresOriginal(t *testing.T) {
 	}
 }
 
+// TestRunMixedBatchScenario is the canonical multi-file failure scenario for
+// strip-meta: one normal JPEG, one chmod-blocked JPEG, and one unsupported
+// extension. The batch continues past the per-file failures; the terminal
+// event has Err == nil (partial success) and Failures lists exactly the
+// two failed paths with the right codes. Mirrors the same scenario tests
+// in internal/tools/{hash,rename,image,archive}.
+func TestRunMixedBatchScenario(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root — file modes are bypassed")
+	}
+	dir := t.TempDir()
+	good := filepath.Join(dir, "good.jpg")
+	seedJPEG(t, good)
+	blocked := filepath.Join(dir, "blocked.jpg")
+	seedJPEG(t, blocked)
+	if err := os.Chmod(blocked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(blocked, 0o644) })
+	unsupported := filepath.Join(dir, "notes.txt")
+	if err := os.WriteFile(unsupported, []byte("plain"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	last := terminal(t, collect(Run(context.Background(), Request{
+		Sources: []string{good, blocked, unsupported},
+	})))
+	if last.Err != nil {
+		t.Fatalf("expected partial-success terminal, got %+v", last.Err)
+	}
+	if len(last.Failures) != 2 {
+		t.Fatalf("want 2 failures, got %d: %+v", len(last.Failures), last.Failures)
+	}
+	codes := map[string]string{}
+	for _, f := range last.Failures {
+		codes[f.Path] = f.Code
+	}
+	if codes[blocked] != tools.CodePermissionDenied {
+		t.Errorf("blocked: want PERMISSION_DENIED, got %q", codes[blocked])
+	}
+	if codes[unsupported] != tools.CodeUnsupportedInput {
+		t.Errorf("unsupported: want UNSUPPORTED_INPUT, got %q", codes[unsupported])
+	}
+	if _, err := os.Stat(filepath.Join(dir, "good-stripped.jpg")); err != nil {
+		t.Errorf("expected good-stripped.jpg to exist alongside the failed siblings, got %v", err)
+	}
+}
+
 func TestRunNonInPlaceRollbackDeletesWrittenOutputs(t *testing.T) {
 	dir := t.TempDir()
 	good := filepath.Join(dir, "photo.jpg")

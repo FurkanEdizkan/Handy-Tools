@@ -151,6 +151,15 @@ shapes in snake_case JSON, currently hand-mirrored in
 `protoc-gen-ts` step that emits matching TypeScript bindings is a later
 optimization.
 
+### Multi-file failure surface
+
+Streaming tools report per-file failures via `tools.Progress.Failures` on
+the terminal event; `Inspect()` returns a preflight `Issues` list; rename
+and strip-meta support opt-in rollback; archive pack writes atomically via
+a `.partial` staging file. The codes, wire shapes, and CLI/MCP/HTTP
+projections are documented in
+[../docs/FAILURE_HANDLING.md](FAILURE_HANDLING.md).
+
 ## Path safety
 
 `htoolsd` refuses to start without `--allow-roots` (or `server.allow_roots`
