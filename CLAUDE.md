@@ -62,7 +62,7 @@ Every tool package under `internal/tools/<feature>/` exposes:
 - a function returning a progress channel of `tools.Progress` (see [internal/tools/tools.go](internal/tools/tools.go)),
 - an `Inspect()` for preflight (e.g. multi-part archive detection) so callers can confirm before destructive work.
 
-Errors are structured `*tools.Error` with stable codes (`MISSING_BINARY`, `UNSUPPORTED_INPUT`, `BAD_REQUEST`, `IO_ERROR`, `ABORTED`). The CLI maps these to process exit codes (`progress.go:exitCode`); the server translates them to gRPC/HTTP status — don't invent new codes without updating both layers.
+Errors are structured `*tools.Error` with stable codes (`MISSING_BINARY`, `UNSUPPORTED_INPUT`, `BAD_REQUEST`, `IO_ERROR`, `PERMISSION_DENIED`, `NOT_FOUND`, `ABORTED`). Filesystem error sites should classify via `tools.ClassifyFSError(err)` in [internal/tools/tools.go](internal/tools/tools.go) so EACCES surfaces as `PERMISSION_DENIED` and ENOENT as `NOT_FOUND` instead of being swallowed into `IO_ERROR`. The CLI maps these to process exit codes (`progress.go:exitCode`); the server translates them to gRPC/HTTP status — don't invent new codes without updating both layers.
 
 Optional system binaries (`unrar`, `7z`, `pdftoppm`, `pdftotext`, `magick`) are detected at request time via [internal/tools/sysdep](internal/tools/sysdep/sysdep.go). Missing binaries must surface a `MISSING_BINARY` error with an install hint — never panic. New optional tools must be added to `sysdep.Known` so `htools doctor` lists them.
 

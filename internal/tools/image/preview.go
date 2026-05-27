@@ -34,7 +34,7 @@ func Preview(req PreviewRequest) (PreviewResult, error) {
 	img, err := decode(req.Source)
 	if err != nil {
 		return PreviewResult{}, &tools.Error{
-			Code: tools.CodeIO, Message: "decode failed", Detail: err.Error(),
+			Code: tools.ClassifyFSError(err), Message: "decode failed", Detail: err.Error(),
 		}
 	}
 	w, h := req.MaxWidth, req.MaxHeight

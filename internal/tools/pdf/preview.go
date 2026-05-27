@@ -41,7 +41,7 @@ func Preview(ctx context.Context, source string, pages Range) (PreviewResult, er
 
 	dir, err := os.MkdirTemp("", "handy-pdf-preview-*")
 	if err != nil {
-		return PreviewResult{}, &tools.Error{Code: tools.CodeIO, Message: "temp dir", Detail: err.Error()}
+		return PreviewResult{}, &tools.Error{Code: tools.ClassifyFSError(err), Message: "temp dir", Detail: err.Error()}
 	}
 	defer os.RemoveAll(dir)
 
@@ -86,7 +86,7 @@ func Preview(ctx context.Context, source string, pages Range) (PreviewResult, er
 		}
 		data, rerr := os.ReadFile(m) //nolint:gosec // m comes from our own temp-dir glob
 		if rerr != nil {
-			return PreviewResult{}, &tools.Error{Code: tools.CodeIO, Message: "read preview", Detail: rerr.Error()}
+			return PreviewResult{}, &tools.Error{Code: tools.ClassifyFSError(rerr), Message: "read preview", Detail: rerr.Error()}
 		}
 		out = append(out, PreviewPage{Page: page, PNG: data})
 	}

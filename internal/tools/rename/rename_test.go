@@ -169,6 +169,41 @@ func TestRunCollisionSkip(t *testing.T) {
 	}
 }
 
+// TestRunPermissionDeniedPerFile chmod-blocks the parent directory so os.Rename
+// returns EACCES on every file; the per-file SeverityError events must carry
+// PERMISSION_DENIED in their Err.Code so callers can distinguish "user can't
+// write here" from a generic disk failure.
+func TestRunPermissionDeniedPerFile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root — file modes are bypassed")
+	}
+	dir := t.TempDir()
+	srcs := seed(t, dir, "IMG_0001.JPG")
+	// Make the directory read-only so os.Rename inside it fails with EACCES.
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+
+	events := collect(Run(context.Background(), Request{
+		Sources: srcs,
+		Pattern: `IMG_(\d+)\.JPG`,
+		Replace: `photo-$1.jpg`,
+	}))
+	var sawPerFile bool
+	for _, ev := range events {
+		if ev.Completed {
+			continue
+		}
+		if ev.Level == tools.SeverityError && ev.Err != nil && ev.Err.Code == tools.CodePermissionDenied {
+			sawPerFile = true
+		}
+	}
+	if !sawPerFile {
+		t.Fatalf("expected per-file event with PERMISSION_DENIED, got %d events: %+v", len(events), events)
+	}
+}
+
 func TestRunRejectsEmptySources(t *testing.T) {
 	last := drain(t, Run(context.Background(), Request{Pattern: `a`, Replace: `b`}))
 	if last.Err == nil || last.Err.Code != tools.CodeBadRequest {

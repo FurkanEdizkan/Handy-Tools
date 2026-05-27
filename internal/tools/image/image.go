@@ -104,7 +104,7 @@ func Convert(ctx context.Context, req ConvertRequest) <-chan tools.Progress {
 		img, err := decode(req.Source)
 		if err != nil {
 			emit(tools.Progress{Completed: true, Level: tools.SeverityError, Err: &tools.Error{
-				Code: tools.CodeIO, Message: "decode failed", Detail: err.Error(),
+				Code: tools.ClassifyFSError(err), Message: "decode failed", Detail: err.Error(),
 			}})
 			return
 		}
@@ -277,7 +277,7 @@ func BatchConvert(ctx context.Context, req BatchConvertRequest) <-chan tools.Pro
 func convertOne(req ConvertRequest) (outPath string, terr *tools.Error) {
 	img, err := decode(req.Source)
 	if err != nil {
-		return "", &tools.Error{Code: tools.CodeIO, Message: "decode failed", Detail: err.Error()}
+		return "", &tools.Error{Code: tools.ClassifyFSError(err), Message: "decode failed", Detail: err.Error()}
 	}
 	if req.Opts.MaxWidth > 0 || req.Opts.MaxHeight > 0 {
 		img = resize(img, req.Opts.MaxWidth, req.Opts.MaxHeight)
@@ -383,7 +383,7 @@ func encodeError(err error) *tools.Error {
 	if errors.As(err, &te) {
 		return te
 	}
-	return &tools.Error{Code: tools.CodeIO, Message: "encode failed", Detail: err.Error()}
+	return &tools.Error{Code: tools.ClassifyFSError(err), Message: "encode failed", Detail: err.Error()}
 }
 
 // encodeViaMagick writes a PNG to a temp file, then asks magick to convert it

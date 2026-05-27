@@ -75,7 +75,7 @@ func exitCode(e *tools.Error) int {
 	switch e.Code {
 	case tools.CodeBadRequest, tools.CodeUnsupportedInput, tools.CodeMissingBinary:
 		return 1
-	case tools.CodeIO, tools.CodeAborted:
+	case tools.CodeIO, tools.CodePermissionDenied, tools.CodeNotFound, tools.CodeAborted:
 		return 2
 	}
 	return 2

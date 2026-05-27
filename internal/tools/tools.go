@@ -5,7 +5,11 @@
 // to/from the proto messages in api/proto/v1.
 package tools
 
-import "time"
+import (
+	"errors"
+	"io/fs"
+	"time"
+)
 
 // Severity mirrors handytools.v1.Severity.
 type Severity int
@@ -58,5 +62,25 @@ const (
 	CodeUnsupportedInput = "UNSUPPORTED_INPUT"
 	CodeBadRequest       = "BAD_REQUEST"
 	CodeIO               = "IO_ERROR"
+	CodePermissionDenied = "PERMISSION_DENIED"
+	CodeNotFound         = "NOT_FOUND"
 	CodeAborted          = "ABORTED"
 )
+
+// ClassifyFSError returns the most specific tools code for a filesystem error.
+// Returns "" on nil so callers can short-circuit. Falls back to CodeIO so it
+// can be used as a one-liner classifier at every os.Open / os.Stat / os.Rename
+// error-wrap site.
+func ClassifyFSError(err error) string {
+	if err == nil {
+		return ""
+	}
+	switch {
+	case errors.Is(err, fs.ErrPermission):
+		return CodePermissionDenied
+	case errors.Is(err, fs.ErrNotExist):
+		return CodeNotFound
+	default:
+		return CodeIO
+	}
+}
