@@ -60,7 +60,7 @@ Every tool package under `internal/tools/<feature>/` exposes:
 
 - request/result structs mirroring its proto,
 - a function returning a progress channel of `tools.Progress` (see [internal/tools/tools.go](internal/tools/tools.go)),
-- an `Inspect()` for preflight (e.g. multi-part archive detection) so callers can confirm before destructive work.
+- an `Inspect()` for preflight (e.g. multi-part archive detection, source-readability check) so callers can confirm before destructive work. Every `Inspection` carries an `Issues []tools.PathIssue` slice — populated via `tools.StatInputs` and `tools.CheckOutputDirWritable` — for missing/unreadable inputs and unwritable outputs. Issues are informational by default; the CLI's `--strict` flag aborts with exit 2 if any issue is present, and `--dry-run` reports issues then exits without acting.
 
 Errors are structured `*tools.Error` with stable codes (`MISSING_BINARY`, `UNSUPPORTED_INPUT`, `BAD_REQUEST`, `IO_ERROR`, `PERMISSION_DENIED`, `NOT_FOUND`, `ABORTED`). Filesystem error sites should classify via `tools.ClassifyFSError(err)` in [internal/tools/tools.go](internal/tools/tools.go) so EACCES surfaces as `PERMISSION_DENIED` and ENOENT as `NOT_FOUND` instead of being swallowed into `IO_ERROR`. The CLI maps these to process exit codes (`progress.go:exitCode`); the server translates them to gRPC/HTTP status — don't invent new codes without updating both layers.
 

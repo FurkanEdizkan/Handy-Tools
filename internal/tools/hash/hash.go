@@ -100,6 +100,30 @@ type Result struct {
 	Algo   Algo   `json:"algo"`
 }
 
+// Inspection is the result of Inspect: a preflight list of sources that
+// won't be hashable (missing, unreadable). Empty when every source stats
+// cleanly. Inspect never reads file contents — only os.Stat — so it's safe
+// to call on a large batch without IO load.
+type Inspection struct {
+	Issues []tools.PathIssue
+}
+
+// Inspect is the dry-run / preflight for Run: it validates the algo and
+// stats every source, returning Issues for any that don't exist or aren't
+// readable. Used by `htools hash --dry-run` and the `hash_inspect` MCP
+// tool. Returns a *tools.Error only for the prelude failures (empty
+// Sources, unknown Algo); per-file problems are reported as Issues so the
+// caller can decide whether to abort.
+func Inspect(req Request) (Inspection, *tools.Error) {
+	if len(req.Sources) == 0 {
+		return Inspection{}, &tools.Error{Code: tools.CodeBadRequest, Message: "hash needs at least one source"}
+	}
+	if _, terr := newHasher(req.Algo); terr != nil {
+		return Inspection{}, terr
+	}
+	return Inspection{Issues: tools.StatInputs(req.Sources)}, nil
+}
+
 // Run hashes Sources concurrently, streaming one Progress event per file
 // plus a terminal summary. The per-file event's Message holds the
 // `<digest>  <path>` line so a `--quiet` CLI can still capture it via the

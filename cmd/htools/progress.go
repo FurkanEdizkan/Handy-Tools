@@ -12,8 +12,46 @@ import (
 // progressOpts bundles the cross-cutting output flags so each subcommand
 // doesn't reimplement quiet/json switching.
 type progressOpts struct {
-	quiet bool
-	json  bool
+	quiet  bool
+	json   bool
+	strict bool
+}
+
+// runPreflight renders Inspect-time issues (missing/unreadable inputs,
+// unwritable outputs) and returns exit code 2 if --strict and any issue is
+// present. Issues render to stderr in text mode and as one JSON object per
+// issue (kind: "preflight") on stdout in --json mode. Returns 0 when there
+// are no issues or when --strict is false.
+func runPreflight(issues []tools.PathIssue, opts progressOpts) int {
+	if len(issues) == 0 {
+		return 0
+	}
+	if opts.json {
+		enc := json.NewEncoder(os.Stdout)
+		for _, iss := range issues {
+			_ = enc.Encode(preflightJSON{
+				Kind:   "preflight",
+				Path:   iss.Path,
+				Code:   iss.Code,
+				Detail: iss.Detail,
+			})
+		}
+	} else if !opts.quiet {
+		for _, iss := range issues {
+			fmt.Fprintf(os.Stderr, "preflight: %s: %s (%s)\n", iss.Path, iss.Code, iss.Detail)
+		}
+	}
+	if opts.strict {
+		return 2
+	}
+	return 0
+}
+
+type preflightJSON struct {
+	Kind   string `json:"kind"`
+	Path   string `json:"path"`
+	Code   string `json:"code"`
+	Detail string `json:"detail,omitempty"`
 }
 
 // streamProgress drains a tool's progress channel to stdout/stderr and

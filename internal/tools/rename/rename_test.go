@@ -48,7 +48,7 @@ func TestInspectEmptyPattern(t *testing.T) {
 func TestInspectMatchesBasenameOnly(t *testing.T) {
 	dir := t.TempDir()
 	srcs := seed(t, dir, "IMG_0001.JPG", "notes.txt")
-	plans, terr := Inspect(Request{
+	ins, terr := Inspect(Request{
 		Sources: srcs,
 		Pattern: `IMG_(\d+)\.JPG`,
 		Replace: `photo-$1.jpg`,
@@ -56,16 +56,41 @@ func TestInspectMatchesBasenameOnly(t *testing.T) {
 	if terr != nil {
 		t.Fatalf("inspect: %v", terr)
 	}
-	if len(plans) != 2 {
-		t.Fatalf("want 2 plans, got %d", len(plans))
+	if len(ins.Plans) != 2 {
+		t.Fatalf("want 2 plans, got %d", len(ins.Plans))
 	}
 	want := filepath.Join(dir, "photo-0001.jpg")
-	if plans[0].To != want {
-		t.Errorf("plan[0].To = %q, want %q", plans[0].To, want)
+	if ins.Plans[0].To != want {
+		t.Errorf("plan[0].To = %q, want %q", ins.Plans[0].To, want)
 	}
 	// notes.txt did not match — its plan row is a no-op.
-	if plans[1].From != plans[1].To {
-		t.Errorf("plan[1] should be a no-op, got %+v", plans[1])
+	if ins.Plans[1].From != ins.Plans[1].To {
+		t.Errorf("plan[1] should be a no-op, got %+v", ins.Plans[1])
+	}
+	if len(ins.Issues) != 0 {
+		t.Errorf("expected no preflight issues for readable sources, got %+v", ins.Issues)
+	}
+}
+
+// TestInspectReportsMissingSource confirms Inspect populates Issues for a
+// source path that doesn't exist, without failing the whole call.
+func TestInspectReportsMissingSource(t *testing.T) {
+	dir := t.TempDir()
+	srcs := seed(t, dir, "real.jpg")
+	srcs = append(srcs, filepath.Join(dir, "ghost.jpg"))
+	ins, terr := Inspect(Request{
+		Sources: srcs,
+		Pattern: `\.jpg`,
+		Replace: `.jpeg`,
+	})
+	if terr != nil {
+		t.Fatalf("inspect: %v", terr)
+	}
+	if len(ins.Issues) != 1 {
+		t.Fatalf("want 1 issue for missing ghost.jpg, got %d: %+v", len(ins.Issues), ins.Issues)
+	}
+	if ins.Issues[0].Code != tools.CodeNotFound {
+		t.Errorf("want NOT_FOUND, got %q", ins.Issues[0].Code)
 	}
 }
 

@@ -149,6 +149,29 @@ type BatchConvertRequest struct {
 	Parallelism int
 }
 
+// BatchInspection is the result of InspectBatch.
+type BatchInspection struct {
+	Issues []tools.PathIssue
+}
+
+// InspectBatch is the dry-run / preflight for BatchConvert: it stats every
+// source and probes the output directory for writability, returning Issues
+// without touching any image data. Use this from `htools convert --dry-run`
+// and the `image_batch_inspect` MCP tool to surface "this file disappeared"
+// or "you can't write here" before a long batch starts.
+func InspectBatch(req BatchConvertRequest) (BatchInspection, *tools.Error) {
+	if len(req.Sources) == 0 {
+		return BatchInspection{}, &tools.Error{Code: tools.CodeBadRequest, Message: "batch needs at least one source"}
+	}
+	issues := tools.StatInputs(req.Sources)
+	if req.OutputDir != "" {
+		if issue := tools.CheckOutputDirWritable(req.OutputDir); issue != nil {
+			issues = append(issues, *issue)
+		}
+	}
+	return BatchInspection{Issues: issues}, nil
+}
+
 // BatchConvert converts every source concurrently and emits one
 // tools.Progress per file plus a terminal summary. A single file's failure
 // is reported as a per-file error event and the batch continues; the
