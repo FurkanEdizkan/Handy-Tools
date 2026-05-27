@@ -123,6 +123,10 @@ longer-horizon roadmap.
   and defaults.
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — the layered design
   and how the four surfaces share one core.
+- **[docs/FAILURE_HANDLING.md](docs/FAILURE_HANDLING.md)** — what
+  happens when one file in a batch can't be processed: error codes,
+  the structured `failures` field, preflight `--strict`, and opt-in
+  rollback.
 - **[AGENTS.md](AGENTS.md)** — the MCP / chatbot guide.
 - **[docs/RELEASES.md](docs/RELEASES.md)** — calver scheme and the
   automated release pipeline.

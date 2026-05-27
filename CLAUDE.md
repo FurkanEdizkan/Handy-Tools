@@ -66,6 +66,8 @@ Errors are structured `*tools.Error` with stable codes (`MISSING_BINARY`, `UNSUP
 
 Multi-file ops emit a terminal `tools.Progress.Failures []tools.Failure` so callers can list which specific files failed (not just a count). When every per-file failure shares the same Code (e.g. all `PERMISSION_DENIED`), the terminal `Err.Code` is coalesced via `tools.CoalesceFailureCode` to surface that instead of `IO_ERROR`. Rename, hash, image batch, archive pack, and strip-meta all populate this. Rename + strip-meta accept an opt-in `Rollback bool` (CLI flag `--rollback-on-error`) that aborts on first failure and replays a `tools.RollbackStack` to undo successful steps; failures during the undo itself are surfaced as Failure entries tagged `ROLLBACK_FAILED`. Archive pack writes to `<output>.partial` and atomically renames on success (no opt-in needed — never leaves half-written archives behind). Strip-meta `--in-place --rollback-on-error` keeps a `<source>.handy-bak` sidecar per file until the batch succeeds; a SIGKILL mid-batch leaves these orphans by stable name so a janitor pass can collect them.
 
+The end-to-end story (codes, preflight Issues, rollback, atomic pack) is documented in [docs/FAILURE_HANDLING.md](docs/FAILURE_HANDLING.md), which also lists the scenario tests across the tool packages and the HTTP / MCP wire layers. When changing this surface, update the doc's coverage table.
+
 Optional system binaries (`unrar`, `7z`, `pdftoppm`, `pdftotext`, `magick`) are detected at request time via [internal/tools/sysdep](internal/tools/sysdep/sysdep.go). Missing binaries must surface a `MISSING_BINARY` error with an install hint — never panic. New optional tools must be added to `sysdep.Known` so `htools doctor` lists them.
 
 ## Server invariant: AllowRoots

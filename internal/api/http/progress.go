@@ -27,6 +27,12 @@ func progressToWire(p tools.Progress) progressEvent {
 	if !p.StartedAt.IsZero() {
 		out.StartedAt = p.StartedAt.UnixMilli()
 	}
+	if len(p.Failures) > 0 {
+		out.Failures = make([]failureEntry, len(p.Failures))
+		for i, f := range p.Failures {
+			out.Failures[i] = failureEntry{Path: f.Path, Code: f.Code, Message: f.Message}
+		}
+	}
 	return out
 }
 

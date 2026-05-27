@@ -257,6 +257,21 @@ type progressEvent struct {
 	Message     string         `json:"message,omitempty"`
 	Completed   bool           `json:"completed"`
 	Error       *errorEnvelope `json:"error,omitempty"`
+	// Failures is set only on the terminal event. Carries one entry per
+	// per-file failure that did NOT abort the run (e.g. some files in a
+	// batch failed with PERMISSION_DENIED while others succeeded). Web /
+	// CLI consumers render this to show "which files failed and why"
+	// without re-parsing the streamed per-file messages.
+	Failures []failureEntry `json:"failures,omitempty"`
+}
+
+// failureEntry is one per-file failure on the wire. Mirrors gRPC Failure
+// and MCP runResultFailure so consumers see the same field names across
+// transports.
+type failureEntry struct {
+	Path    string `json:"path"`
+	Code    string `json:"code"`
+	Message string `json:"message,omitempty"`
 }
 
 // healthResponse is the body of 200 from GET /v1/health.
