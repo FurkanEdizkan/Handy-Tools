@@ -17,6 +17,12 @@
 
 ---
 
+**Personal Note:** I really don't like uploading stuff to random websites in order to convert file types, also I deal with a lot of multi part archived files, multi part renames and other stuff. So we (me and claude) decided to build something simple which can be used locally both as app and in terminal, so we protect our privacy and I don't have to remember all of the complex terminal commands for each file conversion type.
+
+Hope it will be helpful for someone, open for any feedback or fix.
+
+---
+
 Handy Tools is the small toolbox you reach for when a file is in the wrong
 format, an archive won't open, or a PDF needs cutting up. The web UI runs
 on your own machine, so **your files never leave it**. Same toolbox is
@@ -58,7 +64,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 [internal/server/server.go](internal/server/server.go) for the exact
 path-safety contract.
 
-## Get it running in 60 seconds
+## Get it running
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/install.sh | sh
