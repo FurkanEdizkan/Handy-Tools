@@ -4,12 +4,16 @@
 // The repository's VERSION file is the source of truth in dev: it is embedded
 // at compile time and used when no overrides are set. Release builds set
 // Version, Commit, and Date via -ldflags "-X" so the values reflect the tag
-// and git state, matching what GoReleaser publishes.
+// and git state, matching what GoReleaser publishes. As a dev-build fallback,
+// init() reads commit + timestamp from runtime/debug.ReadBuildInfo so a plain
+// `go build` (or `make gui`) still reports which commit it came from, which is
+// what the sidebar uses to tell two dev builds apart.
 package buildinfo
 
 import (
 	_ "embed"
 	"runtime"
+	"runtime/debug"
 	"strings"
 )
 
@@ -36,6 +40,37 @@ func init() {
 	// Version. In release builds GoReleaser supplies the real calver.
 	if Version == "" {
 		Version = strings.TrimSpace(embeddedVersion)
+	}
+	// Fill in Commit + Date from Go's embedded VCS info when -ldflags didn't
+	// supply them. This is what makes `go build` / `make gui` reveal which
+	// commit a local dev binary was cut from.
+	fillFromVCS()
+}
+
+// fillFromVCS reads runtime/debug.ReadBuildInfo's vcs.* settings to populate
+// Commit and Date when they were left blank (i.e. no -ldflags overrides).
+func fillFromVCS() {
+	if Commit != "" && Date != "" {
+		return
+	}
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return
+	}
+	settings := map[string]string{}
+	for _, s := range bi.Settings {
+		settings[s.Key] = s.Value
+	}
+	if Commit == "" {
+		if rev := settings["vcs.revision"]; len(rev) >= 7 {
+			Commit = rev[:7]
+		}
+	}
+	if Date == "" {
+		Date = settings["vcs.time"]
+	}
+	if settings["vcs.modified"] == "true" && Commit != "" && !strings.HasSuffix(Commit, "-dirty") {
+		Commit += "-dirty"
 	}
 }
 

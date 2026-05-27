@@ -7,6 +7,12 @@ export interface HealthSnapshot {
   level: HealthLevel;
   /** Backend version string, or null when unknown. */
   version: string | null;
+  /** Short git commit hash (7 chars, may have "-dirty" suffix). Null when
+   *  the backend didn't supply one — typically a clean release build cut
+   *  outside a git checkout. */
+  commit: string | null;
+  /** RFC3339 build timestamp, or null when unknown. */
+  buildDate: string | null;
   /** Uptime in seconds, or null when unknown. */
   uptimeSeconds: number | null;
   /** Wall-clock timestamp of the last successful probe. */
@@ -20,6 +26,8 @@ export const POLL_OFFLINE_MS = 30_000;
 const initial: HealthSnapshot = {
   level: 'unknown',
   version: null,
+  commit: null,
+  buildDate: null,
   uptimeSeconds: null,
   lastSuccessAt: null,
 };
@@ -43,6 +51,8 @@ export async function probe(): Promise<HealthSnapshot> {
     return {
       level: 'online',
       version: typeof body.version === 'string' ? body.version : null,
+      commit: typeof body.commit === 'string' && body.commit !== '' ? body.commit : null,
+      buildDate: typeof body.buildDate === 'string' && body.buildDate !== '' ? body.buildDate : null,
       uptimeSeconds: typeof body.uptimeSeconds === 'number' ? body.uptimeSeconds : null,
       lastSuccessAt: new Date(),
     };

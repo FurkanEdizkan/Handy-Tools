@@ -66,7 +66,7 @@
       <div class="label">Backend</div>
       <div class="value mono {$health.level === 'online' ? 'good' : ''}">{$health.level}</div>
       <div class="hint">
-        {$health.version ?? '—'} · up {formatUptime($health.uptimeSeconds)}
+        {$health.version ?? '—'}{$health.commit ? ` · ${$health.commit}` : ''} · up {formatUptime($health.uptimeSeconds)}
       </div>
     </div>
   </div>

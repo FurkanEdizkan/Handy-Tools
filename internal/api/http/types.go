@@ -274,9 +274,13 @@ type failureEntry struct {
 	Message string `json:"message,omitempty"`
 }
 
-// healthResponse is the body of 200 from GET /v1/health.
+// healthResponse is the body of 200 from GET /v1/health. Commit and
+// BuildDate let the sidebar tell two dev builds apart — release builds get
+// real values via -ldflags, dev builds get them from runtime/debug VCS info.
 type healthResponse struct {
 	Version        string   `json:"version"`
+	Commit         string   `json:"commit,omitempty"`
+	BuildDate      string   `json:"build_date,omitempty"`
 	UptimeSeconds  int64    `json:"uptime_seconds"`
 	Transports     []string `json:"transports"`
 	ToolsAvailable []string `json:"tools_available"`
