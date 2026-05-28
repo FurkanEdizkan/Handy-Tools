@@ -13,6 +13,8 @@ import type {
   ConfigPatch,
   ConfigResponse,
   ConvertRequest,
+  DiffTreeFileRequest,
+  DiffTreeFileResponse,
   DiffTreeInspectRequest,
   DiffTreeInspectResponse,
   ErrorEnvelope,
@@ -116,6 +118,10 @@ export class ApiClient {
 
   diffTreeInspect(req: DiffTreeInspectRequest): Promise<DiffTreeInspectResponse> {
     return this.postJSON('/v1/diff-tree/inspect', req);
+  }
+
+  diffTreeFile(req: DiffTreeFileRequest): Promise<DiffTreeFileResponse> {
+    return this.postJSON('/v1/diff-tree/file', req);
   }
 
   // ---- Rename ---------------------------------------------------------------

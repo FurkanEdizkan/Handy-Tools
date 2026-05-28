@@ -1,50 +1,8 @@
 import { writable, type Writable } from 'svelte/store';
 
 /* The theme cycle (forge / snow / ember) was retired alongside the TUI in
- * #205. The CSS variables that drive the surviving forge palette still live
- * in styles/theme.css; this store now only carries client-only display and
- * mascot preferences. */
-
-/* ---- Density ----------------------------------------------------------
- * Density adjusts header/dock heights via the `data-density` attribute (see
- * styles/theme.css). Local-only preference — no backend field. */
-
-export type Density = 'compact' | 'regular' | 'comfy';
-
-export const DENSITIES: Density[] = ['compact', 'regular', 'comfy'];
-
-const DENSITY_KEY = 'handy.density';
-const DEFAULT_DENSITY: Density = 'regular';
-
-function isDensity(value: unknown): value is Density {
-  return typeof value === 'string' && (DENSITIES as string[]).includes(value);
-}
-
-function readStoredDensity(): Density | null {
-  try {
-    const raw = localStorage.getItem(DENSITY_KEY);
-    return isDensity(raw) ? raw : null;
-  } catch {
-    return null;
-  }
-}
-
-export const currentDensity: Writable<Density> = writable(readStoredDensity() ?? DEFAULT_DENSITY);
-
-currentDensity.subscribe((value) => {
-  if (typeof document !== 'undefined') {
-    document.documentElement.setAttribute('data-density', value);
-  }
-  try {
-    localStorage.setItem(DENSITY_KEY, value);
-  } catch {
-    /* localStorage unavailable — the attribute is still applied */
-  }
-});
-
-export function setDensity(density: Density): void {
-  currentDensity.set(density);
-}
+ * #205, and the density picker was retired in favour of automatic responsive
+ * layout. This store now only carries the mascot preferences. */
 
 /* ---- Mascot preferences ----------------------------------------------
  * Character (Wrenly / Hopper) and sidebar visibility. Local-only prefs. */

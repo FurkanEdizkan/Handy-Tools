@@ -35,3 +35,34 @@ func (s *Server) handleDiffTreeInspect(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, diffTreeInspectResponse{Entries: entries})
 }
+
+// handleDiffTreeFile returns a unified diff between two files. The GUI
+// expands a "changed" row to call this; the response is structured so the
+// client can render coloured rows without re-parsing the raw diff text.
+func (s *Server) handleDiffTreeFile(w http.ResponseWriter, r *http.Request) {
+	var req diffTreeFileRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, err)
+		return
+	}
+	res, err := s.DiffTree.FileDiff(server.FileDiffParams{A: req.A.Path, B: req.B.Path})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	lines := make([]diffTreeFileLine, 0, len(res.Lines))
+	for _, l := range res.Lines {
+		lines = append(lines, diffTreeFileLine{
+			Kind: string(l.Kind),
+			Text: l.Text,
+			AOld: l.AOld,
+			BNew: l.BNew,
+		})
+	}
+	writeJSON(w, http.StatusOK, diffTreeFileResponse{
+		Binary:    res.Binary,
+		Truncated: res.Truncated,
+		Identical: res.Identical,
+		Lines:     lines,
+	})
+}

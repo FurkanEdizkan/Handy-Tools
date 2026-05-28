@@ -64,13 +64,6 @@ export const navItems: NavItem[] = [
     matches: (p) => p === '/tool/pdf',
   },
   {
-    href: '#/tool/hash',
-    label: 'Hash files',
-    glyph: '#',
-    section: 'tools',
-    matches: (p) => p === '/tool/hash',
-  },
-  {
     href: '#/tool/diff-tree',
     label: 'Diff two folders',
     glyph: '⇆',

@@ -106,6 +106,7 @@ func (s *Server) handleArchiveCompress(w http.ResponseWriter, r *http.Request) {
 		Output:           req.Destination.File,
 		Password:         req.Password,
 		CompressionLevel: req.CompressionLevel,
+		Overwrite:        req.Destination.Overwrite,
 	}
 
 	// Path-check failures (sources/output outside allow-roots) surface as a

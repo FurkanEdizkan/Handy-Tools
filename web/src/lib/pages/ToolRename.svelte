@@ -1,6 +1,7 @@
 <script lang="ts">
   import Dropzone from '../components/Dropzone.svelte';
   import Toast from '../components/Toast.svelte';
+  import RunStatus from '../components/RunStatus.svelte';
   import { ApiError, api, type RenameCollision, type RenamePlan } from '../api';
   import { runJob, resolveSources } from './run';
   import type { PickedFile } from './toolform';
@@ -11,16 +12,32 @@
   let pattern = $state('');
   let replace = $state('');
   let onCollision = $state<RenameCollision>('error');
-  let inspecting = $state(false);
   let running = $state(false);
-  let preview = $state<RenamePlan[] | null>(null);
+  let activeJobIds = $state<string[]>([]);
 
   let toastVisible = $state(false);
   let toastMsg = $state('');
   let toastTone = $state<'info' | 'error'>('info');
 
-  const previewReady = $derived(files.length > 0 && pattern !== '');
-  // Apply is gated behind a successful preview — rename is destructive.
+  // Live preview: JS regex over the file list, recomputed on every keystroke.
+  // The actual rename on Apply goes through the server-side Go regexp, which
+  // is the source of truth. Most syntax matches between the two engines —
+  // character classes, $1 backrefs, alternation. JS-only features (named
+  // groups via (?<name>...), lookbehinds) won't run server-side; the hint
+  // below tells the user.
+  const preview = $derived.by<RenamePlan[] | null>(() => {
+    if (!pattern || files.length === 0) return null;
+    let re: RegExp;
+    try {
+      re = new RegExp(pattern);
+    } catch {
+      return null;
+    }
+    return files.map((f) => ({
+      from: f.path ?? f.name,
+      to: f.name.replace(re, replace),
+    }));
+  });
   const applyReady = $derived(preview !== null && preview.some((p) => p.from !== p.to));
 
   function addFiles(dropped: File[] | string[]): void {
@@ -32,48 +49,10 @@
           : { name: d.name, file: d },
       ),
     ];
-    // Picking new files invalidates the previous preview.
-    preview = null;
   }
 
   function removeFile(index: number): void {
     files = files.filter((_, i) => i !== index);
-    preview = null;
-  }
-
-  function invalidatePreview(): void {
-    preview = null;
-  }
-
-  async function runPreview(): Promise<void> {
-    if (!previewReady || inspecting) return;
-    let resolved;
-    try {
-      resolved = resolveSources(files);
-    } catch (e) {
-      toastMsg = e instanceof ApiError ? e.message : 'Could not preview.';
-      toastTone = 'error';
-      toastVisible = true;
-      return;
-    }
-    inspecting = true;
-    try {
-      const res = await api.renameInspect({
-        sources: resolved.sources.map((s) => ({ path: s.path })),
-        pattern,
-        replace,
-        onCollision,
-      });
-      preview = res.plans;
-      const renames = res.plans.filter((p) => p.from !== p.to).length;
-      toastMsg = `Preview: ${renames} of ${res.plans.length} file(s) would be renamed.`;
-      toastTone = 'info';
-    } catch (e) {
-      toastMsg = e instanceof ApiError ? e.message : 'Preview failed.';
-      toastTone = 'error';
-    }
-    inspecting = false;
-    toastVisible = true;
   }
 
   async function runApply(): Promise<void> {
@@ -97,11 +76,10 @@
       }),
     );
     running = false;
+    if (outcome.ok) activeJobIds = outcome.jobIds;
     toastMsg = outcome.message;
     toastTone = outcome.ok ? 'info' : 'error';
     toastVisible = true;
-    // Force another preview before another apply.
-    if (outcome.ok) preview = null;
   }
 
   function basename(path: string): string {
@@ -113,7 +91,7 @@
   <div class="icon-block">✎</div>
   <div style="flex:1">
     <h1>Batch rename</h1>
-    <div class="desc">Apply a regex pattern + replacement across many files. Always previews first.</div>
+    <div class="desc">Apply a regex pattern + replacement across many files. Live preview as you type.</div>
   </div>
 </div>
 
@@ -144,7 +122,7 @@
         </div>
       {/each}
     {:else}
-      {#each preview as p (p.from)}
+      {#each preview as p, i (p.from + i)}
         <div class="file-row {p.from === p.to ? '' : 'diverged'}">
           <div class="thumb">{p.from === p.to ? '·' : '→'}</div>
           <div class="file-name">
@@ -154,7 +132,7 @@
           <span></span>
           <span></span>
           <span></span>
-          <span></span>
+          <button class="file-x" onclick={() => removeFile(i)} title="remove" aria-label="Remove {basename(p.from)}">×</button>
         </div>
       {/each}
     {/if}
@@ -164,12 +142,11 @@
     <div class="panel">
       <div class="panel-head"><span>Rule</span></div>
       <div class="panel-body">
-        <div class="opt-label">Pattern (Go regexp)</div>
+        <div class="opt-label">Pattern (regex)</div>
         <input
           class="text-input"
           style="width:100%"
           bind:value={pattern}
-          oninput={invalidatePreview}
           placeholder="^IMG_(\d+)"
         />
         <div class="opt-label" style="margin-top:12px">Replacement</div>
@@ -177,9 +154,13 @@
           class="text-input"
           style="width:100%"
           bind:value={replace}
-          oninput={invalidatePreview}
           placeholder="photo-$1"
         />
+        <div class="dim" style="margin-top:8px;font-size:11px">
+          Preview uses JavaScript regex; the actual rename uses Go's RE2 server-side.
+          Most syntax matches (char classes, <code>$1</code> backrefs) — JS-only features
+          like lookbehinds and named groups won't run on Apply.
+        </div>
       </div>
     </div>
 
@@ -188,7 +169,7 @@
       <div class="panel-body">
         <div class="seg wide">
           {#each COLLISIONS as c (c)}
-            <button class={onCollision === c ? 'on' : ''} onclick={() => { onCollision = c; invalidatePreview(); }}>{c}</button>
+            <button class={onCollision === c ? 'on' : ''} onclick={() => (onCollision = c)}>{c}</button>
           {/each}
         </div>
         <div class="dim" style="margin-top:8px;font-size:12px">
@@ -203,14 +184,13 @@
       </div>
     </div>
 
-    <div class="run-btn-block" style="gap:8px;display:flex;flex-direction:column">
-      <button class="btn ghost" disabled={!previewReady || inspecting} onclick={runPreview}>
-        {inspecting ? 'Previewing…' : '▸ Preview rename'}
-      </button>
+    <div class="run-btn-block">
       <button class="btn primary" disabled={!applyReady || running} onclick={runApply}>
         {running ? 'Running…' : '▸ Apply rename'}
       </button>
     </div>
+
+    <RunStatus jobIds={activeJobIds} />
   </div>
 </div>
 

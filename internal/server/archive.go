@@ -74,6 +74,7 @@ type CompressParams struct {
 	Output           string
 	Password         string
 	CompressionLevel int
+	Overwrite        bool
 }
 
 // Compress packs Sources into a single archive at Output. Every source path
@@ -98,6 +99,7 @@ func (h *ArchiveHandler) Compress(ctx context.Context, p CompressParams, emit fu
 		Output:           out,
 		Password:         p.Password,
 		CompressionLevel: p.CompressionLevel,
+		Overwrite:        p.Overwrite,
 	})
 	for prog := range ch {
 		if err := emit(prog); err != nil {

@@ -2,12 +2,14 @@
   /* App shell — sidebar + main column (topbar · scrolling page · dock).
      The htools-gui design; the OS / browser provides the window chrome. */
   import { onMount, type Snippet } from 'svelte';
+  import { router } from 'svelte-spa-router';
   import Sidebar from './Sidebar.svelte';
   import Topbar from './Topbar.svelte';
   import Dock from './Dock.svelte';
   import NotificationStack from './components/NotificationStack.svelte';
   import { startJobsFeed } from './stores/jobs';
   import { subscribeJobsForFailures } from './stores/notifications';
+  import { isCompactViewport, sidebarOpen, closeSidebar } from './stores/viewport';
 
   interface Props {
     children?: Snippet;
@@ -27,6 +29,16 @@
       unsubFailures();
     };
   });
+
+  // Auto-close the compact-viewport drawer on every navigation so it doesn't
+  // linger over the page the user just opened.
+  let lastLocation = router.location;
+  $effect(() => {
+    if (router.location !== lastLocation) {
+      lastLocation = router.location;
+      closeSidebar();
+    }
+  });
 </script>
 
 <div class="shell">
@@ -38,5 +50,15 @@
     </div>
     <Dock />
   </div>
+  {#if $isCompactViewport && $sidebarOpen}
+    <div
+      class="shell-backdrop"
+      role="button"
+      tabindex="0"
+      aria-label="Close sidebar"
+      onclick={closeSidebar}
+      onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') && closeSidebar()}
+    ></div>
+  {/if}
   <NotificationStack />
 </div>
