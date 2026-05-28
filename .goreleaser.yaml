@@ -91,6 +91,9 @@ builds:
       - production
     ldflags:
       - -s -w
+      - -X github.com/furkandedizkan/handy-tools/internal/buildinfo.Version={{.Version}}
+      - -X github.com/furkandedizkan/handy-tools/internal/buildinfo.Commit={{.ShortCommit}}
+      - -X github.com/furkandedizkan/handy-tools/internal/buildinfo.Date={{.Date}}
 
   - id: htools-gui-webkit41
     main: ./cmd/htools-gui
@@ -107,6 +110,9 @@ builds:
       - webkit2_41
     ldflags:
       - -s -w
+      - -X github.com/furkandedizkan/handy-tools/internal/buildinfo.Version={{.Version}}
+      - -X github.com/furkandedizkan/handy-tools/internal/buildinfo.Commit={{.ShortCommit}}
+      - -X github.com/furkandedizkan/handy-tools/internal/buildinfo.Date={{.Date}}
 
 archives:
   # htools + htoolsd ship on every linux/darwin × amd64/arch64 platform, so
