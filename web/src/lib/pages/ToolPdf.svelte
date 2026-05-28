@@ -1,12 +1,15 @@
 <script lang="ts">
   import Dropzone from '../components/Dropzone.svelte';
   import Toast from '../components/Toast.svelte';
+  import RunStatus from '../components/RunStatus.svelte';
+  import FolderPicker from '../components/FolderPicker.svelte';
   import { PDF_OPS, pdfFormReady, pdfSummary, type PdfOp, type PickedFile } from './toolform';
   import { ApiError, api } from '../api';
   import { runJob, resolveSources, stemOf } from './run';
 
   let op = $state<PdfOp>('merge');
   let files = $state<PickedFile[]>([]);
+  let outDir = $state('');
   let splitEvery = $state(10);
   let dpi = $state(150);
   let renderFormat = $state<'PNG' | 'JPEG'>('PNG');
@@ -15,6 +18,7 @@
   let toastVisible = $state(false);
   let toastMsg = $state('');
   let toastTone = $state<'info' | 'error'>('info');
+  let activeJobIds = $state<string[]>([]);
 
   const summary = $derived(pdfSummary(op, files.length));
   const ready = $derived(pdfFormReady(op, files.length));
@@ -46,7 +50,7 @@
       return;
     }
     const first = resolved.sources[0].path;
-    const dir = resolved.outputDir;
+    const dir = outDir.trim() || resolved.outputDir;
     running = true;
     const outcome = await runJob(() => {
       switch (op) {
@@ -75,6 +79,7 @@
       }
     });
     running = false;
+    if (outcome.ok) activeJobIds = outcome.jobIds;
     toastMsg = outcome.message;
     toastTone = outcome.ok ? 'info' : 'error';
     toastVisible = true;
@@ -135,6 +140,13 @@
     </div>
 
     <div class="panel">
+      <div class="panel-head"><span>Output folder</span></div>
+      <div class="panel-body">
+        <FolderPicker bind:value={outDir} placeholder="(defaults to the source's folder)" />
+      </div>
+    </div>
+
+    <div class="panel">
       <div class="panel-head"><span>{opLabel} options</span></div>
       <div class="panel-body">
         {#if op === 'merge'}
@@ -176,6 +188,8 @@
         {running ? 'Running…' : `▸ Run ${opLabel.toLowerCase()}`}
       </button>
     </div>
+
+    <RunStatus jobIds={activeJobIds} />
   </div>
 </div>
 
