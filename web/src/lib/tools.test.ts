@@ -8,7 +8,6 @@ describe('defaultTools', () => {
       'zip-pack',
       'archive-extract',
       'pdf',
-      'hash',
       'diff-tree',
       'rename',
       'doctor',

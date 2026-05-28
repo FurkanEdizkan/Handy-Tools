@@ -1,6 +1,8 @@
 <script lang="ts">
   import Dropzone from '../components/Dropzone.svelte';
   import Toast from '../components/Toast.svelte';
+  import RunStatus from '../components/RunStatus.svelte';
+  import FolderPicker from '../components/FolderPicker.svelte';
   import { IMAGE_FORMATS, type ImageFile, type ImageFormat } from './toolform';
   import { ApiError, api, type ImageTargetFormat } from '../api';
   import { runJob, resolveSources } from './run';
@@ -17,6 +19,7 @@
   let toastMsg = $state('');
   let toastTone = $state<'info' | 'error'>('info');
   let running = $state(false);
+  let activeJobIds = $state<string[]>([]);
 
   const summary = $derived.by(() => {
     const counts = new Map<string, number>();
@@ -89,6 +92,7 @@
       ),
     );
     running = false;
+    if (outcome.ok) activeJobIds = outcome.jobIds;
     toastMsg = outcome.message;
     toastTone = outcome.ok ? 'info' : 'error';
     toastVisible = true;
@@ -203,7 +207,7 @@
             <span class="lbl">Custom path</span>
             <span></span>
             {#if outMode === 'custom'}
-              <input class="path-input" bind:value={customPath} placeholder="/path/to/output" />
+              <FolderPicker bind:value={customPath} placeholder="/path/to/output" />
             {/if}
           </div>
         </div>
@@ -245,6 +249,8 @@
         {running ? 'Running…' : '▸ Run conversion'}
       </button>
     </div>
+
+    <RunStatus jobIds={activeJobIds} />
   </div>
 </div>
 

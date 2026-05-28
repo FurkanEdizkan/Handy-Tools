@@ -13,6 +13,19 @@ GOFLAGS     ?=
 LDFLAGS     ?= -s -w
 PKGS        := ./...
 
+# Derive version from git so every local build — `make build`, `make gui-build`,
+# and `make gui` (which threads LDFLAGS into `go run`) — reports the most
+# recent calver tag, matching what the release pipeline bakes in via
+# .goreleaser.yaml. We use `--abbrev=0` so the label stays the clean tag
+# (e.g. v2026.5.18-beta.1) instead of "v2026.5.18-beta.1-259-gac11649-dirty"
+# when HEAD is past the tag or the tree is dirty. When git is unavailable
+# (extracted tarball builds) VERSION is empty and the embedded fallback in
+# internal/buildinfo/version.txt (0.0.0-dev) wins.
+VERSION     ?= $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+ifneq ($(VERSION),)
+LDFLAGS     += -X $(MODULE)/internal/buildinfo.Version=$(VERSION)
+endif
+
 # The Wails desktop build needs three tags: `wails` (this repo's own — selects
 # the real app over the CGO-free stub), `production` (Wails' own — without it
 # the binary aborts at startup with "will not build without the correct build
@@ -78,7 +91,7 @@ mcp-build: $(MCP_BIN) ## Build the MCP server binary into bin/htools-mcp
 
 .PHONY: gui
 gui: web ## Build the web UI and run the Wails desktop app
-	$(GO) run -tags '$(WAILS_TAGS)' ./cmd/htools-gui
+	$(GO) run -tags '$(WAILS_TAGS)' -ldflags '$(LDFLAGS)' ./cmd/htools-gui
 
 .PHONY: gui-build
 gui-build: web ## Build the Wails desktop app into bin/htools-gui

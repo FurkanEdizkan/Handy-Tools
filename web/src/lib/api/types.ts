@@ -161,6 +161,28 @@ export interface DiffTreeInspectResponse {
   entries: DiffEntry[];
 }
 
+/** POST /v1/diff-tree/file — unified diff between two single files. */
+export interface DiffTreeFileRequest {
+  a: FileRef;
+  b: FileRef;
+}
+
+export type DiffLineKind = 'context' | 'add' | 'remove' | 'hunk';
+
+export interface DiffLine {
+  kind: DiffLineKind;
+  text: string;
+  aOld?: number;
+  bNew?: number;
+}
+
+export interface DiffTreeFileResponse {
+  binary: boolean;
+  truncated: boolean;
+  identical: boolean;
+  lines: DiffLine[];
+}
+
 export type RenameCollision = 'error' | 'skip' | 'suffix';
 
 /** POST /v1/rename/inspect and POST /v1/rename/run. */

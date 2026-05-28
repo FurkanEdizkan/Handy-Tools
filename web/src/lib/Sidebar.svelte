@@ -5,6 +5,7 @@
   import { jobs } from './stores/jobs';
   import { health } from './stores/health';
   import { mascotEnabled, mascotCharacter } from './stores/theme';
+  import { sidebarOpen } from './stores/viewport';
   import MascotAvatar from './components/MascotAvatar.svelte';
   import MascotPill from './MascotPill.svelte';
 
@@ -20,13 +21,12 @@
     return { running, fail };
   });
 
-  // Version label shown under the brand. The commit suffix (when present)
-  // is how a dev can tell two `make gui` builds apart — without it every
-  // local build looks like the identical "v0.0.0-dev".
-  const version = $derived.by(() => {
-    const v = $health.version ? `v${$health.version}` : 'desktop';
-    return $health.commit ? `${v} · ${$health.commit}` : v;
-  });
+  // Version label shown under the brand: the clean tag baked in at build
+  // time (e.g. v2026.5.18-beta.1). Falls back to "desktop" if /v1/health
+  // hasn't replied yet.
+  const version = $derived(
+    $health.version ? `v${$health.version}` : 'desktop',
+  );
 
   function visible(section: NavItem['section']): NavItem[] {
     const q = search.trim().toLowerCase();
@@ -36,7 +36,7 @@
   const system = $derived(visible('system'));
 </script>
 
-<aside class="sidebar">
+<aside class="sidebar" class:open={$sidebarOpen}>
   <div
     class="brand"
     role="button"

@@ -107,6 +107,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /v1/hash", s.handleHashRun)
 	mux.HandleFunc("POST /v1/hash/verify", s.handleHashVerify)
 	mux.HandleFunc("POST /v1/diff-tree/inspect", s.handleDiffTreeInspect)
+	mux.HandleFunc("POST /v1/diff-tree/file", s.handleDiffTreeFile)
 	mux.HandleFunc("POST /v1/rename/inspect", s.handleRenameInspect)
 	mux.HandleFunc("POST /v1/rename/run", s.handleRenameRun)
 	mux.HandleFunc("GET /v1/jobs", s.handleJobsList)

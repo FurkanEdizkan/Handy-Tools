@@ -19,6 +19,7 @@ func cmdPack(ctx context.Context, _ config.Config, args []string) int {
 	output := fs.String("output", "", "output archive path (required)")
 	level := fs.Int("compression-level", 0, "0 = format default; 1 fastest .. 9 smallest")
 	password := fs.String("password", "", "optional; 7z only")
+	overwrite := fs.Bool("overwrite", false, "replace an existing output file; default renames to <stem>-1.<ext>")
 	quiet := fs.Bool("quiet", false, "suppress per-event progress lines")
 	asJSON := fs.Bool("json", false, "emit one JSON object per progress event")
 	srcs, err := parseFlags(fs, args)
@@ -45,6 +46,7 @@ func cmdPack(ctx context.Context, _ config.Config, args []string) int {
 		Output:           *output,
 		Password:         *password,
 		CompressionLevel: *level,
+		Overwrite:        *overwrite,
 	})
 	return streamProgress(ch, progressOpts{quiet: *quiet, json: *asJSON})
 }

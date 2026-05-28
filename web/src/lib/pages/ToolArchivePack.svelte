@@ -1,6 +1,8 @@
 <script lang="ts">
   import Dropzone from '../components/Dropzone.svelte';
   import Toast from '../components/Toast.svelte';
+  import RunStatus from '../components/RunStatus.svelte';
+  import FolderPicker from '../components/FolderPicker.svelte';
   import { ARCHIVE_FORMATS, archivePackReady, archivePackSummary, type ArchiveFormat, type PickedFile } from './toolform';
   import { ApiError, api } from '../api';
   import { runJob, resolveSources } from './run';
@@ -8,12 +10,14 @@
   let files = $state<PickedFile[]>([]);
   let format = $state<ArchiveFormat>('zip');
   let output = $state('archive.zip');
+  let outDir = $state('');
   let level = $state(6);
   let overwrite = $state(false);
   let running = $state(false);
   let toastVisible = $state(false);
   let toastMsg = $state('');
   let toastTone = $state<'info' | 'error'>('info');
+  let activeJobIds = $state<string[]>([]);
 
   const summary = $derived(archivePackSummary(files.length, format, output));
   const ready = $derived(archivePackReady(files.length, output));
@@ -51,15 +55,17 @@
       return;
     }
     running = true;
+    const targetDir = outDir.trim() || resolved.outputDir;
     const outcome = await runJob(() =>
       api.archiveCompress({
         sources: resolved.sources.map((s) => ({ path: s.path })),
-        destination: { file: `${resolved.outputDir}/${output}`, overwrite },
+        destination: { file: `${targetDir}/${output}`, overwrite },
         format: '',
         compressionLevel: level,
       }),
     );
     running = false;
+    if (outcome.ok) activeJobIds = outcome.jobIds;
     toastMsg = outcome.message;
     toastTone = outcome.ok ? 'info' : 'error';
     toastVisible = true;
@@ -113,6 +119,8 @@
             <button class={format === fmt ? 'on' : ''} onclick={() => pickFormat(fmt)}>{fmt}</button>
           {/each}
         </div>
+        <div class="opt-label" style="margin-top:12px">Output folder</div>
+        <FolderPicker bind:value={outDir} placeholder="(defaults to the sources' folder)" />
         <div class="opt-label" style="margin-top:12px">Output file</div>
         <input class="text-input" style="width:100%" bind:value={output} placeholder="archive.zip" />
       </div>
@@ -127,7 +135,7 @@
           <input type="range" min="0" max="9" bind:value={level} />
         </div>
         <div class="toggle-row">
-          <div class="lbl"><span>Overwrite existing</span><span class="sub">Replace the archive if it exists</span></div>
+          <div class="lbl"><span>Overwrite existing</span><span class="sub">Off: rename to archive-1.zip instead</span></div>
           <button class="toggle {overwrite ? 'on' : ''}" aria-label="Overwrite existing" onclick={() => (overwrite = !overwrite)}></button>
         </div>
       </div>
@@ -140,6 +148,8 @@
         {running ? 'Running…' : '▸ Pack archive'}
       </button>
     </div>
+
+    <RunStatus jobIds={activeJobIds} />
   </div>
 </div>
 

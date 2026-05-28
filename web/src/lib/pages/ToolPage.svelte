@@ -6,7 +6,6 @@
   import ToolPdf from './ToolPdf.svelte';
   import ToolArchivePack from './ToolArchivePack.svelte';
   import ToolArchiveExtract from './ToolArchiveExtract.svelte';
-  import ToolHash from './ToolHash.svelte';
   import ToolDiffTree from './ToolDiffTree.svelte';
   import ToolRename from './ToolRename.svelte';
 
@@ -25,8 +24,6 @@
   <ToolArchivePack />
 {:else if tool && tool.id === 'archive-extract'}
   <ToolArchiveExtract />
-{:else if tool && tool.id === 'hash'}
-  <ToolHash />
 {:else if tool && tool.id === 'diff-tree'}
   <ToolDiffTree />
 {:else if tool && tool.id === 'rename'}

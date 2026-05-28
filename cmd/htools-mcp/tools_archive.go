@@ -30,6 +30,7 @@ type archiveCompressInput struct {
 	Format           string   `json:"format,omitempty" jsonschema:"one of: zip, tar, tar.gz, tar.bz2, tar.zst, 7z; empty = infer from output extension"`
 	Password         string   `json:"password,omitempty" jsonschema:"only honored by 7z"`
 	CompressionLevel int      `json:"compression_level,omitempty" jsonschema:"0-9 where supported by the format"`
+	Overwrite        bool     `json:"overwrite,omitempty" jsonschema:"true: replace an existing file at output; false (default): rename to <stem>-1.<ext>"`
 }
 
 func parseArchiveFormat(s string) archive.Format {
@@ -93,6 +94,7 @@ func registerArchiveTools(srv *mcp.Server, h *handlers) {
 				Output:           in.Output,
 				Password:         in.Password,
 				CompressionLevel: in.CompressionLevel,
+				Overwrite:        in.Overwrite,
 			}, emit)
 		})
 		return res, nil, nil

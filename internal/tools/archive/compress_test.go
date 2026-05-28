@@ -325,13 +325,121 @@ func TestCompressRemovesPartialOnFailure(t *testing.T) {
 	if err := os.Mkdir(finalOutput, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// Overwrite=true skips the collision-avoidance rename, so the dir-at-output
+	// scenario still drives Rename to a hard failure (which is what this test
+	// is verifying — .partial cleanup on rename failure).
 	last := runCompress(t, CompressRequest{
-		Sources: []string{src}, Format: FormatZip, Output: finalOutput,
+		Sources: []string{src}, Format: FormatZip, Output: finalOutput, Overwrite: true,
 	})
 	if last.Err == nil {
 		t.Fatalf("expected failure when output path is a directory, got success")
 	}
 	if _, err := os.Stat(finalOutput + ".partial"); !os.IsNotExist(err) {
 		t.Errorf("expected .partial to be cleaned up, got stat err = %v", err)
+	}
+}
+
+// TestCompressDefaultDisambiguates: by default (Overwrite=false) a second pack
+// to the same output filename writes to <stem>-1.<ext> instead of clobbering.
+func TestCompressDefaultDisambiguates(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(src, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "out.zip")
+	// Pre-create the target with a marker so we'd notice an overwrite.
+	if err := os.WriteFile(out, []byte("original"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	last := runCompress(t, CompressRequest{
+		Sources: []string{src}, Format: FormatZip, Output: out,
+	})
+	if last.Err != nil {
+		t.Fatalf("compress failed: %+v", last.Err)
+	}
+	if got, _ := os.ReadFile(out); string(got) != "original" {
+		t.Errorf("default Overwrite=false should leave existing file untouched; got %q", got)
+	}
+	disambiguated := filepath.Join(dir, "out-1.zip")
+	if _, err := os.Stat(disambiguated); err != nil {
+		t.Errorf("expected disambiguated archive at %s: %v", disambiguated, err)
+	}
+}
+
+// TestCompressOverwriteReplaces: Overwrite=true replaces the existing file.
+func TestCompressOverwriteReplaces(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(src, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "out.zip")
+	if err := os.WriteFile(out, []byte("original"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	last := runCompress(t, CompressRequest{
+		Sources: []string{src}, Format: FormatZip, Output: out, Overwrite: true,
+	})
+	if last.Err != nil {
+		t.Fatalf("compress failed: %+v", last.Err)
+	}
+	// The file at `out` should now be a real zip, not "original".
+	entries := readArchive(t, out, FormatZip)
+	if entries["a.txt"] != "hello" {
+		t.Errorf("overwritten archive contents wrong; got %v", entries)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "out-1.zip")); !os.IsNotExist(err) {
+		t.Errorf("Overwrite=true should not create out-1.zip")
+	}
+}
+
+// TestCompressDisambiguationChain: when out.zip AND out-1.zip exist, default
+// produces out-2.zip.
+func TestCompressDisambiguationChain(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(src, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"out.zip", "out-1.zip"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	last := runCompress(t, CompressRequest{
+		Sources: []string{src}, Format: FormatZip, Output: filepath.Join(dir, "out.zip"),
+	})
+	if last.Err != nil {
+		t.Fatalf("compress failed: %+v", last.Err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "out-2.zip")); err != nil {
+		t.Errorf("expected out-2.zip: %v", err)
+	}
+}
+
+// TestCompressCompoundExtensionDisambiguation: a.tar.gz becomes a-1.tar.gz,
+// not a.tar-1.gz (verifies the compound-extension support).
+func TestCompressCompoundExtensionDisambiguation(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(src, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "a.tar.gz")
+	if err := os.WriteFile(out, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	last := runCompress(t, CompressRequest{
+		Sources: []string{src}, Format: FormatTarGz, Output: out,
+	})
+	if last.Err != nil {
+		t.Fatalf("compress failed: %+v", last.Err)
+	}
+	disambiguated := filepath.Join(dir, "a-1.tar.gz")
+	if _, err := os.Stat(disambiguated); err != nil {
+		t.Errorf("expected disambiguated archive at %s: %v", disambiguated, err)
 	}
 }

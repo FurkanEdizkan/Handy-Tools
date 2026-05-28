@@ -1,13 +1,5 @@
 <script lang="ts">
-  import {
-    currentDensity,
-    setDensity,
-    DENSITIES,
-    mascotCharacter,
-    mascotEnabled,
-    type Density,
-    type MascotCharacter,
-  } from '../stores/theme';
+  import { mascotCharacter, mascotEnabled, type MascotCharacter } from '../stores/theme';
 </script>
 
 <div class="page-header">
@@ -16,26 +8,6 @@
     <h1>Settings</h1>
     <div class="desc">
       Stored at <span style="font-family:var(--mono);color:var(--text)">~/.config/handy-tools/config.yaml</span>
-    </div>
-  </div>
-</div>
-
-<div class="setting-section">
-  <div class="s-head">
-    Appearance
-    <div class="desc">Display preferences for this device.</div>
-  </div>
-  <div class="setting-row">
-    <div class="lbl-block">
-      <div class="lbl">Density</div>
-      <div class="sub">Adjusts the header and dock heights for cramped windows.</div>
-    </div>
-    <div class="control">
-      <div class="seg">
-        {#each DENSITIES as d (d)}
-          <button class={$currentDensity === d ? 'on' : ''} onclick={() => setDensity(d as Density)}>{d}</button>
-        {/each}
-      </div>
     </div>
   </div>
 </div>
@@ -71,55 +43,6 @@
         aria-label="Show mascot in sidebar"
         onclick={() => mascotEnabled.set(!$mascotEnabled)}
       ></button>
-    </div>
-  </div>
-</div>
-
-<div class="setting-section">
-  <div class="s-head">
-    Server &amp; safety
-    <div class="desc">
-      Used when running against htoolsd. The desktop build embeds a loopback server with these
-      same roots.
-    </div>
-  </div>
-  <div class="setting-row">
-    <div class="lbl-block">
-      <div class="lbl">htoolsd address</div>
-      <div class="sub">Where the GUI connects when served over the network.</div>
-    </div>
-    <div class="control">
-      <input class="text-input" value="localhost:7777" readonly />
-    </div>
-  </div>
-  <div class="setting-row">
-    <div class="lbl-block">
-      <div class="lbl">Allow-roots</div>
-      <div class="sub">Paths the server accepts inputs from. Empty = reject everything (fail-closed).</div>
-    </div>
-    <div class="control stretch">
-      <div class="allow-roots">
-        <span class="root">~/Desktop</span>
-        <span class="root">~/Documents</span>
-      </div>
-    </div>
-  </div>
-  <div class="setting-row">
-    <div class="lbl-block">
-      <div class="lbl">Default JPEG quality</div>
-      <div class="sub">Used when a tool page doesn't override it.</div>
-    </div>
-    <div class="control">
-      <input class="text-input" style="width:80px;text-align:right" value="90" readonly />
-    </div>
-  </div>
-  <div class="setting-row">
-    <div class="lbl-block">
-      <div class="lbl">Default PDF DPI</div>
-      <div class="sub">Used when rendering PDF pages to images.</div>
-    </div>
-    <div class="control">
-      <input class="text-input" style="width:80px;text-align:right" value="150" readonly />
     </div>
   </div>
 </div>

@@ -106,4 +106,5 @@ func registerPDFTools(srv *mcp.Server, h *handlers) {
 		})
 		return res, nil, nil
 	})
+
 }

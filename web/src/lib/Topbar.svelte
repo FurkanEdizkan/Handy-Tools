@@ -1,8 +1,11 @@
 <script lang="ts">
-  /* Topbar — breadcrumb + host pill + Jobs/Settings shortcuts. */
+  /* Topbar — breadcrumb + host pill + Jobs/Settings shortcuts.
+     The hamburger button only appears below the compact-viewport breakpoint;
+     above it the sidebar is always visible and there's nothing to toggle. */
   import { router, push } from 'svelte-spa-router';
   import { pageTitle } from './routes';
   import { jobs } from './stores/jobs';
+  import { isCompactViewport, sidebarOpen, toggleSidebar } from './stores/viewport';
   import HostPill from './HostPill.svelte';
 
   const atHome = $derived(router.location === '/' || router.location === '');
@@ -11,6 +14,18 @@
 </script>
 
 <div class="topbar">
+  {#if $isCompactViewport}
+    <button
+      class="menu-btn"
+      onclick={toggleSidebar}
+      aria-label="Toggle sidebar"
+      aria-expanded={$sidebarOpen}
+    >
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+        <path d="M2.5 4h11M2.5 8h11M2.5 12h11" />
+      </svg>
+    </button>
+  {/if}
   <div class="crumbs">
     {#if !atHome}
       <a class="home" href="#/">Home</a>

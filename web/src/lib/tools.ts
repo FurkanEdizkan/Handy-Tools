@@ -43,12 +43,6 @@ export const defaultTools: ToolDef[] = [
     desc: 'merge · split · pages → image · text',
   },
   {
-    id: 'hash',
-    glyph: '#',
-    label: 'Hash files',
-    desc: 'md5 · sha256 · blake3 · verify manifest',
-  },
-  {
     id: 'diff-tree',
     glyph: '⇆',
     label: 'Diff two folders',

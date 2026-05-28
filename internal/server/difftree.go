@@ -48,6 +48,32 @@ func (h *DiffTreeHandler) Run(ctx context.Context, p DiffTreeParams, emit func(t
 	return nil
 }
 
+// FileDiffParams names the two files to diff. Paths are validated through
+// the same allow-roots sandbox the tree-level Inspect uses.
+type FileDiffParams struct {
+	A string
+	B string
+}
+
+// FileDiff returns a structured unified diff between two files. The wrapper
+// adds CheckPath so the GUI's "click a changed row" can't be used to read
+// arbitrary files outside the configured allow-roots.
+func (h *DiffTreeHandler) FileDiff(p FileDiffParams) (difftree.FileDiffResult, error) {
+	a, err := h.Opts.CheckPath(p.A)
+	if err != nil {
+		return difftree.FileDiffResult{}, err
+	}
+	b, err := h.Opts.CheckPath(p.B)
+	if err != nil {
+		return difftree.FileDiffResult{}, err
+	}
+	res, terr := difftree.FileDiff(a, b)
+	if terr != nil {
+		return difftree.FileDiffResult{}, terr
+	}
+	return res, nil
+}
+
 // Inspect is the synchronous form — used by transports that want the full
 // diff slice up front (e.g., an MCP tool that returns the report as JSON
 // instead of replaying a progress stream).
