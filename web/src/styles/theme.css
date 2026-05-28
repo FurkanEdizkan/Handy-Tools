@@ -4,8 +4,8 @@
  * The three theme NAMES — forge / snow / ember — are kept in sync with
  * internal/ui/theme/theme.go and the backend config, but the web palette is
  * its own thing: forge carries the design's "Graphite" values, snow the cool
- * variant, ember a warm variant. `data-theme` / `data-density` are set on
- * <html> by lib/stores/theme.ts.
+ * variant, ember a warm variant. `data-theme` is set on <html> by
+ * lib/stores/theme.ts.
  *
  * Each theme exposes the design tokens (--bg, --accent, …) plus legacy
  * --color-* aliases so Tailwind utilities and the shared mascot art keep
@@ -101,12 +101,3 @@
   --color-mascot-eye: #f0a05a;
 }
 
-/* ---- density --------------------------------------------------------- */
-[data-density='compact'] {
-  --header-h: 48px;
-  --dock-h: 48px;
-}
-[data-density='comfy'] {
-  --header-h: 64px;
-  --dock-h: 64px;
-}
