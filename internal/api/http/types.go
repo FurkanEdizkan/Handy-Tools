@@ -12,6 +12,7 @@
 //	POST /v1/archive/extract          → 202 {"job_id": "..."}
 //	POST /v1/pdf/to-image             → 202 {"job_id": "..."}
 //	POST /v1/pdf/to-text              → 202 {"job_id": "..."}
+//	POST /v1/diff-tree/file           → 200 {"binary": false, "lines": [...]}
 //	POST /v1/pdf/merge                → 202 {"job_id": "..."}
 //	POST /v1/hash                     → 202 {"job_id": "..."}
 //	POST /v1/hash/verify              → 200 {VerifyReport}
@@ -187,6 +188,30 @@ type diffEntry struct {
 // diffTreeInspectResponse is the body of 200 from POST /v1/diff-tree/inspect.
 type diffTreeInspectResponse struct {
 	Entries []diffEntry `json:"entries"`
+}
+
+// diffTreeFileRequest is the body of POST /v1/diff-tree/file — a unified diff
+// between two single files. Used by the GUI when the user expands a "changed"
+// row in the diff-tree report.
+type diffTreeFileRequest struct {
+	A fileRef `json:"a"`
+	B fileRef `json:"b"`
+}
+
+// diffTreeFileLine mirrors difftree.FileDiffLine on the wire.
+type diffTreeFileLine struct {
+	Kind string `json:"kind"` // context|add|remove|hunk
+	Text string `json:"text"`
+	AOld int    `json:"a_old,omitempty"`
+	BNew int    `json:"b_new,omitempty"`
+}
+
+// diffTreeFileResponse is the body of 200 from POST /v1/diff-tree/file.
+type diffTreeFileResponse struct {
+	Binary    bool               `json:"binary"`
+	Truncated bool               `json:"truncated"`
+	Identical bool               `json:"identical"`
+	Lines     []diffTreeFileLine `json:"lines"`
 }
 
 // renameRequest is the body of POST /v1/rename/inspect and POST /v1/rename/run.
