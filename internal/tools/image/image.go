@@ -471,7 +471,7 @@ func resolveOutputPath(req ConvertRequest) (string, error) {
 	if req.Overwrite {
 		return candidate, nil
 	}
-	return disambiguatePath(candidate)
+	return tools.ReserveUniquePath(candidate)
 }
 
 // candidateOutputPath computes the natural output path before collision
@@ -495,38 +495,6 @@ func candidateOutputPath(req ConvertRequest) (string, error) {
 		return "", err
 	}
 	return req.Output, nil
-}
-
-// disambiguatePath returns a path that is guaranteed not to collide with an
-// existing file at the moment this function returns. It tries the requested
-// path first, then path-1, path-2, ... up to a 9999 cap. The check uses
-// os.OpenFile with O_CREATE|O_EXCL so the result is atomic against other
-// concurrent callers — a stat-then-create loop would race under parallelism
-// (two workers can both see "free" and both write). The reserved file is
-// closed immediately after creation; encode() reopens it with O_TRUNC.
-//
-// On overflow (every candidate up to the cap is taken) returns an error so
-// the caller surfaces a clean failure instead of silently overwriting.
-func disambiguatePath(path string) (string, error) {
-	ext := filepath.Ext(path)
-	base := strings.TrimSuffix(path, ext)
-	const maxAttempts = 9999
-	for i := 0; i <= maxAttempts; i++ {
-		candidate := path
-		if i > 0 {
-			candidate = fmt.Sprintf("%s-%d%s", base, i, ext)
-		}
-		f, err := os.OpenFile(candidate, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644) //nolint:gosec
-		if err == nil {
-			f.Close()
-			return candidate, nil
-		}
-		if !errors.Is(err, os.ErrExist) {
-			return "", err
-		}
-	}
-	return "", fmt.Errorf("could not find a free output path: %s, %s-1..%s-%d all exist",
-		path, base, base, maxAttempts)
 }
 
 // drainable so tests don't need to import io

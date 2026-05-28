@@ -30,6 +30,7 @@ type CompressRequest struct {
 	Output           string   // path of the archive to create
 	Password         string   // optional; rejected here (the pure-Go formats have no encryption)
 	CompressionLevel int      // 0 = format default; 1 = fastest .. 9 = smallest
+	Overwrite        bool     // true: replace an existing file at Output; false (default): rename to Output's stem + "-1", "-2", ... like image convert
 }
 
 // CompressInspection is the result of InspectCompress.
@@ -158,6 +159,19 @@ func Compress(ctx context.Context, req CompressRequest) <-chan tools.Progress {
 				emit(compressFail(tools.ClassifyFSError(err), "compress failed", err.Error()))
 			}
 			return
+		}
+		// Collision avoidance: when Overwrite=false, pick a fresh name before
+		// the rename clobbers an existing file. NextUniquePath stat-loops
+		// without touching the filesystem; safe here because the actual
+		// bytes-on-disk creation is the atomic Rename below.
+		if !req.Overwrite {
+			unique, perr := tools.NextUniquePath(finalOutput)
+			if perr != nil {
+				_ = os.Remove(stagedReq.Output)
+				emit(compressFail(tools.ClassifyFSError(perr), "cannot pick unique output path", perr.Error()))
+				return
+			}
+			finalOutput = unique
 		}
 		if err := os.Rename(stagedReq.Output, finalOutput); err != nil {
 			_ = os.Remove(stagedReq.Output)
