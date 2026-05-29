@@ -32,6 +32,10 @@ Go libraries (linked into htools, htoolsd and htools-gui)
   Copyright (c) 2015 Joe Tsai and The Go Authors.
   bzip2 compression for the archive tool.
 
+- github.com/ulikunitz/xz — BSD-3-Clause
+  Copyright (c) 2014-2022 Ulrich Kunitz.
+  xz (tar.xz) compression and decompression for the archive tool.
+
 - golang.org/x/image — BSD-3-Clause
   Copyright 2009 The Go Authors.
   WebP/BMP/TIFF image decoding and scaling.

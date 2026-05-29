@@ -257,6 +257,7 @@ type jobSummary struct {
 	StartedAt   int64          `json:"started_unix_ms,omitempty"`
 	Status      string         `json:"status"` // queued|running|done|failed
 	Fraction    float64        `json:"fraction,omitempty"`
+	Estimated   bool           `json:"estimated,omitempty"`
 	CurrentItem string         `json:"current_item,omitempty"`
 	Message     string         `json:"message,omitempty"`
 	Completed   bool           `json:"completed"`
@@ -278,6 +279,7 @@ type progressEvent struct {
 	BytesDone   int64          `json:"bytes_done,omitempty"`
 	BytesTotal  int64          `json:"bytes_total,omitempty"`
 	Fraction    float64        `json:"fraction,omitempty"`
+	Estimated   bool           `json:"estimated,omitempty"`
 	Level       string         `json:"level,omitempty"` // INFO|WARNING|ERROR
 	Message     string         `json:"message,omitempty"`
 	Completed   bool           `json:"completed"`

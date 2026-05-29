@@ -5,10 +5,16 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"context"
+	"fmt"
+	"io"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/klauspost/compress/zstd"
+	"github.com/ulikunitz/xz"
 
 	"github.com/furkandedizkan/handy-tools/internal/tools"
 )
@@ -226,6 +232,134 @@ func TestExtractTarGzWritesAllEntries(t *testing.T) {
 		t.Fatalf("read extracted: %v", err)
 	}
 	if string(body) != "compressed body" {
+		t.Fatalf("body mismatch: got %q", string(body))
+	}
+}
+
+// TestExtractTarGzReportsMovingFraction is the regression for the dead-bar bug:
+// tar-family extraction used to emit only a filename message and never a
+// Fraction, so the progress bar sat at 0% until done. The fixture is large
+// enough (a few MB across several entries, incompressible so the gzip stream
+// stays multi-MiB) that compressed bytes are consumed in several buffered
+// reads, yielding intermediate 0 < Fraction < 1 events.
+func TestExtractTarGzReportsMovingFraction(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "big.tar.gz")
+
+	// Deterministic pseudo-random (incompressible) payload so the .tar.gz is
+	// larger than the 1 MiB read buffer and the fraction advances in steps.
+	rng := rand.New(rand.NewSource(1))
+	entries := map[string]string{}
+	for i := 0; i < 6; i++ {
+		buf := make([]byte, 512*1024)
+		rng.Read(buf)
+		entries[fmt.Sprintf("file%d.bin", i)] = string(buf)
+	}
+	writeTarWrapped(t, src, entries,
+		func(w io.Writer) (io.WriteCloser, error) { return gzip.NewWriter(w), nil })
+
+	dst := filepath.Join(dir, "out")
+	progress := collect(Extract(context.Background(), ExtractRequest{Source: src, Destination: dst}))
+	if last := progress[len(progress)-1]; last.Err != nil {
+		t.Fatalf("extract: %v", last.Err)
+	}
+
+	var sawMoving bool
+	var maxFrac float64
+	for _, p := range progress {
+		if p.Fraction > maxFrac {
+			maxFrac = p.Fraction
+		}
+		if p.Fraction > 0 && p.Fraction < 1 && !p.Completed {
+			sawMoving = true
+		}
+	}
+	if !sawMoving {
+		t.Fatalf("expected at least one 0<Fraction<1 progress event during tar.gz extract; max seen=%v", maxFrac)
+	}
+
+	// And the content must still be intact.
+	for name, want := range entries {
+		got, err := os.ReadFile(filepath.Join(dst, name))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		if string(got) != want {
+			t.Fatalf("content mismatch for %s", name)
+		}
+	}
+}
+
+// writeTarWrapped writes a tar archive through an arbitrary compression layer
+// (xz, zstd, ...) so the extract-side decoders can be exercised end-to-end.
+func writeTarWrapped(t *testing.T, path string, entries map[string]string, wrap func(io.Writer) (io.WriteCloser, error)) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create archive: %v", err)
+	}
+	defer f.Close()
+	w, err := wrap(f)
+	if err != nil {
+		t.Fatalf("wrap writer: %v", err)
+	}
+	tw := tar.NewWriter(w)
+	for name, body := range entries {
+		hdr := &tar.Header{Name: name, Mode: 0o644, Size: int64(len(body)), Typeflag: tar.TypeReg}
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatalf("write header: %v", err)
+		}
+		if _, err := tw.Write([]byte(body)); err != nil {
+			t.Fatalf("write body: %v", err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatalf("close tar: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close wrapper: %v", err)
+	}
+}
+
+func TestExtractTarXzWritesAllEntries(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "in.tar.xz")
+	writeTarWrapped(t, src, map[string]string{"hello.txt": "xz compressed body"},
+		func(w io.Writer) (io.WriteCloser, error) { return xz.NewWriter(w) })
+	dst := filepath.Join(dir, "out")
+
+	progress := collect(Extract(context.Background(), ExtractRequest{Source: src, Destination: dst}))
+	if last := progress[len(progress)-1]; last.Err != nil {
+		t.Fatalf("extract: %v", last.Err)
+	}
+	body, err := os.ReadFile(filepath.Join(dst, "hello.txt"))
+	if err != nil {
+		t.Fatalf("read extracted: %v", err)
+	}
+	if string(body) != "xz compressed body" {
+		t.Fatalf("body mismatch: got %q", string(body))
+	}
+}
+
+// TestExtractTarZstWritesAllEntries is a regression for the tar.zst extract gap
+// fixed alongside tar.xz: the format was detected and packable but missing from
+// the Extract() switch, so extraction failed with "unsupported archive format".
+func TestExtractTarZstWritesAllEntries(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "in.tar.zst")
+	writeTarWrapped(t, src, map[string]string{"hello.txt": "zstd compressed body"},
+		func(w io.Writer) (io.WriteCloser, error) { return zstd.NewWriter(w) })
+	dst := filepath.Join(dir, "out")
+
+	progress := collect(Extract(context.Background(), ExtractRequest{Source: src, Destination: dst}))
+	if last := progress[len(progress)-1]; last.Err != nil {
+		t.Fatalf("extract: %v", last.Err)
+	}
+	body, err := os.ReadFile(filepath.Join(dst, "hello.txt"))
+	if err != nil {
+		t.Fatalf("read extracted: %v", err)
+	}
+	if string(body) != "zstd compressed body" {
 		t.Fatalf("body mismatch: got %q", string(body))
 	}
 }

@@ -19,6 +19,7 @@ func progressToWire(p tools.Progress) progressEvent {
 		BytesDone:   p.BytesDone,
 		BytesTotal:  p.BytesTotal,
 		Fraction:    p.Fraction,
+		Estimated:   p.Estimated,
 		Level:       severityName(p.Level),
 		Message:     p.Message,
 		Completed:   p.Completed,

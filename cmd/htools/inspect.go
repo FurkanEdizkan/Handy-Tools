@@ -16,6 +16,7 @@ import (
 	"regexp"
 
 	"github.com/klauspost/compress/zstd"
+	"github.com/ulikunitz/xz"
 
 	"github.com/furkandedizkan/handy-tools/internal/config"
 	"github.com/furkandedizkan/handy-tools/internal/tools/archive"
@@ -121,6 +122,8 @@ func grepArchive(source string, ins *archive.Inspection, re *regexp.Regexp, maxB
 		return grepTar(source, bzip2Opener, re, maxBytes, quiet, asJSON)
 	case archive.FormatTarZst:
 		return grepTar(source, zstdOpener, re, maxBytes, quiet, asJSON)
+	case archive.FormatTarXz:
+		return grepTar(source, xzOpener, re, maxBytes, quiet, asJSON)
 	case archive.FormatRar, archive.FormatSevenZ:
 		fmt.Fprintf(os.Stderr, "inspect: --grep skips %s entries (the delegated %s binary doesn't expose per-entry stream readers)\n", ins.Format, ins.RequiresBinary)
 		return 1
@@ -166,6 +169,7 @@ type tarOpener func(io.Reader) (io.Reader, error)
 func plainOpener(r io.Reader) (io.Reader, error) { return r, nil }
 func gzipOpener(r io.Reader) (io.Reader, error)  { return gzip.NewReader(r) }
 func bzip2Opener(r io.Reader) (io.Reader, error) { return bzip2.NewReader(r), nil }
+func xzOpener(r io.Reader) (io.Reader, error)    { return xz.NewReader(r) }
 func zstdOpener(r io.Reader) (io.Reader, error) {
 	zr, err := zstd.NewReader(r)
 	if err != nil {

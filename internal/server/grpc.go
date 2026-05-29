@@ -357,6 +357,7 @@ func progressToProto(p tools.Progress) *handytoolsv1.Progress {
 		BytesDone:   p.BytesDone,
 		BytesTotal:  p.BytesTotal,
 		Fraction:    p.Fraction,
+		Estimated:   p.Estimated,
 		Level:       severityToProto(p.Level),
 		Message:     p.Message,
 		Completed:   p.Completed,
@@ -429,6 +430,8 @@ func archiveFormatToProto(f archive.Format) handytoolsv1.ArchiveFormat {
 		return handytoolsv1.ArchiveFormat_ARCHIVE_FORMAT_RAR
 	case archive.FormatSevenZ:
 		return handytoolsv1.ArchiveFormat_ARCHIVE_FORMAT_SEVENZ
+	case archive.FormatTarXz:
+		return handytoolsv1.ArchiveFormat_ARCHIVE_FORMAT_TAR_XZ
 	}
 	return handytoolsv1.ArchiveFormat_ARCHIVE_FORMAT_UNSPECIFIED
 }

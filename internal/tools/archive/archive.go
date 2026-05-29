@@ -1,6 +1,6 @@
 // Package archive inspects, extracts and creates archives. Pure Go is used
-// for zip / tar / gz / bz2 / zstd. RAR and 7z (including multi-part volumes)
-// are delegated to the system "unrar" and "7z" binaries when present.
+// for zip / tar / gz / bz2 / zstd / xz. RAR and 7z (including multi-part
+// volumes) are delegated to the system "unrar" and "7z" binaries when present.
 package archive
 
 import (
@@ -22,6 +22,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
+	"github.com/ulikunitz/xz"
+
 	"github.com/furkandedizkan/handy-tools/internal/tools"
 	"github.com/furkandedizkan/handy-tools/internal/tools/sysdep"
 )
@@ -38,10 +41,11 @@ const (
 	FormatTarZst
 	FormatRar
 	FormatSevenZ
+	FormatTarXz
 )
 
 func (f Format) String() string {
-	return [...]string{"unknown", "zip", "tar", "tar.gz", "tar.bz2", "tar.zst", "rar", "7z"}[f]
+	return [...]string{"unknown", "zip", "tar", "tar.gz", "tar.bz2", "tar.zst", "rar", "7z", "tar.xz"}[f]
 }
 
 // Inspection is the result of Inspect.
@@ -215,6 +219,10 @@ func Extract(ctx context.Context, req ExtractRequest) <-chan tools.Progress {
 			err = extractTar(ctx, req, emit, gzipOpener)
 		case FormatTarBz2:
 			err = extractTar(ctx, req, emit, bzip2Opener)
+		case FormatTarZst:
+			err = extractTar(ctx, req, emit, zstdOpener)
+		case FormatTarXz:
+			err = extractTar(ctx, req, emit, xzOpener)
 		case FormatRar:
 			err = extractViaBinary(ctx, "unrar", []string{"x", "-y"}, req.Source, req.Destination, req.Password, emit)
 		case FormatSevenZ:
@@ -261,6 +269,8 @@ func detectFormat(path string) Format {
 		return FormatTarBz2
 	case strings.HasSuffix(lower, ".tar.zst") || strings.HasSuffix(lower, ".tzst"):
 		return FormatTarZst
+	case strings.HasSuffix(lower, ".tar.xz") || strings.HasSuffix(lower, ".txz"):
+		return FormatTarXz
 	case strings.HasSuffix(lower, ".rar") || rarOldPartRE.MatchString(lower):
 		return FormatRar
 	case strings.HasSuffix(lower, ".7z") || sevenZVolumeRE.MatchString(lower):
@@ -288,6 +298,11 @@ func sniff(path string) Format {
 	}
 	if bytes.HasPrefix(head, []byte{0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c}) {
 		return FormatSevenZ
+	}
+	// xz stream magic (0xFD '7' 'z' 'X' 'Z' 0x00). We only support xz inside a
+	// tar, so an extension-less xz stream is assumed to be tar.xz.
+	if bytes.HasPrefix(head, []byte{0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00}) {
+		return FormatTarXz
 	}
 	return FormatUnknown
 }
@@ -449,7 +464,22 @@ func extractZip(ctx context.Context, req ExtractRequest, emit emitFn) error {
 			rc.Close()
 			return err
 		}
-		n, copyErr := io.Copy(w, rc) //nolint:gosec // size-bounded by archive entry
+		// Tick global progress mid-entry so a single multi-GB entry still
+		// advances: fraction = (bytes done in prior entries + this entry's
+		// counter) / total uncompressed bytes.
+		cr := tools.NewCountingReader(rc)
+		entryStop := tools.Ticker(ctx, func(p tools.Progress) { emit(p) }, 0,
+			func() (float64, int64, int64) {
+				cur := done + cr.Count()
+				frac := 0.0
+				if totalBytes > 0 {
+					frac = float64(cur) / float64(totalBytes)
+				}
+				return frac, cur, totalBytes
+			},
+			tools.Progress{Level: tools.SeverityInfo, CurrentItem: f.Name})
+		n, copyErr := io.Copy(w, cr) //nolint:gosec // size-bounded by archive entry
+		entryStop()
 		rc.Close()
 		w.Close()
 		if copyErr != nil {
@@ -473,6 +503,14 @@ type tarOpener func(io.Reader) (io.Reader, error)
 func plainOpener(r io.Reader) (io.Reader, error) { return r, nil }
 func gzipOpener(r io.Reader) (io.Reader, error)  { return gzip.NewReader(r) }
 func bzip2Opener(r io.Reader) (io.Reader, error) { return bzip2.NewReader(r), nil }
+func xzOpener(r io.Reader) (io.Reader, error)    { return xz.NewReader(r) }
+func zstdOpener(r io.Reader) (io.Reader, error) {
+	zr, err := zstd.NewReader(r)
+	if err != nil {
+		return nil, err
+	}
+	return zr, nil
+}
 
 // tarReadBuf is the buffered-reader size used in front of the compressed
 // stream. 1 MiB is the sweet spot: large enough to amortise syscall cost on
@@ -487,10 +525,32 @@ func extractTar(ctx context.Context, req ExtractRequest, emit emitFn, open tarOp
 		return err
 	}
 	defer f.Close()
-	r, err := open(bufio.NewReaderSize(f, tarReadBuf))
+
+	// Drive progress off compressed bytes consumed from the file: the total is
+	// the on-disk size (always known) and the counter sits below the
+	// decompressor, so the fraction advances as the codec pulls input — even
+	// through a single multi-GB entry, where a per-entry counter would freeze.
+	var totalCompressed int64
+	if st, statErr := f.Stat(); statErr == nil {
+		totalCompressed = st.Size()
+	}
+	cr := tools.NewCountingReader(f)
+	r, err := open(bufio.NewReaderSize(cr, tarReadBuf))
 	if err != nil {
 		return err
 	}
+	stop := tools.Ticker(ctx, func(p tools.Progress) { emit(p) }, 0,
+		func() (float64, int64, int64) {
+			done := cr.Count()
+			frac := 0.0
+			if totalCompressed > 0 {
+				frac = float64(done) / float64(totalCompressed)
+			}
+			return frac, done, totalCompressed
+		},
+		tools.Progress{Level: tools.SeverityInfo})
+	defer stop()
+
 	tr := tar.NewReader(r)
 	for {
 		if err := ctx.Err(); err != nil {
@@ -530,7 +590,16 @@ func extractTar(ctx context.Context, req ExtractRequest, emit emitFn, open tarOp
 				return err
 			}
 			w.Close()
-			emit(tools.Progress{Level: tools.SeverityInfo, Message: h.Name, CurrentItem: h.Name})
+			// Carry the byte-based fraction on the per-entry event too, so the
+			// bar advances deterministically at entry boundaries even between
+			// the time-based Ticker firings.
+			done := cr.Count()
+			frac := 0.0
+			if totalCompressed > 0 {
+				frac = float64(done) / float64(totalCompressed)
+			}
+			emit(tools.Progress{Level: tools.SeverityInfo, Message: h.Name, CurrentItem: h.Name,
+				BytesDone: done, BytesTotal: totalCompressed, Fraction: frac})
 		}
 	}
 }
@@ -561,6 +630,19 @@ func extractViaBinary(ctx context.Context, name string, baseArgs []string, sourc
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+
+	// unrar/7z don't report parseable progress, so animate an ETA estimate
+	// from the archive's on-disk size while the binary runs. The terminal
+	// Completed event (emitted by the caller) snaps the bar to 100%.
+	var size int64
+	if st, statErr := os.Stat(source); statErr == nil {
+		size = st.Size()
+	}
+	stop := tools.RunEstimator(ctx, func(p tools.Progress) { emit(p) },
+		tools.Estimator{Tool: "archive", Action: "extract-" + name, InputSize: size, Start: time.Now()},
+		tools.Progress{Level: tools.SeverityInfo})
+	defer stop()
+
 	scanner := bufio.NewScanner(stdout)
 	for scanner.Scan() {
 		emit(tools.Progress{Level: tools.SeverityInfo, Message: scanner.Text()})

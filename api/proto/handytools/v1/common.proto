@@ -38,6 +38,10 @@ message Progress {
   // with PERMISSION_DENIED while others succeeded. proto3 omits empty
   // repeated fields on the wire, so non-terminal events pay no cost.
   repeated Failure failures = 10;
+  // estimated=true marks a fraction that is a time/size-based ETA estimate for
+  // an opaque operation (external binary, single-image encode) rather than a
+  // directly measured byte count. UIs may render it differently.
+  bool estimated = 11;
 }
 
 // Error reported by a tool when an operation fails.

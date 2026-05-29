@@ -16,6 +16,7 @@ func jobToWire(j queue.Job) jobSummary {
 		Status:      jobStatus(j),
 		Completed:   j.Completed,
 		Fraction:    j.Progress.Fraction,
+		Estimated:   j.Progress.Estimated,
 		CurrentItem: j.Progress.CurrentItem,
 		Message:     j.Progress.Message,
 		Error:       toolErrorFromProgress(j.Err),
