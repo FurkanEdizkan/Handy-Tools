@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/klauspost/compress/zstd"
+	"github.com/ulikunitz/xz"
 
 	"github.com/furkandedizkan/handy-tools/internal/tools"
 )
@@ -94,6 +95,12 @@ func readArchive(t *testing.T, path string, format Format) map[string]string {
 		}
 		defer zr.Close()
 		r = zr
+	case FormatTarXz:
+		xr, err := xz.NewReader(f)
+		if err != nil {
+			t.Fatalf("xz reader: %v", err)
+		}
+		r = xr
 	}
 
 	tr := tar.NewReader(r)
@@ -141,6 +148,7 @@ func TestCompressTarVariants(t *testing.T) {
 		{"tar.gz", FormatTarGz, ".tar.gz"},
 		{"tar.bz2", FormatTarBz2, ".tar.bz2"},
 		{"tar.zst", FormatTarZst, ".tar.zst"},
+		{"tar.xz", FormatTarXz, ".tar.xz"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -17,6 +17,7 @@ import (
 
 	"github.com/dsnet/compress/bzip2"
 	"github.com/klauspost/compress/zstd"
+	"github.com/ulikunitz/xz"
 
 	"github.com/furkandedizkan/handy-tools/internal/tools"
 	"github.com/furkandedizkan/handy-tools/internal/tools/sysdep"
@@ -143,7 +144,7 @@ func Compress(ctx context.Context, req CompressRequest) <-chan tools.Progress {
 			err = compressSevenZ(ctx, stagedReq, emit)
 		case FormatZip:
 			err = writeZip(ctx, stagedReq, entries, emit)
-		case FormatTar, FormatTarGz, FormatTarBz2, FormatTarZst:
+		case FormatTar, FormatTarGz, FormatTarBz2, FormatTarZst, FormatTarXz:
 			err = writeTarArchive(ctx, stagedReq, entries, emit)
 		default:
 			emit(compressFail(tools.CodeUnsupportedInput, "unsupported archive format",
@@ -293,6 +294,13 @@ func writeTarArchive(ctx context.Context, req CompressRequest, entries []compres
 			return err
 		}
 		w, closers = zw, append(closers, zw)
+	case FormatTarXz:
+		// ulikunitz/xz has no simple 0..9 preset knob; use the library default.
+		xw, err := xz.NewWriter(out)
+		if err != nil {
+			return err
+		}
+		w, closers = xw, append(closers, xw)
 	}
 
 	tw := tar.NewWriter(w)

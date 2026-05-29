@@ -38,6 +38,7 @@
         { name: 'tar.gz' },
         { name: 'tar.bz2' },
         { name: 'tar.zst' },
+        { name: 'tar.xz' },
         { name: '7z', req: '7z' },
       ],
     },

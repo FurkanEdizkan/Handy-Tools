@@ -76,7 +76,7 @@ export function pdfSummary(op: PdfOp, fileCount: number): string {
   return `ready: ${label.toLowerCase()} · ${fileCount} ${noun}`;
 }
 
-export const ARCHIVE_FORMATS = ['zip', 'tar.gz', 'tar.bz2', 'tar.zst', '7z'] as const;
+export const ARCHIVE_FORMATS = ['zip', 'tar.gz', 'tar.bz2', 'tar.zst', 'tar.xz', '7z'] as const;
 export type ArchiveFormat = (typeof ARCHIVE_FORMATS)[number];
 
 /** archivePackReady enables ToolArchivePack's Run: needs files and a name. */
