@@ -39,6 +39,7 @@ func TestArchiveFormatToProto(t *testing.T) {
 		archive.FormatTarZst: handytoolsv1.ArchiveFormat_ARCHIVE_FORMAT_TAR_ZST,
 		archive.FormatRar:    handytoolsv1.ArchiveFormat_ARCHIVE_FORMAT_RAR,
 		archive.FormatSevenZ: handytoolsv1.ArchiveFormat_ARCHIVE_FORMAT_SEVENZ,
+		archive.FormatTarXz:  handytoolsv1.ArchiveFormat_ARCHIVE_FORMAT_TAR_XZ,
 	}
 	for in, want := range cases {
 		if got := archiveFormatToProto(in); got != want {

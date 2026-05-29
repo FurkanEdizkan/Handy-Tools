@@ -137,6 +137,8 @@ func parseArchiveFormat(s string) (archive.Format, bool) {
 		return archive.FormatTarBz2, true
 	case "TAR_ZST", "TZST":
 		return archive.FormatTarZst, true
+	case "TAR_XZ", "TXZ":
+		return archive.FormatTarXz, true
 	case "SEVENZ", "7Z":
 		return archive.FormatSevenZ, true
 	case "RAR":
@@ -157,6 +159,8 @@ func archiveFormatName(f archive.Format) string {
 		return "TAR_BZ2"
 	case archive.FormatTarZst:
 		return "TAR_ZST"
+	case archive.FormatTarXz:
+		return "TAR_XZ"
 	case archive.FormatRar:
 		return "RAR"
 	case archive.FormatSevenZ:

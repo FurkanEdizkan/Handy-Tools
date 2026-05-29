@@ -1,6 +1,6 @@
 // Package archive inspects, extracts and creates archives. Pure Go is used
-// for zip / tar / gz / bz2 / zstd. RAR and 7z (including multi-part volumes)
-// are delegated to the system "unrar" and "7z" binaries when present.
+// for zip / tar / gz / bz2 / zstd / xz. RAR and 7z (including multi-part
+// volumes) are delegated to the system "unrar" and "7z" binaries when present.
 package archive
 
 import (
@@ -22,6 +22,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
+	"github.com/ulikunitz/xz"
+
 	"github.com/furkandedizkan/handy-tools/internal/tools"
 	"github.com/furkandedizkan/handy-tools/internal/tools/sysdep"
 )
@@ -38,10 +41,11 @@ const (
 	FormatTarZst
 	FormatRar
 	FormatSevenZ
+	FormatTarXz
 )
 
 func (f Format) String() string {
-	return [...]string{"unknown", "zip", "tar", "tar.gz", "tar.bz2", "tar.zst", "rar", "7z"}[f]
+	return [...]string{"unknown", "zip", "tar", "tar.gz", "tar.bz2", "tar.zst", "rar", "7z", "tar.xz"}[f]
 }
 
 // Inspection is the result of Inspect.
@@ -215,6 +219,10 @@ func Extract(ctx context.Context, req ExtractRequest) <-chan tools.Progress {
 			err = extractTar(ctx, req, emit, gzipOpener)
 		case FormatTarBz2:
 			err = extractTar(ctx, req, emit, bzip2Opener)
+		case FormatTarZst:
+			err = extractTar(ctx, req, emit, zstdOpener)
+		case FormatTarXz:
+			err = extractTar(ctx, req, emit, xzOpener)
 		case FormatRar:
 			err = extractViaBinary(ctx, "unrar", []string{"x", "-y"}, req.Source, req.Destination, req.Password, emit)
 		case FormatSevenZ:
@@ -261,6 +269,8 @@ func detectFormat(path string) Format {
 		return FormatTarBz2
 	case strings.HasSuffix(lower, ".tar.zst") || strings.HasSuffix(lower, ".tzst"):
 		return FormatTarZst
+	case strings.HasSuffix(lower, ".tar.xz") || strings.HasSuffix(lower, ".txz"):
+		return FormatTarXz
 	case strings.HasSuffix(lower, ".rar") || rarOldPartRE.MatchString(lower):
 		return FormatRar
 	case strings.HasSuffix(lower, ".7z") || sevenZVolumeRE.MatchString(lower):
@@ -288,6 +298,11 @@ func sniff(path string) Format {
 	}
 	if bytes.HasPrefix(head, []byte{0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c}) {
 		return FormatSevenZ
+	}
+	// xz stream magic (0xFD '7' 'z' 'X' 'Z' 0x00). We only support xz inside a
+	// tar, so an extension-less xz stream is assumed to be tar.xz.
+	if bytes.HasPrefix(head, []byte{0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00}) {
+		return FormatTarXz
 	}
 	return FormatUnknown
 }
@@ -473,6 +488,14 @@ type tarOpener func(io.Reader) (io.Reader, error)
 func plainOpener(r io.Reader) (io.Reader, error) { return r, nil }
 func gzipOpener(r io.Reader) (io.Reader, error)  { return gzip.NewReader(r) }
 func bzip2Opener(r io.Reader) (io.Reader, error) { return bzip2.NewReader(r), nil }
+func xzOpener(r io.Reader) (io.Reader, error)    { return xz.NewReader(r) }
+func zstdOpener(r io.Reader) (io.Reader, error) {
+	zr, err := zstd.NewReader(r)
+	if err != nil {
+		return nil, err
+	}
+	return zr, nil
+}
 
 // tarReadBuf is the buffered-reader size used in front of the compressed
 // stream. 1 MiB is the sweet spot: large enough to amortise syscall cost on

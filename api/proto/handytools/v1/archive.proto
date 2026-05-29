@@ -15,6 +15,7 @@ enum ArchiveFormat {
   ARCHIVE_FORMAT_TAR_ZST = 5;
   ARCHIVE_FORMAT_RAR = 6;     // requires unrar; multi-part supported
   ARCHIVE_FORMAT_SEVENZ = 7;  // requires 7z; multi-part supported
+  ARCHIVE_FORMAT_TAR_XZ = 8;
 }
 
 service ArchiveService {

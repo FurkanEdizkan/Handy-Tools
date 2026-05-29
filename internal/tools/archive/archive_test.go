@@ -5,10 +5,14 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"context"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/klauspost/compress/zstd"
+	"github.com/ulikunitz/xz"
 
 	"github.com/furkandedizkan/handy-tools/internal/tools"
 )
@@ -226,6 +230,80 @@ func TestExtractTarGzWritesAllEntries(t *testing.T) {
 		t.Fatalf("read extracted: %v", err)
 	}
 	if string(body) != "compressed body" {
+		t.Fatalf("body mismatch: got %q", string(body))
+	}
+}
+
+// writeTarWrapped writes a tar archive through an arbitrary compression layer
+// (xz, zstd, ...) so the extract-side decoders can be exercised end-to-end.
+func writeTarWrapped(t *testing.T, path string, entries map[string]string, wrap func(io.Writer) (io.WriteCloser, error)) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create archive: %v", err)
+	}
+	defer f.Close()
+	w, err := wrap(f)
+	if err != nil {
+		t.Fatalf("wrap writer: %v", err)
+	}
+	tw := tar.NewWriter(w)
+	for name, body := range entries {
+		hdr := &tar.Header{Name: name, Mode: 0o644, Size: int64(len(body)), Typeflag: tar.TypeReg}
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatalf("write header: %v", err)
+		}
+		if _, err := tw.Write([]byte(body)); err != nil {
+			t.Fatalf("write body: %v", err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatalf("close tar: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close wrapper: %v", err)
+	}
+}
+
+func TestExtractTarXzWritesAllEntries(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "in.tar.xz")
+	writeTarWrapped(t, src, map[string]string{"hello.txt": "xz compressed body"},
+		func(w io.Writer) (io.WriteCloser, error) { return xz.NewWriter(w) })
+	dst := filepath.Join(dir, "out")
+
+	progress := collect(Extract(context.Background(), ExtractRequest{Source: src, Destination: dst}))
+	if last := progress[len(progress)-1]; last.Err != nil {
+		t.Fatalf("extract: %v", last.Err)
+	}
+	body, err := os.ReadFile(filepath.Join(dst, "hello.txt"))
+	if err != nil {
+		t.Fatalf("read extracted: %v", err)
+	}
+	if string(body) != "xz compressed body" {
+		t.Fatalf("body mismatch: got %q", string(body))
+	}
+}
+
+// TestExtractTarZstWritesAllEntries is a regression for the tar.zst extract gap
+// fixed alongside tar.xz: the format was detected and packable but missing from
+// the Extract() switch, so extraction failed with "unsupported archive format".
+func TestExtractTarZstWritesAllEntries(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "in.tar.zst")
+	writeTarWrapped(t, src, map[string]string{"hello.txt": "zstd compressed body"},
+		func(w io.Writer) (io.WriteCloser, error) { return zstd.NewWriter(w) })
+	dst := filepath.Join(dir, "out")
+
+	progress := collect(Extract(context.Background(), ExtractRequest{Source: src, Destination: dst}))
+	if last := progress[len(progress)-1]; last.Err != nil {
+		t.Fatalf("extract: %v", last.Err)
+	}
+	body, err := os.ReadFile(filepath.Join(dst, "hello.txt"))
+	if err != nil {
+		t.Fatalf("read extracted: %v", err)
+	}
+	if string(body) != "zstd compressed body" {
 		t.Fatalf("body mismatch: got %q", string(body))
 	}
 }

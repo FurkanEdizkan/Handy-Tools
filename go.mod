@@ -8,6 +8,7 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/pdfcpu/pdfcpu v0.12.1
 	github.com/pmezard/go-difflib v1.0.0
+	github.com/ulikunitz/xz v0.5.15
 	github.com/wailsapp/wails/v2 v2.12.0
 	golang.org/x/image v0.41.0
 	google.golang.org/grpc v1.81.1

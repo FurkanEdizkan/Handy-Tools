@@ -15,7 +15,7 @@ import (
 func cmdPack(ctx context.Context, _ config.Config, args []string) int {
 	fs := flag.NewFlagSet("pack", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	format := fs.String("format", "", "target format: zip, tar, tar.gz, tar.bz2, tar.zst, 7z (required)")
+	format := fs.String("format", "", "target format: zip, tar, tar.gz, tar.bz2, tar.zst, tar.xz, 7z (required)")
 	output := fs.String("output", "", "output archive path (required)")
 	level := fs.Int("compression-level", 0, "0 = format default; 1 fastest .. 9 smallest")
 	password := fs.String("password", "", "optional; 7z only")
@@ -37,7 +37,7 @@ func cmdPack(ctx context.Context, _ config.Config, args []string) int {
 	}
 	target, ok := parseArchiveFormat(*format)
 	if !ok {
-		return usageErr(os.Stderr, "pack", fmt.Sprintf("unknown --format %q (want zip, tar, tar.gz, tar.bz2, tar.zst, 7z)", *format))
+		return usageErr(os.Stderr, "pack", fmt.Sprintf("unknown --format %q (want zip, tar, tar.gz, tar.bz2, tar.zst, tar.xz, 7z)", *format))
 	}
 
 	ch := archive.Compress(ctx, archive.CompressRequest{
@@ -65,6 +65,8 @@ func parseArchiveFormat(s string) (archive.Format, bool) {
 		return archive.FormatTarBz2, true
 	case "tar.zst", "tzst", "zst":
 		return archive.FormatTarZst, true
+	case "tar.xz", "txz", "xz":
+		return archive.FormatTarXz, true
 	case "7z":
 		return archive.FormatSevenZ, true
 	}

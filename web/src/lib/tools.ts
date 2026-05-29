@@ -28,7 +28,7 @@ export const defaultTools: ToolDef[] = [
     id: 'zip-pack',
     glyph: '▢',
     label: 'Pack into archive',
-    desc: 'zip · tar.gz · tar.bz2 · zstd · 7z',
+    desc: 'zip · tar.gz · tar.bz2 · zstd · xz · 7z',
   },
   {
     id: 'archive-extract',

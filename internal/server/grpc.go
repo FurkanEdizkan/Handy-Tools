@@ -429,6 +429,8 @@ func archiveFormatToProto(f archive.Format) handytoolsv1.ArchiveFormat {
 		return handytoolsv1.ArchiveFormat_ARCHIVE_FORMAT_RAR
 	case archive.FormatSevenZ:
 		return handytoolsv1.ArchiveFormat_ARCHIVE_FORMAT_SEVENZ
+	case archive.FormatTarXz:
+		return handytoolsv1.ArchiveFormat_ARCHIVE_FORMAT_TAR_XZ
 	}
 	return handytoolsv1.ArchiveFormat_ARCHIVE_FORMAT_UNSPECIFIED
 }
