@@ -82,6 +82,15 @@ type ConvertRequest struct {
 	Overwrite    bool
 }
 
+// sourceBytes returns the on-disk size of path (0 if unreadable), used only to
+// seed the convert ETA estimate.
+func sourceBytes(path string) int64 {
+	if fi, err := os.Stat(path); err == nil && !fi.IsDir() {
+		return fi.Size()
+	}
+	return 0
+}
+
 // Convert performs one conversion and streams progress on the returned channel.
 // The channel is closed when the conversion completes (successfully or not).
 func Convert(ctx context.Context, req ConvertRequest) <-chan tools.Progress {
@@ -100,9 +109,18 @@ func Convert(ctx context.Context, req ConvertRequest) <-chan tools.Progress {
 			}
 		}
 
+		// Decode + resize + encode are opaque one-shot calls, so animate an ETA
+		// bar from the source size while they run. stop() is idempotent; call
+		// it before each terminal event so no stray estimate lands after.
+		stop := tools.RunEstimator(ctx, emit, tools.Estimator{
+			Tool: "image", Action: "convert", InputSize: sourceBytes(req.Source), Start: started,
+		}, tools.Progress{Level: tools.SeverityInfo})
+		defer stop()
+
 		emit(tools.Progress{Level: tools.SeverityInfo, Message: "decoding " + filepath.Base(req.Source)})
 		img, err := decode(req.Source)
 		if err != nil {
+			stop()
 			emit(tools.Progress{Completed: true, Level: tools.SeverityError, Err: &tools.Error{
 				Code: tools.ClassifyFSError(err), Message: "decode failed", Detail: err.Error(),
 			}})
@@ -115,19 +133,22 @@ func Convert(ctx context.Context, req ConvertRequest) <-chan tools.Progress {
 
 		outPath, err := resolveOutputPath(req)
 		if err != nil {
+			stop()
 			emit(tools.Progress{Completed: true, Level: tools.SeverityError, Err: &tools.Error{
 				Code: tools.CodeBadRequest, Message: err.Error(),
 			}})
 			return
 		}
 
-		emit(tools.Progress{Level: tools.SeverityInfo, Message: "encoding " + filepath.Base(outPath), Fraction: 0.5})
+		emit(tools.Progress{Level: tools.SeverityInfo, Message: "encoding " + filepath.Base(outPath)})
 
 		if err := encode(outPath, img, req.TargetFormat, req.Opts); err != nil {
+			stop()
 			emit(tools.Progress{Completed: true, Level: tools.SeverityError, Err: encodeError(err)})
 			return
 		}
 
+		stop()
 		emit(tools.Progress{Completed: true, Fraction: 1, Level: tools.SeverityInfo,
 			Message: "wrote " + outPath})
 	}()

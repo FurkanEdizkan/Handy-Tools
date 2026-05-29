@@ -158,6 +158,17 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 		}
 
 		total := len(req.Sources)
+		// Byte-weight the fraction so a batch of one 1 GB file + 99 tiny files
+		// advances ~proportionally to bytes hashed, not 1/100 per file. Falls
+		// back to file-count weighting when sizes can't be stat'd.
+		totalBytes := sumFileBytes(req.Sources)
+		var doneBytes atomic.Int64
+		fracOf := func(countDone int64) float64 {
+			if totalBytes > 0 {
+				return float64(doneBytes.Load()) / float64(totalBytes)
+			}
+			return float64(countDone) / float64(total)
+		}
 		workers := req.Parallelism
 		if workers <= 0 {
 			workers = runtime.GOMAXPROCS(0)
@@ -184,6 +195,7 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 					}
 					res, terr := Hash(ctx, src, req.Algo)
 					done := completed.Add(1)
+					doneBytes.Add(fileBytes(src))
 					if terr != nil {
 						failuresM.Lock()
 						failures = append(failures, tools.Failure{Path: src, Code: terr.Code, Message: terr.Message})
@@ -191,7 +203,7 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 						emit(tools.Progress{
 							Level:       tools.SeverityError,
 							CurrentItem: filepath.Base(src),
-							Fraction:    float64(done) / float64(total),
+							Fraction:    fracOf(done),
 							Message:     fmt.Sprintf("[%d/%d] %s: %s (%s)", done, total, src, terr.Message, terr.Code),
 							Err:         terr,
 						})
@@ -200,7 +212,7 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 					emit(tools.Progress{
 						Level:       tools.SeverityInfo,
 						CurrentItem: filepath.Base(src),
-						Fraction:    float64(done) / float64(total),
+						Fraction:    fracOf(done),
 						Message:     fmt.Sprintf("%s  %s", res.Digest, res.Path),
 					})
 				}
@@ -238,6 +250,25 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 		})
 	}()
 	return ch
+}
+
+// fileBytes returns the size of path, or 0 if it can't be stat'd. Used only to
+// weight progress, so a stat failure degrades gracefully to "this file
+// contributes nothing to the bar" rather than erroring.
+func fileBytes(path string) int64 {
+	if fi, err := os.Stat(path); err == nil && !fi.IsDir() {
+		return fi.Size()
+	}
+	return 0
+}
+
+// sumFileBytes totals the sizes of all sources for the progress denominator.
+func sumFileBytes(sources []string) int64 {
+	var t int64
+	for _, s := range sources {
+		t += fileBytes(s)
+	}
+	return t
 }
 
 // Hash computes the digest of a single file using algo. Returns a structured

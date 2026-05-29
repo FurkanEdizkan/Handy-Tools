@@ -18,6 +18,8 @@ export interface Job {
   currentItem: string | null;
   /** Number between 0 and 1. */
   progress: number;
+  /** True when progress is a time/size ETA estimate, not a measured byte count. */
+  estimated: boolean;
   status: JobStatus;
   logs: JobLogLine[];
 }
@@ -69,7 +71,7 @@ function displayTool(s: JobSummary): string {
 }
 
 function emptyJob(id: string): Job {
-  return { id, tool: '', currentItem: null, progress: 0, status: 'wait', logs: [] };
+  return { id, tool: '', currentItem: null, progress: 0, estimated: false, status: 'wait', logs: [] };
 }
 
 /**
@@ -101,6 +103,7 @@ export function applyJobSummary(s: JobSummary): void {
       tool: displayTool(s) || prev.tool,
       currentItem: s.currentItem ?? prev.currentItem,
       progress: s.fraction ?? prev.progress,
+      estimated: s.estimated ?? (s.fraction === undefined ? prev.estimated : false),
       status: statusFromWire(s.status),
       logs,
     };

@@ -464,7 +464,22 @@ func extractZip(ctx context.Context, req ExtractRequest, emit emitFn) error {
 			rc.Close()
 			return err
 		}
-		n, copyErr := io.Copy(w, rc) //nolint:gosec // size-bounded by archive entry
+		// Tick global progress mid-entry so a single multi-GB entry still
+		// advances: fraction = (bytes done in prior entries + this entry's
+		// counter) / total uncompressed bytes.
+		cr := tools.NewCountingReader(rc)
+		entryStop := tools.Ticker(ctx, func(p tools.Progress) { emit(p) }, 0,
+			func() (float64, int64, int64) {
+				cur := done + cr.Count()
+				frac := 0.0
+				if totalBytes > 0 {
+					frac = float64(cur) / float64(totalBytes)
+				}
+				return frac, cur, totalBytes
+			},
+			tools.Progress{Level: tools.SeverityInfo, CurrentItem: f.Name})
+		n, copyErr := io.Copy(w, cr) //nolint:gosec // size-bounded by archive entry
+		entryStop()
 		rc.Close()
 		w.Close()
 		if copyErr != nil {
@@ -510,10 +525,32 @@ func extractTar(ctx context.Context, req ExtractRequest, emit emitFn, open tarOp
 		return err
 	}
 	defer f.Close()
-	r, err := open(bufio.NewReaderSize(f, tarReadBuf))
+
+	// Drive progress off compressed bytes consumed from the file: the total is
+	// the on-disk size (always known) and the counter sits below the
+	// decompressor, so the fraction advances as the codec pulls input — even
+	// through a single multi-GB entry, where a per-entry counter would freeze.
+	var totalCompressed int64
+	if st, statErr := f.Stat(); statErr == nil {
+		totalCompressed = st.Size()
+	}
+	cr := tools.NewCountingReader(f)
+	r, err := open(bufio.NewReaderSize(cr, tarReadBuf))
 	if err != nil {
 		return err
 	}
+	stop := tools.Ticker(ctx, func(p tools.Progress) { emit(p) }, 0,
+		func() (float64, int64, int64) {
+			done := cr.Count()
+			frac := 0.0
+			if totalCompressed > 0 {
+				frac = float64(done) / float64(totalCompressed)
+			}
+			return frac, done, totalCompressed
+		},
+		tools.Progress{Level: tools.SeverityInfo})
+	defer stop()
+
 	tr := tar.NewReader(r)
 	for {
 		if err := ctx.Err(); err != nil {
@@ -553,7 +590,16 @@ func extractTar(ctx context.Context, req ExtractRequest, emit emitFn, open tarOp
 				return err
 			}
 			w.Close()
-			emit(tools.Progress{Level: tools.SeverityInfo, Message: h.Name, CurrentItem: h.Name})
+			// Carry the byte-based fraction on the per-entry event too, so the
+			// bar advances deterministically at entry boundaries even between
+			// the time-based Ticker firings.
+			done := cr.Count()
+			frac := 0.0
+			if totalCompressed > 0 {
+				frac = float64(done) / float64(totalCompressed)
+			}
+			emit(tools.Progress{Level: tools.SeverityInfo, Message: h.Name, CurrentItem: h.Name,
+				BytesDone: done, BytesTotal: totalCompressed, Fraction: frac})
 		}
 	}
 }
@@ -584,6 +630,19 @@ func extractViaBinary(ctx context.Context, name string, baseArgs []string, sourc
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+
+	// unrar/7z don't report parseable progress, so animate an ETA estimate
+	// from the archive's on-disk size while the binary runs. The terminal
+	// Completed event (emitted by the caller) snaps the bar to 100%.
+	var size int64
+	if st, statErr := os.Stat(source); statErr == nil {
+		size = st.Size()
+	}
+	stop := tools.RunEstimator(ctx, func(p tools.Progress) { emit(p) },
+		tools.Estimator{Tool: "archive", Action: "extract-" + name, InputSize: size, Start: time.Now()},
+		tools.Progress{Level: tools.SeverityInfo})
+	defer stop()
+
 	scanner := bufio.NewScanner(stdout)
 	for scanner.Scan() {
 		emit(tools.Progress{Level: tools.SeverityInfo, Message: scanner.Text()})

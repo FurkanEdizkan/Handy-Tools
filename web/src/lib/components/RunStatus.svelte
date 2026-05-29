@@ -54,7 +54,7 @@
         <div class="rs-body">
           <div class="rs-label">{job.tool || 'job'}{job.currentItem ? ` · ${job.currentItem}` : ''}</div>
           {#if job.status === 'running'}
-            <div class="rs-bar"><i style={`width:${Math.round(job.progress * 100)}%`}></i></div>
+            <div class="rs-bar"><i class:estimated={job.estimated} style={`width:${Math.round(job.progress * 100)}%`}></i></div>
           {/if}
           {#if out.kind !== 'none'}
             <div class="rs-out">{out.kind === 'file' ? '→ wrote' : '→'} <code>{out.path}</code></div>
@@ -127,6 +127,28 @@
     height: 100%;
     background: var(--accent, #4a9eff);
     transition: width 0.2s;
+  }
+  /* ETA estimate: moving stripe so the percentage reads as a guess. */
+  .rs-bar i.estimated {
+    background-image: linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.22) 25%,
+      transparent 25%,
+      transparent 50%,
+      rgba(255, 255, 255, 0.22) 50%,
+      rgba(255, 255, 255, 0.22) 75%,
+      transparent 75%,
+      transparent
+    );
+    background-size: 10px 10px;
+    animation: rs-stripe 0.8s linear infinite;
+  }
+  @keyframes rs-stripe {
+    from { background-position: 0 0; }
+    to { background-position: 10px 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .rs-bar i.estimated { animation: none; }
   }
   .rs-out {
     font-size: 12px;

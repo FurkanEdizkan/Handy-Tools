@@ -70,6 +70,7 @@ func streamProgress(ch <-chan tools.Progress, opts progressOpts) int {
 				Action:      ev.Action,
 				Item:        ev.CurrentItem,
 				Fraction:    ev.Fraction,
+				Estimated:   ev.Estimated,
 				Level:       severityName(ev.Level),
 				Message:     ev.Message,
 				Completed:   ev.Completed,
@@ -179,6 +180,7 @@ type progressJSON struct {
 	Action      string        `json:"action,omitempty"`
 	Item        string        `json:"item,omitempty"`
 	Fraction    float64       `json:"fraction,omitempty"`
+	Estimated   bool          `json:"estimated,omitempty"`
 	Level       string        `json:"level,omitempty"`
 	Message     string        `json:"message,omitempty"`
 	Completed   bool          `json:"completed,omitempty"`

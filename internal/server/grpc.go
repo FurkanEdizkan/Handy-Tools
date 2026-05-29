@@ -357,6 +357,7 @@ func progressToProto(p tools.Progress) *handytoolsv1.Progress {
 		BytesDone:   p.BytesDone,
 		BytesTotal:  p.BytesTotal,
 		Fraction:    p.Fraction,
+		Estimated:   p.Estimated,
 		Level:       severityToProto(p.Level),
 		Message:     p.Message,
 		Completed:   p.Completed,

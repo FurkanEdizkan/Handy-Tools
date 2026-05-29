@@ -219,6 +219,8 @@ export interface JobSummary {
   startedUnixMs?: number;
   status: JobStatusWire;
   fraction?: number;
+  /** True when fraction is a time/size ETA estimate, not a measured byte count. */
+  estimated?: boolean;
   currentItem?: string;
   message?: string;
   completed: boolean;

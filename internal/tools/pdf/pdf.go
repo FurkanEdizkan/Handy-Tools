@@ -93,7 +93,9 @@ func ToImage(ctx context.Context, req ToImageRequest) <-chan tools.Progress {
 		}
 		args = append(args, req.Source, filepath.Join(req.OutputDir, base))
 
-		if err := streamCmd(ctx, r.UsedAlias, args, emit); err != nil {
+		if err := estimatedRun(ctx, emit, "render", sourceSize(req.Source), func() error {
+			return streamCmd(ctx, r.UsedAlias, args, emit)
+		}); err != nil {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
 				Code: tools.CodeIO, Message: "pdftoppm failed", Detail: err.Error(),
 			}})
@@ -156,7 +158,9 @@ func ToText(ctx context.Context, req ToTextRequest) <-chan tools.Progress {
 		}
 		args = append(args, req.Source, out)
 
-		if err := streamCmd(ctx, r.UsedAlias, args, emit); err != nil {
+		if err := estimatedRun(ctx, emit, "text", sourceSize(req.Source), func() error {
+			return streamCmd(ctx, r.UsedAlias, args, emit)
+		}); err != nil {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
 				Code: tools.CodeIO, Message: "pdftotext failed", Detail: err.Error(),
 			}})
@@ -203,7 +207,9 @@ func Merge(ctx context.Context, req MergeRequest) <-chan tools.Progress {
 			}})
 			return
 		}
-		if err := api.MergeCreateFile(req.Sources, req.OutputFile, false, nil); err != nil {
+		if err := estimatedRun(ctx, emit, "merge", sumSourceSizes(req.Sources), func() error {
+			return api.MergeCreateFile(req.Sources, req.OutputFile, false, nil)
+		}); err != nil {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
 				Code: tools.CodeIO, Message: "pdf merge failed", Detail: err.Error(),
 			}})
@@ -263,7 +269,9 @@ func Split(ctx context.Context, req SplitRequest) <-chan tools.Progress {
 		}
 
 		if hasEveryN {
-			if err := api.SplitFile(req.Source, req.OutputDir, req.EveryN, nil); err != nil {
+			if err := estimatedRun(ctx, emit, "split", sourceSize(req.Source), func() error {
+				return api.SplitFile(req.Source, req.OutputDir, req.EveryN, nil)
+			}); err != nil {
 				emit(tools.Progress{Completed: true, Err: &tools.Error{
 					Code: tools.CodeIO, Message: "pdf split failed", Detail: err.Error(),
 				}})
@@ -313,6 +321,35 @@ func rangeSelector(r Range) string {
 		return strconv.Itoa(r.From)
 	}
 	return strconv.Itoa(r.From) + "-" + strconv.Itoa(r.To)
+}
+
+// estimatedRun animates an ETA progress bar (Estimated: true) for an opaque
+// PDF operation while fn runs, then returns fn's error. The caller's terminal
+// Completed event snaps the bar to 100%. action selects the throughput prior
+// (see internal/tools/estimate.go); inputSize seeds the expected duration.
+func estimatedRun(ctx context.Context, emit func(tools.Progress), action string, inputSize int64, fn func() error) error {
+	stop := tools.RunEstimator(ctx, emit, tools.Estimator{
+		Tool: "pdf", Action: action, InputSize: inputSize, Start: time.Now(),
+	}, tools.Progress{Level: tools.SeverityInfo})
+	defer stop()
+	return fn()
+}
+
+// sourceSize returns the on-disk size of path (0 if unreadable / a dir), used
+// only to seed ETA estimates.
+func sourceSize(path string) int64 {
+	if fi, err := os.Stat(path); err == nil && !fi.IsDir() {
+		return fi.Size()
+	}
+	return 0
+}
+
+func sumSourceSizes(paths []string) int64 {
+	var t int64
+	for _, p := range paths {
+		t += sourceSize(p)
+	}
+	return t
 }
 
 func streamCmd(ctx context.Context, name string, args []string, emit func(tools.Progress)) error {

@@ -15,6 +15,7 @@ function job(over: Partial<Job> = {}): Job {
     tool: 'archive · extract',
     currentItem: null,
     progress: 0,
+    estimated: false,
     status: 'wait',
     logs: [],
     ...over,
