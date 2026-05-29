@@ -36,10 +36,15 @@ type Progress struct {
 	BytesDone   int64
 	BytesTotal  int64
 	Fraction    float64
-	Level       Severity
-	Message     string
-	Completed   bool
-	Err         *Error
+	// Estimated marks a Fraction that is a time/size-based ETA estimate for an
+	// opaque operation (external binary, single-image encode) rather than a
+	// directly measured byte count. The UI can render estimated progress
+	// differently (e.g. a striped fill) to stay honest about what's measured.
+	Estimated bool
+	Level     Severity
+	Message   string
+	Completed bool
+	Err       *Error
 
 	// Failures is populated only on the terminal event (Completed: true).
 	// Each entry is one per-file failure that did NOT abort the run — e.g.

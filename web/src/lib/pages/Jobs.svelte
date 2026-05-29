@@ -103,7 +103,7 @@
             <div class="job-meta">{job.currentItem ?? job.id}</div>
           </div>
           {#if job.status === 'running'}
-            <div class="job-prog-mini"><i style={`width:${Math.round(job.progress * 100)}%`}></i></div>
+            <div class="job-prog-mini"><i class:estimated={job.estimated} style={`width:${Math.round(job.progress * 100)}%`}></i></div>
           {:else}
             <span></span>
           {/if}

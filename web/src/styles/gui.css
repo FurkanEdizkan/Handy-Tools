@@ -1486,6 +1486,28 @@ textarea {
   width: 0%;
   transition: width 0.25s;
 }
+/* ETA estimate (opaque op): moving stripe so the percentage reads as a guess. */
+.job-prog-mini > i.estimated {
+  background-image: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.22) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.22) 50%,
+    rgba(255, 255, 255, 0.22) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 10px 10px;
+  animation: job-prog-stripe 0.8s linear infinite;
+}
+@keyframes job-prog-stripe {
+  from { background-position: 0 0; }
+  to { background-position: 10px 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .job-prog-mini > i.estimated { animation: none; }
+}
 .job-state {
   font-size: 10px;
   font-weight: 600;

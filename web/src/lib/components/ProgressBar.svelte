@@ -16,6 +16,8 @@
     blocks?: number;
     /** Hide the trailing percent readout. */
     hidePercent?: boolean;
+    /** Marks an ETA estimate (opaque op) rather than a measured fraction. */
+    estimated?: boolean;
   }
 
   let {
@@ -25,6 +27,7 @@
     tone = 'accent',
     blocks = 16,
     hidePercent = false,
+    estimated = false,
   }: Props = $props();
 
   const clamped = $derived(clampFraction(fraction));
@@ -59,7 +62,7 @@
       aria-valuenow={Math.round(clamped * 100)}
       aria-label={label ?? 'progress'}
     >
-      <div class="fill" style:width={`${clamped * 100}%`}></div>
+      <div class="fill" class:estimated style:width={`${clamped * 100}%`}></div>
     </div>
   {/if}
 </div>
@@ -105,6 +108,30 @@
   }
   .progress[data-tone='success'] .fill { background: var(--color-success); }
   .progress[data-tone='error'] .fill { background: var(--color-error); }
+
+  /* Estimated (ETA) progress: overlay a moving diagonal stripe so it reads as
+     "working, but this percentage is a guess" rather than a measured value. */
+  .fill.estimated {
+    background-image: linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.18) 25%,
+      transparent 25%,
+      transparent 50%,
+      rgba(255, 255, 255, 0.18) 50%,
+      rgba(255, 255, 255, 0.18) 75%,
+      transparent 75%,
+      transparent
+    );
+    background-size: 12px 12px;
+    animation: progress-stripe 0.8s linear infinite;
+  }
+  @keyframes progress-stripe {
+    from { background-position: 0 0; }
+    to { background-position: 12px 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .fill.estimated { animation: none; }
+  }
 
   .blocks {
     font-family: ui-monospace, monospace;

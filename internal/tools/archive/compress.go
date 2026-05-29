@@ -246,6 +246,8 @@ func writeZip(ctx context.Context, req CompressRequest, entries []compressEntry,
 			return flate.NewWriter(w, lvl)
 		})
 	}
+	totalBytes := sumEntryBytes(entries)
+	var done int64
 	for i, e := range entries {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -256,10 +258,9 @@ func writeZip(ctx context.Context, req CompressRequest, entries []compressEntry,
 		if err != nil {
 			return err
 		}
-		if err := copyFileInto(w, e.abs); err != nil {
+		if err := packEntry(ctx, emit, w, e, &done, totalBytes, i, len(entries)); err != nil {
 			return err
 		}
-		emitItem(emit, i, len(entries), e.name)
 	}
 	return zw.Close()
 }
@@ -304,6 +305,8 @@ func writeTarArchive(ctx context.Context, req CompressRequest, entries []compres
 	}
 
 	tw := tar.NewWriter(w)
+	totalBytes := sumEntryBytes(entries)
+	var done int64
 	for i, e := range entries {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -316,10 +319,9 @@ func writeTarArchive(ctx context.Context, req CompressRequest, entries []compres
 		if err := tw.WriteHeader(hdr); err != nil {
 			return err
 		}
-		if err := copyFileInto(tw, e.abs); err != nil {
+		if err := packEntry(ctx, emit, tw, e, &done, totalBytes, i, len(entries)); err != nil {
 			return err
 		}
-		emitItem(emit, i, len(entries), e.name)
 	}
 	if err := tw.Close(); err != nil {
 		return err
@@ -352,11 +354,38 @@ func compressSevenZ(ctx context.Context, req CompressRequest, emit emitFn) error
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+
+	// 7z doesn't report parseable progress; animate an ETA from the total
+	// input size while it compresses. The caller's terminal event finishes it.
+	stop := tools.RunEstimator(ctx, func(p tools.Progress) { emit(p) },
+		tools.Estimator{Tool: "archive", Action: "compress-7z", InputSize: sumSourceBytes(req.Sources), Start: time.Now()},
+		tools.Progress{Level: tools.SeverityInfo})
+	defer stop()
+
 	scanner := bufio.NewScanner(stdout)
 	for scanner.Scan() {
 		emit(tools.Progress{Level: tools.SeverityInfo, Message: scanner.Text()})
 	}
 	return cmd.Wait()
+}
+
+// sumSourceBytes returns the best-effort total size of the given source paths
+// (recursing into directories). It's used only to seed the ETA estimator, so
+// unreadable entries are skipped rather than erroring.
+func sumSourceBytes(sources []string) int64 {
+	var total int64
+	for _, s := range sources {
+		_ = filepath.WalkDir(s, func(_ string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil //nolint:nilerr // best-effort sizing; skip unreadable
+			}
+			if info, statErr := d.Info(); statErr == nil {
+				total += info.Size()
+			}
+			return nil
+		})
+	}
+	return total
 }
 
 func createOutput(path string) (*os.File, error) {
@@ -366,27 +395,60 @@ func createOutput(path string) (*os.File, error) {
 	return os.Create(path) //nolint:gosec // caller-controlled output path
 }
 
-func copyFileInto(w io.Writer, path string) error {
-	f, err := os.Open(path) //nolint:gosec // path comes from the caller's source list
+// sumEntryBytes totals the uncompressed sizes of all entries — the denominator
+// for byte-weighted pack progress.
+func sumEntryBytes(entries []compressEntry) int64 {
+	var t int64
+	for _, e := range entries {
+		t += e.info.Size()
+	}
+	return t
+}
+
+// packEntry streams one source file into the archive writer while reporting
+// byte-weighted progress. *done is the running total of bytes packed across
+// prior entries; a Ticker reports (done + this entry's counter) / totalBytes so
+// the bar advances even mid-entry for a single large file. On return it
+// advances *done and emits the per-entry summary line.
+func packEntry(ctx context.Context, emit emitFn, dst io.Writer, e compressEntry, done *int64, totalBytes int64, idx, count int) error {
+	f, err := os.Open(e.abs) //nolint:gosec // path comes from the caller's source list
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	_, err = io.Copy(w, f) //nolint:gosec // size-bounded by the source file
-	return err
-}
 
-func emitItem(emit emitFn, i, total int, name string) {
+	cr := tools.NewCountingReader(f)
+	base := *done
+	stop := tools.Ticker(ctx, func(p tools.Progress) { emit(p) }, 0,
+		func() (float64, int64, int64) {
+			cur := base + cr.Count()
+			frac := 0.0
+			if totalBytes > 0 {
+				frac = float64(cur) / float64(totalBytes)
+			}
+			return frac, cur, totalBytes
+		},
+		tools.Progress{Level: tools.SeverityInfo, CurrentItem: e.name})
+	n, err := io.Copy(dst, cr) //nolint:gosec // size-bounded by the source file
+	stop()
+	if err != nil {
+		return err
+	}
+
+	*done += n
 	frac := 0.0
-	if total > 0 {
-		frac = float64(i+1) / float64(total)
+	if totalBytes > 0 {
+		frac = float64(*done) / float64(totalBytes)
 	}
 	emit(tools.Progress{
 		Level:       tools.SeverityInfo,
-		Message:     fmt.Sprintf("[%d/%d] %s", i+1, total, name),
+		Message:     fmt.Sprintf("[%d/%d] %s", idx+1, count, e.name),
 		Fraction:    frac,
-		CurrentItem: name,
+		BytesDone:   *done,
+		BytesTotal:  totalBytes,
+		CurrentItem: e.name,
 	})
+	return nil
 }
 
 // ---- compression-level mapping ---------------------------------------------
