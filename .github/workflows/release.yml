@@ -36,7 +36,7 @@ jobs:
     # tarball.
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           # Check out the tag, not main — so {{ .Version }} resolves to
