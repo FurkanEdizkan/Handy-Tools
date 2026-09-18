@@ -57,12 +57,7 @@ func (h *ArchiveHandler) Extract(ctx context.Context, p ExtractParams, emit func
 		Overwrite:     p.Overwrite,
 		AutoMultiPart: p.AutoMultiPart,
 	})
-	for prog := range ch {
-		if err := emit(prog); err != nil {
-			return err
-		}
-	}
-	return nil
+	return forwardProgress(ctx, ch, emit)
 }
 
 // CompressParams drives ArchiveHandler.Compress. Format may be
@@ -101,12 +96,7 @@ func (h *ArchiveHandler) Compress(ctx context.Context, p CompressParams, emit fu
 		CompressionLevel: p.CompressionLevel,
 		Overwrite:        p.Overwrite,
 	})
-	for prog := range ch {
-		if err := emit(prog); err != nil {
-			return err
-		}
-	}
-	return nil
+	return forwardProgress(ctx, ch, emit)
 }
 
 // InspectCompress is the dry-run / preflight for Compress: it path-validates

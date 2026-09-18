@@ -21,7 +21,9 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
 
 	handytoolsv1 "github.com/furkandedizkan/handy-tools/gen/handytools/v1"
 	"github.com/furkandedizkan/handy-tools/internal/queue"
@@ -76,7 +78,7 @@ func streamViaQueue(
 	})
 	ch, err := q.Subscribe(ctx, id)
 	if err != nil {
-		return err
+		return grpcError(err)
 	}
 	for p := range ch {
 		if err := send(p); err != nil {
@@ -86,19 +88,60 @@ func streamViaQueue(
 	return nil
 }
 
-// grpcFailureProgress wraps a non-tool error into a terminal Progress event.
+// grpcFailureProgress wraps a handler error into a terminal Progress event,
+// normalized through ToolError so the code matches the other transports.
 func grpcFailureProgress(tool, action string, err error) tools.Progress {
-	te, ok := err.(*tools.Error)
-	if !ok {
-		te = &tools.Error{Code: tools.CodeIO, Message: err.Error()}
-	}
 	return tools.Progress{
 		Tool:      tool,
 		Action:    action,
 		Level:     tools.SeverityError,
 		Completed: true,
-		Err:       te,
+		Err:       ToolError(err),
 	}
+}
+
+// grpcCode maps a tools error code onto the closest gRPC status code. The
+// choices mirror the HTTP mapping in internal/api/http (statusForCode):
+// BAD_REQUEST and UNSUPPORTED_INPUT are caller-input problems
+// (InvalidArgument); MISSING_BINARY is FailedPrecondition rather than
+// Unavailable because retrying won't help until the binary is installed;
+// ABORTED is Canceled (the caller or its timeout stopped the work — gRPC's
+// own Aborted means a concurrency conflict); IO_ERROR, ROLLBACK_FAILED and
+// anything unknown are Internal.
+func grpcCode(code string) codes.Code {
+	switch code {
+	case tools.CodeBadRequest, tools.CodeUnsupportedInput:
+		return codes.InvalidArgument
+	case tools.CodeMissingBinary:
+		return codes.FailedPrecondition
+	case tools.CodePermissionDenied:
+		return codes.PermissionDenied
+	case tools.CodeNotFound:
+		return codes.NotFound
+	case tools.CodeAborted:
+		return codes.Canceled
+	}
+	return codes.Internal
+}
+
+// grpcError converts a handler error into a gRPC status error for the unary
+// shims. Errors that already carry a gRPC status pass through; everything
+// else is normalized via ToolError and mapped with grpcCode. The status
+// message keeps the tools code as a prefix ("NOT_FOUND: decode failed
+// (...)") so clients can recover the exact Handy Tools code.
+func grpcError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if _, ok := status.FromError(err); ok {
+		return err
+	}
+	code, msg, detail := errorFromTool(ToolError(err))
+	text := code + ": " + msg
+	if detail != "" {
+		text += " (" + detail + ")"
+	}
+	return status.Error(grpcCode(code), text)
 }
 
 // Serve registers the gRPC services on a new gRPC server and blocks on the
@@ -161,7 +204,7 @@ func (g *grpcImageServer) Convert(req *handytoolsv1.ConvertRequest, stream handy
 func (g *grpcImageServer) Preview(_ context.Context, req *handytoolsv1.ImagePreviewRequest) (*handytoolsv1.ImagePreviewResponse, error) {
 	src, err := g.h.Opts.CheckPath(req.GetSource().GetPath())
 	if err != nil {
-		return nil, err
+		return nil, grpcError(err)
 	}
 	res, err := image.Preview(image.PreviewRequest{
 		Source:    src,
@@ -169,7 +212,7 @@ func (g *grpcImageServer) Preview(_ context.Context, req *handytoolsv1.ImagePrev
 		MaxHeight: int(req.GetMaxHeight()),
 	})
 	if err != nil {
-		return nil, err
+		return nil, grpcError(err)
 	}
 	return &handytoolsv1.ImagePreviewResponse{
 		Image:  res.PNG,
@@ -188,7 +231,7 @@ type grpcArchiveServer struct {
 func (g *grpcArchiveServer) Inspect(ctx context.Context, req *handytoolsv1.InspectRequest) (*handytoolsv1.InspectResponse, error) {
 	ins, err := g.h.Inspect(ctx, InspectParams{Source: req.GetSource().GetPath()})
 	if err != nil {
-		return nil, err
+		return nil, grpcError(err)
 	}
 	parts := make([]*handytoolsv1.FileRef, 0, len(ins.DetectedParts))
 	for _, p := range ins.DetectedParts {
@@ -295,14 +338,14 @@ func (g *grpcPDFServer) Merge(req *handytoolsv1.PdfMergeRequest, stream handytoo
 func (g *grpcPDFServer) Preview(req *handytoolsv1.PdfPreviewRequest, stream grpc.ServerStreamingServer[handytoolsv1.PdfPreviewResponse]) error {
 	src, err := g.h.Opts.CheckPath(req.GetSource().GetPath())
 	if err != nil {
-		return err
+		return grpcError(err)
 	}
 	res, err := pdf.Preview(stream.Context(), src, pdf.Range{
 		From: int(req.GetPages().GetFrom()),
 		To:   int(req.GetPages().GetTo()),
 	})
 	if err != nil {
-		return err
+		return grpcError(err)
 	}
 	for _, page := range res.Pages {
 		w, h := pngBounds(page.PNG)
