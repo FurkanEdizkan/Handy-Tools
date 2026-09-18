@@ -91,32 +91,27 @@ func head(s string, n int) string {
 }
 
 // TestUninstallRemovesBinariesAndConfig drops fake htools / htoolsd /
-// htools-gui binaries into a temp install dir plus a fake config file, runs
-// install.sh --uninstall --yes, and asserts everything is gone.
+// htools-gui binaries into a temp install dir plus a default-location config
+// dir ($XDG_CONFIG_HOME/handy-tools), runs install.sh --uninstall --yes, and
+// asserts everything is gone.
 func TestUninstallRemovesBinariesAndConfig(t *testing.T) {
 	tmpBin := t.TempDir()
-	tmpCfgDir := t.TempDir()
-	tmpCfg := filepath.Join(tmpCfgDir, "config.yaml")
-
+	xdg := t.TempDir()
+	cfgDir := filepath.Join(xdg, "handy-tools")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte("# test\n"), 0o644); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
 	for _, b := range []string{"htools", "htoolsd", "htools-gui"} {
 		p := filepath.Join(tmpBin, b)
 		if err := os.WriteFile(p, []byte("#!/bin/sh\n"), 0o755); err != nil {
 			t.Fatalf("seed %s: %v", b, err)
 		}
 	}
-	if err := os.WriteFile(tmpCfg, []byte("# test\n"), 0o644); err != nil {
-		t.Fatalf("seed config: %v", err)
-	}
 
-	cmd := exec.Command("sh", installScript(t), "--uninstall", "--yes", "--dir", tmpBin)
-	cmd.Env = append(os.Environ(),
-		"HANDY_TOOLS_CONFIG="+tmpCfg,
-		"NO_COLOR=1", // no ANSI noise in test output
-	)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("install.sh --uninstall --yes failed: %v\n%s", err, out)
-	}
+	out := runUninstall(t, tmpBin, "XDG_CONFIG_HOME="+xdg, "HANDY_TOOLS_CONFIG=")
 
 	for _, b := range []string{"htools", "htoolsd", "htools-gui"} {
 		p := filepath.Join(tmpBin, b)
@@ -124,15 +119,54 @@ func TestUninstallRemovesBinariesAndConfig(t *testing.T) {
 			t.Errorf("%s still present after uninstall: err=%v", p, err)
 		}
 	}
-	if _, err := os.Stat(tmpCfgDir); !os.IsNotExist(err) {
-		t.Errorf("config dir %s still present: err=%v", tmpCfgDir, err)
+	if _, err := os.Stat(cfgDir); !os.IsNotExist(err) {
+		t.Errorf("config dir %s still present: err=%v\n%s", cfgDir, err, out)
 	}
 }
 
-// TestUninstallAbortsOnDeclinedPrompt verifies that without --yes and with a
-// "n" response on stdin, the uninstaller exits non-zero and leaves files
-// untouched. This is the safety net for users who pipe `curl … | sh -s -- --uninstall`
-// and want a chance to back out.
+// TestUninstallRemovesOnlyTheCustomConfigFile is a regression for uninstall
+// running `rm -rf "$(dirname "$HANDY_TOOLS_CONFIG")"`: a config kept at
+// ~/dotfiles/handy.yaml took the whole ~/dotfiles with it (and
+// $HOME/handy.yaml meant `rm -rf $HOME`). Only the file itself may go.
+func TestUninstallRemovesOnlyTheCustomConfigFile(t *testing.T) {
+	tmpBin := t.TempDir()
+	dotfiles := t.TempDir()
+	cfg := filepath.Join(dotfiles, "handy.yaml")
+	sibling := filepath.Join(dotfiles, "zshrc")
+	for _, p := range []string{cfg, sibling} {
+		if err := os.WriteFile(p, []byte("# keep?\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	out := runUninstall(t, tmpBin, "HANDY_TOOLS_CONFIG="+cfg)
+
+	if _, err := os.Stat(cfg); !os.IsNotExist(err) {
+		t.Errorf("custom config %s still present: err=%v\n%s", cfg, err, out)
+	}
+	if _, err := os.Stat(sibling); err != nil {
+		t.Fatalf("uninstall deleted an unrelated file next to the config: %v\n%s", err, out)
+	}
+}
+
+// runUninstall runs `install.sh --uninstall --yes --dir bin` with extra env and
+// returns its output, failing the test on a non-zero exit.
+func runUninstall(t *testing.T, bin string, extraEnv ...string) string {
+	t.Helper()
+	cmd := exec.Command("sh", installScript(t), "--uninstall", "--yes", "--dir", bin)
+	cmd.Env = append(os.Environ(), "NO_COLOR=1") // no ANSI noise in test output
+	cmd.Env = append(cmd.Env, extraEnv...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("install.sh --uninstall --yes failed: %v\n%s", err, out)
+	}
+	return string(out)
+}
+
+// TestUninstallAbortsOnDeclinedPrompt verifies that without --yes the
+// uninstaller never takes a yes it didn't get: here stdin is a pipe (as under
+// `curl … | sh -s -- --uninstall`, where stdin is the script itself) and there
+// is no terminal to ask on, so it must exit non-zero and leave files untouched.
 func TestUninstallAbortsOnDeclinedPrompt(t *testing.T) {
 	tmpBin := t.TempDir()
 	tmpCfgDir := t.TempDir()
@@ -150,7 +184,8 @@ func TestUninstallAbortsOnDeclinedPrompt(t *testing.T) {
 		"HANDY_TOOLS_CONFIG="+tmpCfg,
 		"NO_COLOR=1",
 	)
-	cmd.Stdin = strings.NewReader("n\n")
+	cmd.Stdin = strings.NewReader("y\n") // a piped "y" is not a terminal answer
+	detachFromTTY(cmd)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		t.Fatalf("declined uninstall should exit non-zero; output:\n%s", out)
