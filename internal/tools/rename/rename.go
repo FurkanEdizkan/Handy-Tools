@@ -98,6 +98,17 @@ func Inspect(req Request) (Inspection, *tools.Error) {
 			plans = append(plans, Plan{From: src, To: src})
 			continue
 		}
+		// The replacement renames within the source's directory only. A
+		// separator (or a "", ".", ".." result, which Join collapses onto a
+		// parent directory) would move the file elsewhere — and the server
+		// sandbox only checks sources, never the computed target.
+		if newBase == "" || newBase == "." || newBase == ".." || strings.ContainsRune(newBase, '/') || strings.ContainsRune(newBase, filepath.Separator) {
+			return Inspection{}, &tools.Error{
+				Code:    tools.CodeBadRequest,
+				Message: "replacement must produce a plain file name",
+				Detail:  fmt.Sprintf("%s -> %q", src, newBase),
+			}
+		}
 		plans = append(plans, Plan{From: src, To: filepath.Join(dir, newBase)})
 	}
 
@@ -169,6 +180,11 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 		total := len(plans)
 		for i, p := range plans {
 			if err := ctx.Err(); err != nil {
+				// A cancel stops the batch like a failure does: with Rollback,
+				// undo the renames already done before reporting.
+				if req.Rollback {
+					failures = append(failures, rollback.Replay()...)
+				}
 				emit(tools.Progress{Completed: true, Err: &tools.Error{
 					Code: tools.CodeAborted, Message: "rename canceled",
 				}, Failures: failures})
@@ -228,7 +244,9 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 		}
 
 		summary := fmt.Sprintf("renamed %d, skipped %d, failed %d", renamed, skipped, len(failures))
-		if len(failures) == total {
+		// Skipped (non-matching) rows aren't successes: if every rename that
+		// was attempted failed, the batch failed.
+		if renamed == 0 && len(failures) > 0 {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
 				Code: tools.CoalesceFailureCode(failures), Message: "all renames failed", Detail: summary,
 			}, Failures: failures})
