@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/furkandedizkan/handy-tools/internal/config"
@@ -97,5 +99,45 @@ func TestParseCollisionTable(t *testing.T) {
 		if got != ok {
 			t.Errorf("parseCollision(%q) = %v, want %v", s, got, ok)
 		}
+	}
+}
+
+// TestCmdRenameEmptyReplace: an explicitly empty --replace (a separate empty
+// argument, or `--replace=`) deletes the matched text. Both used to be rejected as "--replace is required", so there
+// was no way to strip a substring — even though the error told you to type it.
+func TestCmdRenameEmptyReplace(t *testing.T) {
+	for _, args := range [][]string{
+		{"--pattern", "_copy", "--replace", ""},
+		{"--pattern", "_copy", "--replace="},
+	} {
+		dir := seedDir(t, "a_copy.txt")
+		if code := cmdRename(context.Background(), config.Defaults(), append(args, "--quiet", dir)); code != 0 {
+			t.Fatalf("%v: exit = %d, want 0", args, code)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "a.txt")); err != nil {
+			t.Errorf("%v: a_copy.txt not renamed to a.txt: %v", args, err)
+		}
+	}
+}
+
+// TestCmdRenameDryRunJSON: with --json, stdout must carry JSON lines only.
+func TestCmdRenameDryRunJSON(t *testing.T) {
+	dir := seedDir(t, "IMG_0001.JPG", "notes.txt")
+	out := captureStdout(t, func() {
+		if code := cmdRename(context.Background(), config.Defaults(),
+			[]string{"--pattern", `IMG_(\d+)\.JPG`, "--replace", `photo-$1.jpg`, "--dry-run", "--json", dir}); code != 0 {
+			t.Errorf("exit = %d, want 0", code)
+		}
+	})
+	var kinds []string
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(line), &obj); err != nil {
+			t.Fatalf("non-JSON line on stdout: %q (%v)", line, err)
+		}
+		kinds = append(kinds, obj["kind"].(string))
+	}
+	if len(kinds) != 3 || kinds[2] != "summary" {
+		t.Fatalf("kinds = %v, want two plan rows then a summary", kinds)
 	}
 }

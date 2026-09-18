@@ -5,7 +5,10 @@
 package image
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"image"
@@ -13,6 +16,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -118,37 +122,14 @@ func Convert(ctx context.Context, req ConvertRequest) <-chan tools.Progress {
 		defer stop()
 
 		emit(tools.Progress{Level: tools.SeverityInfo, Message: "decoding " + filepath.Base(req.Source)})
-		img, err := decode(req.Source)
-		if err != nil {
-			stop()
-			emit(tools.Progress{Completed: true, Level: tools.SeverityError, Err: &tools.Error{
-				Code: tools.ClassifyFSError(err), Message: "decode failed", Detail: err.Error(),
-			}})
-			return
-		}
-
-		if req.Opts.MaxWidth > 0 || req.Opts.MaxHeight > 0 {
-			img = resize(img, req.Opts.MaxWidth, req.Opts.MaxHeight)
-		}
-
-		outPath, err := resolveOutputPath(req)
-		if err != nil {
-			stop()
-			emit(tools.Progress{Completed: true, Level: tools.SeverityError, Err: &tools.Error{
-				Code: tools.CodeBadRequest, Message: err.Error(),
-			}})
-			return
-		}
-
-		emit(tools.Progress{Level: tools.SeverityInfo, Message: "encoding " + filepath.Base(outPath)})
-
-		if err := encode(outPath, img, req.TargetFormat, req.Opts); err != nil {
-			stop()
-			emit(tools.Progress{Completed: true, Level: tools.SeverityError, Err: encodeError(err)})
-			return
-		}
-
+		outPath, terr := convertOne(req, nil, func(outPath string) {
+			emit(tools.Progress{Level: tools.SeverityInfo, Message: "encoding " + filepath.Base(outPath)})
+		})
 		stop()
+		if terr != nil {
+			emit(tools.Progress{Completed: true, Level: tools.SeverityError, Err: terr})
+			return
+		}
 		emit(tools.Progress{Completed: true, Fraction: 1, Level: tools.SeverityInfo,
 			Message: "wrote " + outPath})
 	}()
@@ -186,11 +167,43 @@ func InspectBatch(req BatchConvertRequest) (BatchInspection, *tools.Error) {
 	}
 	issues := tools.StatInputs(req.Sources)
 	if req.OutputDir != "" {
-		if issue := tools.CheckOutputDirWritable(req.OutputDir); issue != nil {
+		// BatchConvert creates a missing OutputDir, so probe the nearest
+		// existing ancestor instead of flagging the directory as NOT_FOUND.
+		dir := req.OutputDir
+		for {
+			if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+				break
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+		if issue := tools.CheckOutputDirWritable(dir); issue != nil {
 			issues = append(issues, *issue)
 		}
 	}
 	return BatchInspection{Issues: issues}, nil
+}
+
+// ensureOutputDir creates a missing batch OutputDir and rejects one that
+// exists but is not a directory — otherwise candidateOutputPath would treat
+// it as a file name that every output in the batch lands on.
+func ensureOutputDir(dir string) *tools.Error {
+	info, err := os.Stat(dir)
+	switch {
+	case err == nil && !info.IsDir():
+		return &tools.Error{Code: tools.CodeBadRequest, Message: "output is not a directory", Detail: dir}
+	case err == nil:
+		return nil
+	case !errors.Is(err, os.ErrNotExist):
+		return &tools.Error{Code: tools.ClassifyFSError(err), Message: "stat output dir", Detail: err.Error()}
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return &tools.Error{Code: tools.ClassifyFSError(err), Message: "create output dir", Detail: err.Error()}
+	}
+	return nil
 }
 
 // BatchConvert converts every source concurrently and emits one
@@ -225,6 +238,13 @@ func BatchConvert(ctx context.Context, req BatchConvertRequest) <-chan tools.Pro
 			return
 		}
 
+		if req.OutputDir != "" {
+			if terr := ensureOutputDir(req.OutputDir); terr != nil {
+				emit(tools.Progress{Completed: true, Err: terr})
+				return
+			}
+		}
+
 		total := len(req.Sources)
 		workers := req.Parallelism
 		if workers <= 0 {
@@ -232,6 +252,28 @@ func BatchConvert(ctx context.Context, req BatchConvertRequest) <-chan tools.Pro
 		}
 		if workers > total {
 			workers = total
+		}
+
+		// With Overwrite, two sources that map to the same output (a.png +
+		// a.jpg -> a.webp, or d1/a.png + d2/a.png into one OutputDir) must not
+		// both write it. The first in source order keeps the natural name;
+		// later ones get a -N suffix like the non-overwrite path, skipping
+		// every name another source is about to write. Without Overwrite,
+		// ReserveUniquePath already hands each worker a distinct name.
+		claimed := map[string]struct{}{}
+		duplicate := make([]bool, total)
+		if req.Overwrite {
+			for i, src := range req.Sources {
+				c, err := candidateOutputPath(ConvertRequest{Source: src, TargetFormat: req.TargetFormat, Output: req.OutputDir})
+				if err != nil {
+					continue // surfaces as this file's failure in the worker
+				}
+				if _, taken := claimed[c]; taken {
+					duplicate[i] = true
+					continue
+				}
+				claimed[c] = struct{}{}
+			}
 		}
 
 		type job struct {
@@ -255,13 +297,17 @@ func BatchConvert(ctx context.Context, req BatchConvertRequest) <-chan tools.Pro
 						return
 					}
 					name := filepath.Base(j.src)
+					var avoid map[string]struct{}
+					if duplicate[j.index] {
+						avoid = claimed
+					}
 					outPath, terr := convertOne(ConvertRequest{
 						Source:       j.src,
 						TargetFormat: req.TargetFormat,
 						Opts:         req.Opts,
 						Output:       req.OutputDir,
 						Overwrite:    req.Overwrite,
-					})
+					}, avoid, nil)
 					done := completed.Add(1)
 					if terr != nil {
 						failuresM.Lock()
@@ -321,24 +367,238 @@ func BatchConvert(ctx context.Context, req BatchConvertRequest) <-chan tools.Pro
 }
 
 // convertOne runs the decode → resize → encode pipeline for one file and
-// returns the written path. It does no progress reporting, so both Convert
-// and BatchConvert can drive it.
-func convertOne(req ConvertRequest) (outPath string, terr *tools.Error) {
-	img, err := decode(req.Source)
+// returns the written path. It does no progress reporting of its own, so both
+// Convert and BatchConvert can drive it; onEncode (optional) is told the
+// resolved output path just before encoding starts.
+//
+// avoid is non-nil only for a BatchConvert duplicate under Overwrite: the
+// natural output name belongs to another source, so a fresh -N name is
+// reserved that is not in avoid (see planOutput).
+func convertOne(req ConvertRequest, avoid map[string]struct{}, onEncode func(outPath string)) (string, *tools.Error) {
+	src, terr := load(req)
+	if terr != nil {
+		return "", terr
+	}
+	if terr := checkEncoder(req.TargetFormat); terr != nil {
+		return "", terr
+	}
+	outPath, reserved, err := planOutput(req, avoid)
 	if err != nil {
-		return "", &tools.Error{Code: tools.ClassifyFSError(err), Message: "decode failed", Detail: err.Error()}
+		code := tools.ClassifyFSError(err)
+		if code == tools.CodeIO {
+			code = tools.CodeBadRequest
+		}
+		return "", &tools.Error{Code: code, Message: err.Error()}
 	}
-	if req.Opts.MaxWidth > 0 || req.Opts.MaxHeight > 0 {
-		img = resize(img, req.Opts.MaxWidth, req.Opts.MaxHeight)
+	if onEncode != nil {
+		onEncode(outPath)
 	}
-	outPath, err = resolveOutputPath(req)
-	if err != nil {
-		return "", &tools.Error{Code: tools.CodeBadRequest, Message: err.Error()}
-	}
-	if err := encode(outPath, img, req.TargetFormat, req.Opts); err != nil {
+	if err := src.encode(outPath, req.TargetFormat, req.Opts); err != nil {
+		if reserved {
+			// Release the placeholder so a retry gets the natural name.
+			_ = os.Remove(outPath)
+		}
 		return "", encodeError(err)
 	}
 	return outPath, nil
+}
+
+// decoded is a source ready to encode: a single image, or — for a GIF→GIF
+// re-encode of an animation — every frame, so nothing is silently dropped.
+type decoded struct {
+	img  image.Image
+	anim *gif.GIF
+}
+
+func (d decoded) encode(path string, f Format, opts Options) error {
+	if d.anim != nil {
+		return replaceFile(path, f.Ext(), func(out *os.File) error { return gif.EncodeAll(out, d.anim) })
+	}
+	return encode(path, d.img, f, opts)
+}
+
+// load decodes req.Source (and applies any resize). Re-encoding into the
+// source's own container format must not lose frames: an animated GIF keeps
+// every frame (and resizing one is refused), while a multi-page TIFF or an
+// animated PNG is refused outright because their decoders only return the
+// first image. Converting to a different format still takes the first frame.
+func load(req ConvertRequest) (decoded, *tools.Error) {
+	resizing := req.Opts.MaxWidth > 0 || req.Opts.MaxHeight > 0
+	var img image.Image
+	kind := sniffContainer(req.Source)
+	switch {
+	case kind == FormatGIF && req.TargetFormat == FormatGIF:
+		g, err := decodeGIFAll(req.Source)
+		if err != nil {
+			return decoded{}, decodeError(err)
+		}
+		if len(g.Image) > 1 {
+			if resizing {
+				return decoded{}, &tools.Error{
+					Code:    tools.CodeUnsupportedInput,
+					Message: "resizing an animated GIF is not supported",
+					Detail:  fmt.Sprintf("%s has %d frames", req.Source, len(g.Image)),
+				}
+			}
+			return decoded{anim: g}, nil
+		}
+		img = g.Image[0]
+	case kind == FormatTIFF && req.TargetFormat == FormatTIFF && tiffHasMultiplePages(req.Source):
+		return decoded{}, &tools.Error{
+			Code:    tools.CodeUnsupportedInput,
+			Message: "multi-page TIFF: re-encoding would keep only the first page",
+			Detail:  req.Source,
+		}
+	case kind == FormatPNG && req.TargetFormat == FormatPNG && pngIsAnimated(req.Source):
+		return decoded{}, &tools.Error{
+			Code:    tools.CodeUnsupportedInput,
+			Message: "animated PNG: re-encoding would keep only the first frame",
+			Detail:  req.Source,
+		}
+	}
+	if img == nil {
+		var err error
+		if img, err = decode(req.Source); err != nil {
+			return decoded{}, decodeError(err)
+		}
+	}
+	if resizing {
+		img = resize(img, req.Opts.MaxWidth, req.Opts.MaxHeight)
+	}
+	return decoded{img: img}, nil
+}
+
+// decodeError normalizes a decode failure the same way encodeError does: a
+// structured *tools.Error (MISSING_BINARY from the HEIC magick delegation)
+// is preserved; anything else is classified as a filesystem error.
+func decodeError(err error) *tools.Error {
+	var te *tools.Error
+	if errors.As(err, &te) {
+		return te
+	}
+	return &tools.Error{Code: tools.ClassifyFSError(err), Message: "decode failed", Detail: err.Error()}
+}
+
+// checkEncoder fails fast — before any output file is reserved or written —
+// when the target format can't be encoded: an unknown format, or WebP/HEIC
+// without the magick binary.
+func checkEncoder(f Format) *tools.Error {
+	switch f {
+	case FormatPNG, FormatJPEG, FormatGIF, FormatBMP, FormatTIFF:
+		return nil
+	case FormatWebP, FormatHEIC:
+		if r := sysdep.Lookup("magick"); !r.Found {
+			return missingMagick(r)
+		}
+		return nil
+	}
+	return &tools.Error{Code: tools.CodeBadRequest, Message: "unsupported target format"}
+}
+
+func missingMagick(r sysdep.Result) *tools.Error {
+	return &tools.Error{
+		Code:    tools.CodeMissingBinary,
+		Message: "encoding to this format requires ImageMagick",
+		Detail:  "install with: " + r.Tool.InstallHint["linux"],
+	}
+}
+
+// sniffContainer reports the container format from the file's magic bytes
+// (GIF, TIFF or PNG), or FormatUnspecified for anything else / unreadable
+// files — decode reports those errors properly.
+func sniffContainer(path string) Format {
+	f, err := os.Open(path) //nolint:gosec // user-supplied path is intentional
+	if err != nil {
+		return FormatUnspecified
+	}
+	defer f.Close()
+	var magic [8]byte
+	n, _ := io.ReadFull(f, magic[:])
+	b := magic[:n]
+	switch {
+	case bytes.HasPrefix(b, []byte("GIF8")):
+		return FormatGIF
+	case bytes.HasPrefix(b, []byte("II*\x00")), bytes.HasPrefix(b, []byte("MM\x00*")):
+		return FormatTIFF
+	case bytes.HasPrefix(b, []byte("\x89PNG\r\n\x1a\n")):
+		return FormatPNG
+	}
+	return FormatUnspecified
+}
+
+func decodeGIFAll(path string) (*gif.GIF, error) {
+	f, err := os.Open(path) //nolint:gosec // user-supplied path is intentional
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return gif.DecodeAll(f)
+}
+
+// tiffHasMultiplePages reports whether the first IFD of a classic TIFF chains
+// to another one. Parse problems return false and are left to the decoder.
+func tiffHasMultiplePages(path string) bool {
+	f, err := os.Open(path) //nolint:gosec // user-supplied path is intentional
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	var hdr [8]byte
+	if _, err := io.ReadFull(f, hdr[:]); err != nil {
+		return false
+	}
+	var bo binary.ByteOrder
+	switch string(hdr[:2]) {
+	case "II":
+		bo = binary.LittleEndian
+	case "MM":
+		bo = binary.BigEndian
+	default:
+		return false
+	}
+	if bo.Uint16(hdr[2:4]) != 42 {
+		return false
+	}
+	ifd := int64(bo.Uint32(hdr[4:8]))
+	var count [2]byte
+	if _, err := f.ReadAt(count[:], ifd); err != nil {
+		return false
+	}
+	var next [4]byte
+	if _, err := f.ReadAt(next[:], ifd+2+12*int64(bo.Uint16(count[:]))); err != nil {
+		return false
+	}
+	return bo.Uint32(next[:]) != 0
+}
+
+// pngIsAnimated reports whether a PNG carries an APNG acTL chunk before its
+// image data. Go's decoder ignores the extra frames, so re-encoding would
+// flatten the animation.
+func pngIsAnimated(path string) bool {
+	f, err := os.Open(path) //nolint:gosec // user-supplied path is intentional
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	r := bufio.NewReader(f)
+	if _, err := r.Discard(8); err != nil { // signature
+		return false
+	}
+	var hdr [8]byte
+	for {
+		if _, err := io.ReadFull(r, hdr[:]); err != nil {
+			return false
+		}
+		switch string(hdr[4:8]) {
+		case "acTL":
+			return true
+		case "IDAT", "IEND":
+			return false
+		}
+		if _, err := r.Discard(int(binary.BigEndian.Uint32(hdr[:4])) + 4); err != nil { // data + crc
+			return false
+		}
+	}
 }
 
 func decode(path string) (image.Image, error) {
@@ -392,36 +652,88 @@ func decodeHEIC(path string) (image.Image, error) {
 	return png.Decode(f)
 }
 
+// encode writes img to path in format f. The destination is only replaced
+// once the encode has fully succeeded (see replaceFile), so a failure never
+// destroys what was there — for strip-meta --in-place, the source itself.
 func encode(path string, img image.Image, f Format, opts Options) error {
-	out, err := os.Create(path) //nolint:gosec
+	switch f {
+	case FormatWebP, FormatHEIC:
+		// No pure-Go WebP/HEIC encoder exists; delegate to the optional
+		// magick binary.
+		return encodeViaMagick(path, img, f)
+	}
+	return replaceFile(path, f.Ext(), func(out *os.File) error {
+		switch f {
+		case FormatPNG:
+			return png.Encode(out, img)
+		case FormatJPEG:
+			q := opts.Quality
+			if q <= 0 || q > 100 {
+				q = 90
+			}
+			return jpeg.Encode(out, img, &jpeg.Options{Quality: q})
+		case FormatGIF:
+			return gif.Encode(out, img, nil)
+		case FormatBMP:
+			return bmp.Encode(out, img)
+		case FormatTIFF:
+			return tiff.Encode(out, img, nil)
+		}
+		return &tools.Error{Code: tools.CodeBadRequest, Message: "unsupported target format"}
+	})
+}
+
+// replaceFile writes path through a temp file in the same directory and
+// renames it into place only after write succeeds; on failure the temp file
+// is removed and path is left untouched. An existing destination keeps its
+// permission bits, and a symlinked destination is written through to its
+// target, as truncating it in place used to. ext is appended to the temp
+// name so tools that infer the format from the extension (magick) see it.
+func replaceFile(path, ext string, write func(*os.File) error) (err error) {
+	if resolved, rerr := filepath.EvalSymlinks(path); rerr == nil {
+		path = resolved
+	}
+	existing, statErr := os.Stat(path)
+	tmp, err := createSibling(path, ext)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
-
-	switch f {
-	case FormatPNG:
-		return png.Encode(out, img)
-	case FormatJPEG:
-		q := opts.Quality
-		if q <= 0 || q > 100 {
-			q = 90
+	defer func() {
+		if err != nil {
+			_ = tmp.Close()
+			_ = os.Remove(tmp.Name())
 		}
-		return jpeg.Encode(out, img, &jpeg.Options{Quality: q})
-	case FormatGIF:
-		return gif.Encode(out, img, nil)
-	case FormatBMP:
-		return bmp.Encode(out, img)
-	case FormatTIFF:
-		return tiff.Encode(out, img, nil)
-	case FormatWebP:
-		// No pure-Go WebP encoder exists; delegate to the optional magick
-		// binary — the same path HEIC uses.
-		return encodeViaMagick(path, img)
-	case FormatHEIC:
-		return encodeViaMagick(path, img)
+	}()
+	if err = write(tmp); err != nil {
+		return err
 	}
-	return fmt.Errorf("unsupported target format")
+	if statErr == nil {
+		if err = tmp.Chmod(existing.Mode().Perm()); err != nil {
+			return err
+		}
+	}
+	if err = tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
+}
+
+// createSibling creates a new hidden temp file next to path. Unlike
+// os.CreateTemp (always 0600) it uses os.Create's 0666 so the process umask
+// decides the final mode of a brand-new output, exactly as before.
+func createSibling(path, ext string) (*os.File, error) {
+	dir, base := filepath.Split(path)
+	for i := 0; i < 100; i++ {
+		// The random suffix only needs to be unique, not unpredictable.
+		name := filepath.Join(dir, fmt.Sprintf(".%s.handy-tmp-%d%s", base, rand.Uint32(), ext)) //nolint:gosec
+		// Sibling of a caller-supplied path, like the output itself.
+		f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o666) //nolint:gosec
+		if errors.Is(err, os.ErrExist) {
+			continue
+		}
+		return f, err
+	}
+	return nil, fmt.Errorf("could not create a temp file next to %s", path)
 }
 
 // encodeError normalizes an encode failure: a structured *tools.Error (e.g.
@@ -436,33 +748,33 @@ func encodeError(err error) *tools.Error {
 }
 
 // encodeViaMagick writes a PNG to a temp file, then asks magick to convert it
-// to the final path — magick infers the target format from the path's
-// extension. Used for HEIC and WebP, which have no pure-Go encoder.
-func encodeViaMagick(path string, img image.Image) error {
+// into a sibling temp file carrying the target format's extension (magick
+// infers the format from it), which replaceFile renames over path on
+// success. Used for HEIC and WebP, which have no pure-Go encoder. The magick
+// lookup happens before anything is created.
+func encodeViaMagick(path string, img image.Image, f Format) error {
 	r := sysdep.Lookup("magick")
 	if !r.Found {
-		return &tools.Error{
-			Code:    tools.CodeMissingBinary,
-			Message: "encoding to this format requires ImageMagick",
-			Detail:  "install with: " + r.Tool.InstallHint["linux"],
-		}
+		return missingMagick(r)
 	}
 	tmp, err := os.CreateTemp("", "handy-tools-encode-*.png")
 	if err != nil {
 		return err
 	}
+	defer os.Remove(tmp.Name())
 	if err := png.Encode(tmp, img); err != nil {
 		tmp.Close()
 		return err
 	}
 	tmp.Close()
-	defer os.Remove(tmp.Name())
 
-	cmd := exec.Command(r.UsedAlias, tmp.Name(), path) //nolint:gosec
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("magick: %s: %w", strings.TrimSpace(string(out)), err)
-	}
-	return nil
+	return replaceFile(path, f.Ext(), func(out *os.File) error {
+		cmd := exec.Command(r.UsedAlias, tmp.Name(), out.Name()) //nolint:gosec
+		if msg, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("magick: %s: %w", strings.TrimSpace(string(msg)), err)
+		}
+		return nil
+	})
 }
 
 func resize(src image.Image, maxW, maxH int) image.Image {
@@ -476,6 +788,9 @@ func resize(src image.Image, maxW, maxH int) image.Image {
 		w = w * maxH / h
 		h = maxH
 	}
+	// Extreme aspect ratios round the short side down to 0, which no encoder
+	// accepts; keep at least one pixel.
+	w, h = max(w, 1), max(h, 1)
 	if w == b.Dx() && h == b.Dy() {
 		return src
 	}
@@ -484,15 +799,49 @@ func resize(src image.Image, maxW, maxH int) image.Image {
 	return dst
 }
 
-func resolveOutputPath(req ConvertRequest) (string, error) {
+// planOutput resolves where req's output goes. reserved reports that the
+// returned path is a placeholder created here (ReserveUniquePath), which the
+// caller removes again if the encode fails.
+//
+// avoid is set for a BatchConvert duplicate under Overwrite: the natural name
+// belongs to another source, so it reserves stem-N.ext instead, skipping the
+// names in avoid (the outputs other sources are about to write).
+func planOutput(req ConvertRequest, avoid map[string]struct{}) (path string, reserved bool, err error) {
 	candidate, err := candidateOutputPath(req)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
-	if req.Overwrite {
-		return candidate, nil
+	switch {
+	case avoid != nil:
+		path, err = reserveAvoiding(candidate, avoid)
+	case req.Overwrite:
+		return candidate, false, nil
+	default:
+		path, err = tools.ReserveUniquePath(candidate)
 	}
-	return tools.ReserveUniquePath(candidate)
+	return path, err == nil, err
+}
+
+// reserveAvoiding is ReserveUniquePath for a batch duplicate: it starts at
+// stem-1.ext and also skips every name in avoid. Like ReserveUniquePath it
+// claims the name atomically with O_CREATE|O_EXCL.
+func reserveAvoiding(path string, avoid map[string]struct{}) (string, error) {
+	stem, ext := tools.SplitOutputExt(path)
+	for i := 1; i <= 9999; i++ {
+		candidate := fmt.Sprintf("%s-%d%s", stem, i, ext)
+		if _, taken := avoid[candidate]; taken {
+			continue
+		}
+		f, err := os.OpenFile(candidate, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644) //nolint:gosec // derived from a caller-supplied path
+		if err == nil {
+			_ = f.Close()
+			return candidate, nil
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return "", err
+		}
+	}
+	return "", fmt.Errorf("could not find a free output path for %s", path)
 }
 
 // candidateOutputPath computes the natural output path before collision

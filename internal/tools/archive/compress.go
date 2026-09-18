@@ -29,7 +29,7 @@ type CompressRequest struct {
 	Sources          []string // files and/or directories to pack
 	Format           Format   // target format; FormatUnknown -> inferred from Output extension
 	Output           string   // path of the archive to create
-	Password         string   // optional; rejected here (the pure-Go formats have no encryption)
+	Password         string   // optional; 7z only (encrypts contents + headers) — rejected for the pure-Go formats, which have no encryption
 	CompressionLevel int      // 0 = format default; 1 = fastest .. 9 = smallest
 	Overwrite        bool     // true: replace an existing file at Output; false (default): rename to Output's stem + "-1", "-2", ... like image convert
 }
@@ -101,14 +101,14 @@ func Compress(ctx context.Context, req CompressRequest) <-chan tools.Progress {
 			emit(compressFail(tools.CodeBadRequest, "no output path given", ""))
 			return
 		}
-		if req.Password != "" {
-			emit(compressFail(tools.CodeUnsupportedInput,
-				"password-protected archive creation is not supported",
-				"zip/tar/gz/bz2/zstd have no encryption in the pure-Go path"))
-			return
-		}
 		if req.Format == FormatUnknown {
 			req.Format = detectFormat(req.Output)
+		}
+		if req.Password != "" && req.Format != FormatSevenZ {
+			emit(compressFail(tools.CodeUnsupportedInput,
+				"password-protected archive creation is only supported for 7z",
+				"zip/tar/gz/bz2/zstd/xz have no encryption in the pure-Go path"))
+			return
 		}
 
 		entries, err := gatherEntries(req.Sources)
@@ -193,12 +193,20 @@ func compressFail(code, msg, detail string) tools.Progress {
 type compressEntry struct {
 	abs  string      // absolute filesystem path
 	name string      // slash-separated path inside the archive
-	info os.FileInfo // for mode + mtime
+	info os.FileInfo // for mode + mtime; Lstat'd inside a walked tree, so a symlink describes the link
+	link string      // symlink target when info is a symlink — stored as a link, never followed
 }
 
 // gatherEntries expands the source list into a flat file list. A directory
 // source is walked recursively; its entries are named relative to the
 // directory's parent, so "/data/logs" yields "logs/2026/app.log" etc.
+//
+// A source the caller named explicitly is followed even when it is a symlink
+// (to a file or a directory). Symlinks *inside* a walked tree are recorded as
+// links (like tar does) rather than followed, which avoids cycles and keeps a
+// link to a directory from failing the whole pack. Sockets, FIFOs and devices
+// inside a tree are skipped: there is nothing meaningful to pack, and opening a
+// FIFO would block forever.
 func gatherEntries(sources []string) ([]compressEntry, error) {
 	var out []compressEntry
 	for _, src := range sources {
@@ -212,18 +220,40 @@ func gatherEntries(sources []string) ([]compressEntry, error) {
 		}
 		root := filepath.Clean(src)
 		parent := filepath.Dir(root)
-		walkErr := filepath.Walk(root, func(p string, fi os.FileInfo, err error) error {
+		// filepath.Walk does not descend into a root that is itself a
+		// symlink, so walk the resolved directory and map paths back under
+		// the name the caller gave.
+		walkRoot := root
+		if li, lerr := os.Lstat(root); lerr == nil && li.Mode()&os.ModeSymlink != 0 {
+			if walkRoot, err = filepath.EvalSymlinks(root); err != nil {
+				return nil, err
+			}
+		}
+		walkErr := filepath.Walk(walkRoot, func(p string, fi os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
 			if fi.IsDir() {
 				return nil // files only — extractors recreate parent dirs
 			}
-			rel, err := filepath.Rel(parent, p)
+			within, err := filepath.Rel(walkRoot, p)
 			if err != nil {
 				return err
 			}
-			out = append(out, compressEntry{abs: p, name: filepath.ToSlash(rel), info: fi})
+			rel, err := filepath.Rel(parent, filepath.Join(root, within))
+			if err != nil {
+				return err
+			}
+			e := compressEntry{abs: p, name: filepath.ToSlash(rel), info: fi}
+			switch {
+			case fi.Mode()&os.ModeSymlink != 0:
+				if e.link, err = os.Readlink(p); err != nil {
+					return err
+				}
+			case !fi.Mode().IsRegular():
+				return nil
+			}
+			out = append(out, e)
 			return nil
 		})
 		if walkErr != nil {
@@ -233,12 +263,12 @@ func gatherEntries(sources []string) ([]compressEntry, error) {
 	return out, nil
 }
 
-func writeZip(ctx context.Context, req CompressRequest, entries []compressEntry, emit emitFn) error {
+func writeZip(ctx context.Context, req CompressRequest, entries []compressEntry, emit emitFn) (err error) {
 	out, err := createOutput(req.Output)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer closeOutput(out, &err)
 
 	zw := zip.NewWriter(out)
 	if lvl, custom := flateLevel(req.CompressionLevel); custom {
@@ -258,6 +288,12 @@ func writeZip(ctx context.Context, req CompressRequest, entries []compressEntry,
 		if err != nil {
 			return err
 		}
+		if e.link != "" {
+			// Zip stores a symlink as a link-mode entry whose body is the target path.
+			if _, err := io.WriteString(w, e.link); err != nil {
+				return err
+			}
+		}
 		if err := packEntry(ctx, emit, w, e, &done, totalBytes, i, len(entries)); err != nil {
 			return err
 		}
@@ -265,17 +301,25 @@ func writeZip(ctx context.Context, req CompressRequest, entries []compressEntry,
 	return zw.Close()
 }
 
-func writeTarArchive(ctx context.Context, req CompressRequest, entries []compressEntry, emit emitFn) error {
+func writeTarArchive(ctx context.Context, req CompressRequest, entries []compressEntry, emit emitFn) (err error) {
 	out, err := createOutput(req.Output)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer closeOutput(out, &err)
 
 	// Build the compression layer (if any) wrapping the output file. The
 	// layers must be closed innermost-first, before the file, to flush.
 	var w io.Writer = out
 	var closers []io.Closer
+	// On an early return the layers still need closing: the zstd encoder runs
+	// background goroutines that only Close releases. The success path below
+	// closes them itself (to surface flush errors) and clears the slice.
+	defer func() {
+		for j := len(closers) - 1; j >= 0; j-- {
+			_ = closers[j].Close()
+		}
+	}()
 	switch req.Format {
 	case FormatTarGz:
 		gz, err := gzip.NewWriterLevel(out, gzipLevel(req.CompressionLevel))
@@ -311,7 +355,7 @@ func writeTarArchive(ctx context.Context, req CompressRequest, entries []compres
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		hdr, err := tar.FileInfoHeader(e.info, "")
+		hdr, err := tar.FileInfoHeader(e.info, e.link)
 		if err != nil {
 			return err
 		}
@@ -326,12 +370,23 @@ func writeTarArchive(ctx context.Context, req CompressRequest, entries []compres
 	if err := tw.Close(); err != nil {
 		return err
 	}
-	for j := len(closers) - 1; j >= 0; j-- {
-		if err := closers[j].Close(); err != nil {
+	for len(closers) > 0 {
+		last := closers[len(closers)-1]
+		closers = closers[:len(closers)-1]
+		if err := last.Close(); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// closeOutput closes the archive file and, when the write itself succeeded,
+// reports the close error: a failed close (full disk, network filesystem)
+// means the archive may be incomplete, so it must not be renamed into place.
+func closeOutput(f *os.File, err *error) {
+	if cerr := f.Close(); cerr != nil && *err == nil {
+		*err = cerr
+	}
 }
 
 // compressSevenZ delegates 7z creation to the system "7z" binary.
@@ -344,7 +399,16 @@ func compressSevenZ(ctx context.Context, req CompressRequest, emit emitFn) error
 			Detail:  "install hint: " + r.Tool.InstallHint["linux"],
 		}
 	}
-	args := append([]string{"a", req.Output}, req.Sources...)
+	// -t7z: the staged output ends in ".partial", so don't leave the archive
+	// type to extension sniffing. -mhe=on also encrypts the file list, so a
+	// password-protected archive doesn't leak its entry names. `--` keeps a
+	// path that starts with "-" from being read as a switch.
+	args := []string{"a", "-t7z"}
+	if req.Password != "" {
+		args = append(args, "-p"+req.Password, "-mhe=on")
+	}
+	args = append(args, "--", req.Output)
+	args = append(args, req.Sources...)
 	cmd := exec.CommandContext(ctx, r.UsedAlias, args...) //nolint:gosec
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -395,12 +459,14 @@ func createOutput(path string) (*os.File, error) {
 	return os.Create(path) //nolint:gosec // caller-controlled output path
 }
 
-// sumEntryBytes totals the uncompressed sizes of all entries — the denominator
-// for byte-weighted pack progress.
+// sumEntryBytes totals the uncompressed sizes of all regular-file entries —
+// the denominator for byte-weighted pack progress. Links carry no file body.
 func sumEntryBytes(entries []compressEntry) int64 {
 	var t int64
 	for _, e := range entries {
-		t += e.info.Size()
+		if e.info.Mode().IsRegular() {
+			t += e.info.Size()
+		}
 	}
 	return t
 }
@@ -409,33 +475,17 @@ func sumEntryBytes(entries []compressEntry) int64 {
 // byte-weighted progress. *done is the running total of bytes packed across
 // prior entries; a Ticker reports (done + this entry's counter) / totalBytes so
 // the bar advances even mid-entry for a single large file. On return it
-// advances *done and emits the per-entry summary line.
+// advances *done and emits the per-entry summary line. Non-regular entries
+// (symlinks) have no file body to copy — their header says it all — so only
+// the summary line is emitted for them.
 func packEntry(ctx context.Context, emit emitFn, dst io.Writer, e compressEntry, done *int64, totalBytes int64, idx, count int) error {
-	f, err := os.Open(e.abs) //nolint:gosec // path comes from the caller's source list
-	if err != nil {
-		return err
+	if e.info.Mode().IsRegular() {
+		n, err := copyEntryBody(ctx, emit, dst, e, *done, totalBytes)
+		if err != nil {
+			return err
+		}
+		*done += n
 	}
-	defer f.Close()
-
-	cr := tools.NewCountingReader(f)
-	base := *done
-	stop := tools.Ticker(ctx, func(p tools.Progress) { emit(p) }, 0,
-		func() (float64, int64, int64) {
-			cur := base + cr.Count()
-			frac := 0.0
-			if totalBytes > 0 {
-				frac = float64(cur) / float64(totalBytes)
-			}
-			return frac, cur, totalBytes
-		},
-		tools.Progress{Level: tools.SeverityInfo, CurrentItem: e.name})
-	n, err := io.Copy(dst, cr) //nolint:gosec // size-bounded by the source file
-	stop()
-	if err != nil {
-		return err
-	}
-
-	*done += n
 	frac := 0.0
 	if totalBytes > 0 {
 		frac = float64(*done) / float64(totalBytes)
@@ -449,6 +499,31 @@ func packEntry(ctx context.Context, emit emitFn, dst io.Writer, e compressEntry,
 		CurrentItem: e.name,
 	})
 	return nil
+}
+
+// copyEntryBody copies one regular file into dst, ticking byte-weighted
+// progress from base (bytes packed by earlier entries) while it runs.
+func copyEntryBody(ctx context.Context, emit emitFn, dst io.Writer, e compressEntry, base, totalBytes int64) (int64, error) {
+	f, err := os.Open(e.abs) //nolint:gosec // path comes from the caller's source list
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+
+	cr := tools.NewCountingReader(f)
+	stop := tools.Ticker(ctx, func(p tools.Progress) { emit(p) }, 0,
+		func() (float64, int64, int64) {
+			cur := base + cr.Count()
+			frac := 0.0
+			if totalBytes > 0 {
+				frac = float64(cur) / float64(totalBytes)
+			}
+			return frac, cur, totalBytes
+		},
+		tools.Progress{Level: tools.SeverityInfo, CurrentItem: e.name})
+	n, err := io.Copy(dst, cr) //nolint:gosec // size-bounded by the source file
+	stop()
+	return n, err
 }
 
 // ---- compression-level mapping ---------------------------------------------

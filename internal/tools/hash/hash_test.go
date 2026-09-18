@@ -2,8 +2,10 @@ package hash
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/furkandedizkan/handy-tools/internal/tools"
@@ -321,5 +323,71 @@ func TestHashHonoursContextCancellation(t *testing.T) {
 	}
 	if terr.Code != tools.CodeAborted {
 		t.Fatalf("expected CodeAborted, got %q (%s)", terr.Code, terr.Message)
+	}
+}
+
+// TestVerifyWithCheckPathSandboxesEntries: the manifest names the files, so a
+// sandboxed caller (htoolsd) must vet every entry, not just the manifest —
+// otherwise a manifest inside the roots hashes, and so probes, any readable
+// file via an absolute or ../ entry. Non-regular files are refused too
+// (/dev/zero would never finish).
+func TestVerifyWithCheckPathSandboxesEntries(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	writeFile(t, filepath.Join(root, "in.txt"), "abc")
+	writeFile(t, filepath.Join(outside, "secret.txt"), "abc")
+	relOutside, err := filepath.Rel(root, filepath.Join(outside, "secret.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const d = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+	manifest := filepath.Join(root, "SHA256SUMS")
+	writeFile(t, manifest, d+"  in.txt\n"+
+		d+"  "+filepath.Join(outside, "secret.txt")+"\n"+
+		d+"  "+relOutside+"\n"+
+		d+"  /dev/null\n")
+
+	check := func(p string) (string, error) {
+		if !strings.HasPrefix(filepath.Clean(p), root+string(filepath.Separator)) {
+			return "", errors.New("outside allowed roots")
+		}
+		return p, nil
+	}
+	entries, terr := VerifyWith(context.Background(), manifest, AlgoSHA256, VerifyOptions{CheckPath: check})
+	if terr != nil {
+		t.Fatalf("verify: %v", terr)
+	}
+	if len(entries) != 4 {
+		t.Fatalf("want 4 entries, got %d", len(entries))
+	}
+	if !entries[0].OK {
+		t.Errorf("in-root entry should verify: %+v", entries[0])
+	}
+	for _, e := range entries[1:] {
+		if e.OK || e.Got != "" || e.Err == "" {
+			t.Errorf("entry %s escaped the sandbox: %+v", e.Path, e)
+		}
+	}
+}
+
+// TestVerifyWithSearchDirs: relative entries resolve against the first search
+// dir where they exist — the CLI passes [cwd, manifest dir] so a manifest
+// written from the cwd (`htools hash d/a.txt > d/SUMS`) verifies.
+func TestVerifyWithSearchDirs(t *testing.T) {
+	cwd := t.TempDir()
+	if err := os.Mkdir(filepath.Join(cwd, "d"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(cwd, "d", "a.txt"), "abc")
+	manifest := filepath.Join(cwd, "d", "SUMS")
+	writeFile(t, manifest, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad  d/a.txt\n")
+
+	if entries, _ := Verify(context.Background(), manifest, AlgoSHA256); len(entries) != 1 || entries[0].OK {
+		t.Fatalf("manifest-dir-only resolution should miss d/d/a.txt: %+v", entries)
+	}
+	entries, terr := VerifyWith(context.Background(), manifest, AlgoSHA256,
+		VerifyOptions{SearchDirs: []string{cwd, filepath.Dir(manifest)}})
+	if terr != nil || len(entries) != 1 || !entries[0].OK {
+		t.Fatalf("cwd-relative entry should verify: %+v, %v", entries, terr)
 	}
 }

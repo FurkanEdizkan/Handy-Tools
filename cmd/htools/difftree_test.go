@@ -10,9 +10,16 @@ import (
 	"github.com/furkandedizkan/handy-tools/internal/config"
 )
 
+// TestCmdDiffTreeUsageErrors: every usage / request error must exit 2, never
+// 1 — 1 is reserved for "trees differ", and scripts rely on the distinction
+// (`htools diff-tree a b || [ $? -eq 1 ] && echo changed`).
 func TestCmdDiffTreeUsageErrors(t *testing.T) {
 	ctx := context.Background()
 	cfg := config.Defaults()
+	file := filepath.Join(t.TempDir(), "f.txt")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	cases := []struct {
 		name string
 		args []string
@@ -21,11 +28,13 @@ func TestCmdDiffTreeUsageErrors(t *testing.T) {
 		{"one path", []string{"/tmp/a"}},
 		{"three paths", []string{"/tmp/a", "/tmp/b", "/tmp/c"}},
 		{"bad --by", []string{"--by", "galaxy", "/tmp/a", "/tmp/b"}},
+		{"unknown flag", []string{"--bogus", "/tmp/a", "/tmp/b"}},
+		{"root is a file", []string{file, t.TempDir()}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if code := cmdDiffTree(ctx, cfg, tc.args); code == 0 {
-				t.Errorf("expected non-zero exit for %s", tc.name)
+			if code := cmdDiffTree(ctx, cfg, tc.args); code != 2 {
+				t.Errorf("exit = %d for %s, want 2", code, tc.name)
 			}
 		})
 	}

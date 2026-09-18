@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -30,7 +31,7 @@ func cmdRename(ctx context.Context, _ config.Config, args []string) int {
 	asJSON := fs.Bool("json", false, "emit one JSON object per progress event")
 	positional, err := parseFlags(fs, args)
 	if err != nil {
-		return usageErr(os.Stderr, "rename", err.Error())
+		return flagErr(fs, err)
 	}
 	if len(positional) != 1 {
 		return usageErr(os.Stderr, "rename", "need exactly one directory")
@@ -38,8 +39,8 @@ func cmdRename(ctx context.Context, _ config.Config, args []string) int {
 	if *pattern == "" {
 		return usageErr(os.Stderr, "rename", "--pattern is required")
 	}
-	if *replace == "" {
-		return usageErr(os.Stderr, "rename", "--replace is required (use --replace '' if you really mean empty)")
+	if !flagWasSet(fs, "replace") {
+		return usageErr(os.Stderr, "rename", "--replace is required (pass --replace '' to delete the matched text)")
 	}
 	mode, ok := parseCollision(*collision)
 	if !ok {
@@ -82,11 +83,12 @@ func cmdRename(ctx context.Context, _ config.Config, args []string) int {
 	return streamProgress(ch, opts)
 }
 
-// runRenameDryRun prints the rename plan as `from -> to` lines (or as one
-// JSON object per row when --json is set later — for now plain text).
-// Returns 0 on a successful inspection regardless of whether any renames
-// would happen — the caller can grep the output to decide. When --strict is
-// set, preflight issues abort with exit 2 before any plan is printed.
+// runRenameDryRun prints the rename plan as `move  from -> to` / `skip  from`
+// lines, or with --json one {"kind":"plan",...} object per row plus a final
+// {"kind":"summary",...} — stdout then carries JSON lines only. Returns 0 on
+// a successful inspection regardless of whether any renames would happen —
+// the caller can grep the output to decide. When --strict is set, preflight
+// issues abort with exit 2 before any plan is printed.
 func runRenameDryRun(req rename.Request, opts progressOpts) int {
 	ins, terr := rename.Inspect(req)
 	if terr != nil {
@@ -96,17 +98,45 @@ func runRenameDryRun(req rename.Request, opts progressOpts) int {
 	if code := runPreflight(ins.Issues, opts); code != 0 {
 		return code
 	}
+	enc := json.NewEncoder(os.Stdout)
 	var moved int
 	for _, p := range ins.Plans {
+		action := "move"
 		if p.From == p.To {
-			fmt.Fprintf(os.Stdout, "skip  %s\n", p.From)
-			continue
+			action = "skip"
+		} else {
+			moved++
 		}
-		fmt.Fprintf(os.Stdout, "move  %s -> %s\n", p.From, p.To)
-		moved++
+		switch {
+		case opts.json:
+			_ = enc.Encode(renamePlanJSON{Kind: "plan", Action: action, From: p.From, To: p.To})
+		case action == "skip":
+			fmt.Fprintf(os.Stdout, "skip  %s\n", p.From)
+		default:
+			fmt.Fprintf(os.Stdout, "move  %s -> %s\n", p.From, p.To)
+		}
 	}
-	fmt.Fprintf(os.Stderr, "dry-run: %d planned, %d skipped\n", moved, len(ins.Plans)-moved)
+	skipped := len(ins.Plans) - moved
+	switch {
+	case opts.json:
+		_ = enc.Encode(renameSummaryJSON{Kind: "summary", Planned: moved, Skipped: skipped})
+	case !opts.quiet:
+		fmt.Fprintf(os.Stderr, "dry-run: %d planned, %d skipped\n", moved, skipped)
+	}
 	return 0
+}
+
+type renamePlanJSON struct {
+	Kind   string `json:"kind"`
+	Action string `json:"action"`
+	From   string `json:"from"`
+	To     string `json:"to"`
+}
+
+type renameSummaryJSON struct {
+	Kind    string `json:"kind"`
+	Planned int    `json:"planned"`
+	Skipped int    `json:"skipped"`
 }
 
 // parseCollision maps the --on-collision flag value to a rename.Collision.

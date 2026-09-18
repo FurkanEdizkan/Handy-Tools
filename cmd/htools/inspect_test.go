@@ -139,3 +139,27 @@ func TestCmdInspectGrepSkipsLargeEntries(t *testing.T) {
 		t.Errorf("oversized-skip exit = %d, want 1 (no matches because entry skipped)", code)
 	}
 }
+
+// TestCmdInspectExitCodesFollowErrorCodes: a missing archive is NOT_FOUND
+// (exit 2 per docs/FAILURE_HANDLING.md — it used to exit 1), and an archive
+// that stats but can't be read used to exit 0 with half the metadata missing.
+func TestCmdInspectExitCodesFollowErrorCodes(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+	if code := cmdInspect(ctx, config.Defaults(), []string{filepath.Join(dir, "missing.zip")}); code != 2 {
+		t.Errorf("missing archive exit = %d, want 2", code)
+	}
+
+	if os.Geteuid() == 0 {
+		t.Skip("running as root — file modes are bypassed, can't observe EACCES")
+	}
+	locked := filepath.Join(dir, "locked.zip")
+	writeTinyZip(t, locked, map[string]string{"a.txt": "x\n"})
+	if err := os.Chmod(locked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o644) })
+	if code := cmdInspect(ctx, config.Defaults(), []string{locked}); code != 2 {
+		t.Errorf("unreadable archive exit = %d, want 2", code)
+	}
+}
