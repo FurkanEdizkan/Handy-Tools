@@ -82,13 +82,14 @@ Format:
 Allowed `type`s: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`,
 `build`, `ci`, `chore`, `revert`.
 
-Common scopes: `image`, `archive`, `pdf`, `ui`, `server`, `api`, `config`,
-`mascot`, `ci`, `release`.
+Common scopes: `image`, `archive`, `pdf`, `cli`, `server`, `api`, `mcp`,
+`config`, `web`, `gui`, `ci`, `release`, `deps` (the full list lives in
+`.commitlintrc.yaml`; an unlisted scope is a warning, not a failure).
 
 Examples:
 
 - `feat(archive): detect multi-part RAR volumes`
-- `fix(ui): home page crashes on empty recent files list`
+- `fix(web): home page crashes on empty recent files list`
 - `docs: clarify system dependency table`
 
 Breaking changes use `!` and a `BREAKING CHANGE:` footer:
