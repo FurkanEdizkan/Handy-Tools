@@ -2,9 +2,9 @@ package http
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 
+	"github.com/furkandedizkan/handy-tools/internal/server"
 	"github.com/furkandedizkan/handy-tools/internal/tools"
 )
 
@@ -16,8 +16,9 @@ type errorEnvelope struct {
 }
 
 // writeError serializes err onto w with a status derived from the tool error
-// code. Non-tool errors (e.g. CheckPath rejections) become 400 BAD_REQUEST so
-// the client always sees the same envelope shape.
+// code. Every error is normalized through server.ToolError first, so the
+// client always sees the same envelope shape and the same code the gRPC and
+// MCP transports report.
 func writeError(w http.ResponseWriter, err error) {
 	status, env := classify(err)
 	w.Header().Set("Content-Type", "application/json")
@@ -25,20 +26,16 @@ func writeError(w http.ResponseWriter, err error) {
 	_ = json.NewEncoder(w).Encode(map[string]errorEnvelope{"error": env})
 }
 
+// classify maps err onto an HTTP status and envelope. *tools.Error values
+// (including CheckPath rejections, which are BAD_REQUEST) keep their code;
+// plain filesystem errors become NOT_FOUND / PERMISSION_DENIED; anything
+// else (malformed JSON, oversized body, ...) is BAD_REQUEST.
 func classify(err error) (int, errorEnvelope) {
-	var te *tools.Error
-	if errors.As(err, &te) {
-		return statusForCode(te.Code), errorEnvelope{
-			Code:    te.Code,
-			Message: te.Message,
-			Detail:  te.Detail,
-		}
-	}
-	// Plain Go errors — most often CheckPath rejections — collapse to
-	// BAD_REQUEST so the client sees one consistent envelope.
-	return http.StatusBadRequest, errorEnvelope{
-		Code:    tools.CodeBadRequest,
-		Message: err.Error(),
+	te := server.ToolError(err)
+	return statusForCode(te.Code), errorEnvelope{
+		Code:    te.Code,
+		Message: te.Message,
+		Detail:  te.Detail,
 	}
 }
 
