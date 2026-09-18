@@ -16,21 +16,39 @@ rules:
       - ci
       - chore
       - revert
+  # Warning-level only: an unlisted scope doesn't block a PR, it just nudges
+  # toward the shared vocabulary. Keep in sync with CONTRIBUTING.md.
   scope-enum:
     - 1
     - always
     - - image
       - archive
       - pdf
-      - ui
-      - mascot
+      - hash
+      - rename
+      - difftree
+      - stripmeta
+      - tools
+      - progress
+      - cli
+      - handy
       - server
       - api
+      - mcp
+      - queue
+      - proto
       - config
+      - web
+      - gui
+      - install
+      - buildinfo
+      - build
       - ci
       - release
       - deps
       - docs
+      - test
+      - lint
   subject-case:
     - 2
     - never

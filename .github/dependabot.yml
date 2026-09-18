@@ -1,8 +1,12 @@
 version: 2
 updates:
   # Go module dependencies. Grouped so weekly updates produce a small number
-  # of related PRs (one for grpc/proto, one for charmbracelet, one for golang.org/x,
-  # etc.) instead of one PR per package.
+  # of related PRs (one for grpc/proto, one for golang.org/x, etc.) instead of
+  # one PR per package.
+  #
+  # commit-message: `include: scope` appends "(deps)" to the prefix, so the
+  # prefix is the bare type — "chore" yields "chore(deps): …". A prefix of
+  # "chore(deps)" would double it up as "chore(deps)(deps): …".
   - package-ecosystem: gomod
     directory: "/"
     schedule:
@@ -10,20 +14,24 @@ updates:
     open-pull-requests-limit: 3
     target-branch: test
     commit-message:
-      prefix: "chore(deps)"
+      prefix: "chore"
       include: scope
     labels:
       - dependencies
       - go
+    ignore:
+      # grpc v1.84.0 lacks the fix for GO-2026-6443 (server panic on missing
+      # :authority / Host), which landed in v1.83.2 — hence the pin at
+      # v1.83.2. Only the exact release is skipped, so a fixed v1.84.x patch
+      # is still proposed. Drop this entry once go.mod is past v1.84.0.
+      - dependency-name: "google.golang.org/grpc"
+        versions: ["1.84.0"]
     groups:
       grpc:
         patterns:
           - "google.golang.org/grpc*"
           - "google.golang.org/protobuf*"
           - "google.golang.org/genproto*"
-      bubbletea:
-        patterns:
-          - "github.com/charmbracelet/*"
       goimage:
         patterns:
           - "golang.org/x/image*"
@@ -35,6 +43,27 @@ updates:
           - "golang.org/x/image*"
           - "golang.org/x/text*"
 
+  # The Svelte frontend in web/ (embedded by htoolsd and htools-gui). Minor
+  # and patch bumps land as one grouped PR; majors (e.g. tailwindcss 3 -> 4)
+  # arrive individually so each migration can be judged on its own.
+  - package-ecosystem: npm
+    directory: "/web"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    target-branch: test
+    commit-message:
+      prefix: "chore"
+      include: scope
+    labels:
+      - dependencies
+      - area/web
+    groups:
+      web:
+        update-types:
+          - minor
+          - patch
+
   # GitHub Actions used in our workflows. Grouped by publisher so action bumps
   # land as a small handful of PRs instead of one-per-action.
   - package-ecosystem: github-actions
@@ -44,7 +73,7 @@ updates:
     open-pull-requests-limit: 3
     target-branch: test
     commit-message:
-      prefix: "ci(deps)"
+      prefix: "ci"
       include: scope
     labels:
       - dependencies
