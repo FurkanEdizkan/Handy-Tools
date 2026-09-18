@@ -135,6 +135,13 @@ func Run(ctx context.Context, req Request) <-chan tools.Progress {
 
 		for i, src := range req.Sources {
 			if err := ctx.Err(); err != nil {
+				// A cancel is a batch failure too: with Rollback, undo what was
+				// already written. Each successful in-place restore renames its
+				// .handy-bak back over the source, so only snapshots whose
+				// restore failed (the sole copy of that original) remain.
+				if req.Rollback {
+					failures = append(failures, rb.Replay()...)
+				}
 				emit(tools.Progress{Completed: true, Err: &tools.Error{
 					Code: tools.CodeAborted, Message: "strip-meta canceled",
 				}, Failures: failures})
@@ -276,6 +283,11 @@ func convertOne(ctx context.Context, src, outPath string, target image.Format, o
 	var last tools.Progress
 	for ev := range ch {
 		last = ev
+	}
+	if !last.Completed {
+		// Convert drops its terminal event once ctx is cancelled, so the
+		// outcome is unknown: report it as aborted rather than success.
+		return &tools.Error{Code: tools.CodeAborted, Message: "strip-meta canceled"}
 	}
 	return last.Err
 }
