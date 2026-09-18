@@ -95,6 +95,17 @@ func streamProgress(ch <-chan tools.Progress, opts progressOpts) int {
 
 // finalize writes the terminal event's message and returns the exit code.
 func finalize(last tools.Progress, opts progressOpts) int {
+	if !last.Completed {
+		// Every tool ends its stream with a Completed event unless its context
+		// was cancelled (Ctrl-C / SIGTERM), in which case that event is
+		// dropped. Report the interruption rather than falling through to 0.
+		last = tools.Progress{Completed: true, Err: &tools.Error{
+			Code: tools.CodeAborted, Message: "interrupted before completion"}}
+		if opts.json {
+			_ = json.NewEncoder(os.Stdout).Encode(progressJSON{
+				Completed: true, ErrorCode: last.Err.Code, Message: last.Err.Message})
+		}
+	}
 	if last.Err != nil {
 		if !opts.json {
 			fmt.Fprintf(os.Stderr, "error: %s\n", last.Err.Error())

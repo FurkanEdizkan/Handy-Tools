@@ -33,9 +33,7 @@ type PreviewResult struct {
 func Preview(req PreviewRequest) (PreviewResult, error) {
 	img, err := decode(req.Source)
 	if err != nil {
-		return PreviewResult{}, &tools.Error{
-			Code: tools.ClassifyFSError(err), Message: "decode failed", Detail: err.Error(),
-		}
+		return PreviewResult{}, decodeError(err)
 	}
 	w, h := req.MaxWidth, req.MaxHeight
 	if w <= 0 && h <= 0 {

@@ -82,3 +82,37 @@ func TestHashHandlerVerifyMatchesManifest(t *testing.T) {
 		t.Fatalf("counts: OK=%d Failed=%d Missing=%d", res.OK, res.Failed, res.Missing)
 	}
 }
+
+// TestHashHandlerVerifySandboxesManifestEntries: only the manifest path used
+// to go through CheckPath, so a manifest inside the roots listing
+// /outside/secret (or ../outside/secret) returned that file's real digest.
+func TestHashHandlerVerifySandboxesManifestEntries(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	secret := filepath.Join(outside, "secret")
+	if err := os.WriteFile(secret, []byte("hello"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rel, err := filepath.Rel(root, secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const d = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+	manifest := filepath.Join(root, "SHA256SUMS")
+	if err := os.WriteFile(manifest, []byte(d+"  "+secret+"\n"+d+"  "+rel+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := &HashHandler{Opts: Options{AllowRoots: []string{root}}}
+	res, err := h.Verify(context.Background(), HashVerifyParams{Manifest: manifest, Algo: "sha256"})
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	for _, e := range res.Entries {
+		if e.OK || e.Got != "" {
+			t.Errorf("entry %s outside the roots was hashed: %+v", e.Path, e)
+		}
+	}
+	if res.OK != 0 || res.Missing != 2 {
+		t.Fatalf("counts: OK=%d Failed=%d Missing=%d, want 0/0/2", res.OK, res.Failed, res.Missing)
+	}
+}

@@ -22,10 +22,12 @@ Commands:
                        --quiet --json
 
   pack <src>...      Create one archive from one or more files/folders.
-                       --format zip|tar|tar.gz|tar.bz2|tar.zst|7z (required)
+                       --format zip|tar|tar.gz|tar.bz2|tar.zst|tar.xz|7z (required)
                        --output FILE          (required)
                        --compression-level N  1 fastest .. 9 smallest
                        --password STR         (7z only; pure-Go formats unsupported)
+                       --overwrite            replace an existing output (default:
+                                              write <stem>-1.<ext> alongside)
                        --quiet --json
 
   extract <archive>  Extract a single archive into a directory.
@@ -38,7 +40,8 @@ Commands:
   inspect <archive>  Show archive metadata (format, entry count, size). With
                      --grep <regex>, stream <path>:<line>:<text> matches by
                      reading entries without extracting them. Pure-Go formats
-                     only for --grep (zip / tar / tar.gz / tar.bz2 / tar.zst).
+                     only for --grep (zip / tar / tar.gz / tar.bz2 / tar.zst /
+                     tar.xz).
                        --grep REGEX           search inside text entries
                        --max-bytes N          skip entries larger than N (default 1 MiB)
                        --quiet --json
@@ -65,7 +68,7 @@ Commands:
                      changed files. Symlinks are not followed.
                        --by mtime|hash        compare strategy (default mtime)
                        --quiet --json
-                     Exit codes: 0 trees match, 1 trees differ, 2 I/O error.
+                     Exit codes: 0 trees match, 1 trees differ, 2 usage or I/O error.
 
   strip-meta <files>... Re-encode images, dropping EXIF / IPTC / XMP.
                        --in-place             overwrite source (default: write

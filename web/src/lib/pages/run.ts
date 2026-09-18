@@ -6,8 +6,15 @@
  * maps the picked files onto FileRef paths the /v1/* tool endpoints consume.
  */
 
-import { ApiError, type JobResponse } from '../api';
-import type { PickedFile } from './toolform';
+import {
+  ApiError,
+  type JobResponse,
+  type PdfMergeRequest,
+  type PdfSplitRequest,
+  type PdfToImageRequest,
+  type PdfToTextRequest,
+} from '../api';
+import type { PdfOp, PickedFile } from './toolform';
 
 /** dirOf returns the directory component of an absolute path. */
 export function dirOf(path: string): string {
@@ -126,11 +133,113 @@ export interface ResolvedSources {
  * resolveSources turns the user's picked files into server-side paths a tool
  * endpoint can run against. The Wails native picker hands back real absolute
  * paths, so the mapping is direct.
+ *
+ * A drag-and-drop File carries only a display name, never a filesystem path.
+ * Sending that bare name would make the server resolve it against its own
+ * working directory (and possibly act on a different file of the same name),
+ * so pathless files are rejected with a user-facing message instead.
  */
 export function resolveSources(files: PickedFile[]): ResolvedSources {
   if (files.length === 0) {
     throw new Error('no files selected');
   }
-  const sources = files.map((f) => ({ name: f.name, path: f.path ?? f.name }));
+  const pathless = files.filter((f) => !f.path).map((f) => f.name);
+  if (pathless.length > 0) {
+    throw new Error(
+      `Dropped files have no filesystem path in this build (${pathless.join(', ')}). ` +
+        'Remove them and add files with Browse instead.',
+    );
+  }
+  const sources = files.map((f) => ({ name: f.name, path: f.path as string }));
   return { sources, outputDir: dirOf(sources[0].path) };
+}
+
+export type ImageOutMode = 'default' | 'alongside' | 'custom';
+
+/**
+ * imageOutputDir picks the output directory for one image conversion.
+ * `alongside` writes next to that image's own source; `default` collects
+ * every output in the first source's folder; `custom` uses the typed path
+ * (falling back to `default` while it is blank).
+ */
+export function imageOutputDir(
+  mode: ImageOutMode,
+  sourcePath: string,
+  firstSourcePath: string,
+  customPath: string,
+): string {
+  if (mode === 'custom' && customPath.trim()) return customPath.trim();
+  if (mode === 'alongside') return dirOf(sourcePath);
+  return dirOf(firstSourcePath);
+}
+
+export interface PdfRunOptions {
+  splitEvery: number;
+  dpi: number;
+  renderFormat: 'PNG' | 'JPEG';
+  keepLayout: boolean;
+}
+
+export type PdfJobRequest =
+  | { kind: 'merge'; req: PdfMergeRequest }
+  | { kind: 'split'; req: PdfSplitRequest }
+  | { kind: 'render'; req: PdfToImageRequest }
+  | { kind: 'text'; req: PdfToTextRequest };
+
+/**
+ * buildPdfRequests maps a PDF form submission onto job requests. Merge is one
+ * job over every document; split / render / text are one job per document,
+ * each writing into `outDir` when set or else next to its own source.
+ */
+export function buildPdfRequests(
+  op: PdfOp,
+  sources: ResolvedSource[],
+  outDir: string,
+  opts: PdfRunOptions,
+): PdfJobRequest[] {
+  const override = outDir.trim().replace(/(.)[/\\]+$/, '$1');
+  const dirFor = (path: string): string => override || dirOf(path);
+  if (op === 'merge') {
+    return [
+      {
+        kind: 'merge',
+        req: {
+          sources: sources.map((s) => ({ path: s.path })),
+          output: { file: `${dirFor(sources[0].path)}/merged.pdf` },
+        },
+      },
+    ];
+  }
+  return sources.map((s): PdfJobRequest => {
+    const source = { path: s.path };
+    const dir = dirFor(s.path);
+    switch (op) {
+      case 'split':
+        return {
+          kind: 'split',
+          req: { source, pageRanges: [], everyN: opts.splitEvery, output: { directory: dir } },
+        };
+      case 'render':
+        return {
+          kind: 'render',
+          req: {
+            source,
+            pages: { from: 0, to: 0 },
+            dpi: opts.dpi,
+            targetFormat: opts.renderFormat,
+            output: { directory: dir },
+          },
+        };
+      default:
+        return {
+          kind: 'text',
+          req: {
+            source,
+            pages: { from: 0, to: 0 },
+            layout: opts.keepLayout,
+            output: { file: `${dir}/${stemOf(s.path)}.txt` },
+          },
+        };
+    }
+  });
 }

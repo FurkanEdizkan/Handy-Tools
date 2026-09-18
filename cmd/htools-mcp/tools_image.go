@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -157,8 +159,14 @@ func registerImageTools(srv *mcp.Server, h *handlers) {
 		// a strip-meta batch we want to keep each source in its own format.
 		// To preserve the per-format behaviour without duplicating the batch
 		// runner, group sources by detected source extension and submit one
-		// batch per group. For mixed batches this means several drains; for
-		// the common single-format case it's just one.
+		// batch per group. For mixed batches this means several BatchConvert
+		// runs folded into one result; for the common single-format case it's
+		// just one.
+		if len(in.Sources) == 0 {
+			return errorResult("image", "strip_meta", &tools.Error{
+				Code: tools.CodeBadRequest, Message: "image_strip_meta needs at least one source",
+			}), nil, nil
+		}
 		groups := map[image.Format][]string{}
 		for _, s := range in.Sources {
 			ext := ""
@@ -168,22 +176,45 @@ func registerImageTools(srv *mcp.Server, h *handlers) {
 			f := formatExt(ext)
 			groups[f] = append(groups[f], s)
 		}
-		// Single combined result; messages accumulate across batches.
+		// Walk the groups in a fixed order so the combined result is
+		// deterministic regardless of map iteration.
+		formats := make([]image.Format, 0, len(groups))
+		for f := range groups {
+			formats = append(formats, f)
+		}
+		slices.Sort(formats)
+
+		// One combined result: each group's terminal event is folded in
+		// (Failures merged, error recorded) rather than allowed to finalize
+		// the whole call, and a single terminal event is emitted at the end.
+		// The call is ok only if every group succeeded.
 		combined := drainProgress(ctx, "image", "strip_meta", func(emit func(tools.Progress) error) error {
-			for f, srcs := range groups {
+			var failures []tools.Failure
+			var groupErrs []*tools.Error
+			var summaries []string
+			for _, f := range formats {
+				srcs := groups[f]
 				if f == image.FormatUnspecified {
-					// Surface as an error progress event so the user sees which paths were skipped.
-					_ = emit(tools.Progress{
-						Tool: "image", Action: "strip_meta",
-						Level: tools.SeverityError,
-						Err: &tools.Error{
-							Code: tools.CodeUnsupportedInput, Message: "unrecognised image extension",
-							Detail: strings.Join(srcs, ", "),
-						},
+					// Unsupported extensions are a failed group: every file is
+					// listed in Failures so the caller sees which were skipped.
+					for _, src := range srcs {
+						failures = append(failures, tools.Failure{
+							Path: src, Code: tools.CodeUnsupportedInput, Message: "unrecognised image extension",
+						})
+					}
+					groupErrs = append(groupErrs, &tools.Error{
+						Code: tools.CodeUnsupportedInput, Message: "unrecognised image extension",
+						Detail: strings.Join(srcs, ", "),
 					})
+					if err := emit(tools.Progress{
+						Tool: "image", Action: "strip_meta", Level: tools.SeverityError,
+						Message: fmt.Sprintf("skipped %d file(s) with an unrecognised image extension", len(srcs)),
+					}); err != nil {
+						return err
+					}
 					continue
 				}
-				if err := h.Image.BatchConvert(ctx, server.BatchConvertParams{
+				err := h.Image.BatchConvert(ctx, server.BatchConvertParams{
 					Sources:      srcs,
 					TargetFormat: f,
 					Quality:      in.Quality,
@@ -191,12 +222,58 @@ func registerImageTools(srv *mcp.Server, h *handlers) {
 					MaxHeight:    0,
 					OutputDir:    in.OutputDir,
 					Overwrite:    in.Overwrite,
-				}, emit); err != nil {
+				}, func(p tools.Progress) error {
+					if !p.Completed {
+						return emit(p)
+					}
+					failures = append(failures, p.Failures...)
+					if p.Err != nil {
+						groupErrs = append(groupErrs, p.Err)
+					}
+					if msg := strings.TrimSpace(p.Message); msg != "" {
+						summaries = append(summaries, msg)
+					}
+					p.Completed = false
+					p.Failures = nil
+					return emit(p)
+				})
+				if err != nil {
 					return err
 				}
 			}
-			return nil
+			final := tools.Progress{
+				Tool: "image", Action: "strip_meta", Completed: true,
+				Level: tools.SeverityInfo, Message: strings.Join(summaries, "; "), Failures: failures,
+			}
+			if len(groupErrs) > 0 {
+				final.Level = tools.SeverityError
+				final.Err = combineGroupErrors(groupErrs)
+			}
+			return emit(final)
 		})
 		return combined, nil, nil
 	})
+}
+
+// combineGroupErrors folds the terminal errors of image_strip_meta's failed
+// format groups into one: the shared code when they agree (IO_ERROR
+// otherwise, as tools.CoalesceFailureCode does for per-file failures) and
+// every group's message.
+func combineGroupErrors(errs []*tools.Error) *tools.Error {
+	if len(errs) == 1 {
+		return errs[0]
+	}
+	code := errs[0].Code
+	msgs := make([]string, 0, len(errs))
+	for _, e := range errs {
+		if e.Code != code {
+			code = tools.CodeIO
+		}
+		msgs = append(msgs, e.Message)
+	}
+	return &tools.Error{
+		Code:    code,
+		Message: fmt.Sprintf("%d format group(s) failed", len(errs)),
+		Detail:  strings.Join(msgs, "; "),
+	}
 }

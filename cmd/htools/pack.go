@@ -24,7 +24,7 @@ func cmdPack(ctx context.Context, _ config.Config, args []string) int {
 	asJSON := fs.Bool("json", false, "emit one JSON object per progress event")
 	srcs, err := parseFlags(fs, args)
 	if err != nil {
-		return usageErr(os.Stderr, "pack", err.Error())
+		return flagErr(fs, err)
 	}
 	if len(srcs) == 0 {
 		return usageErr(os.Stderr, "pack", "need at least one source path")

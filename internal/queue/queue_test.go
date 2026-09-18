@@ -201,3 +201,48 @@ func TestListOrder(t *testing.T) {
 		}
 	}
 }
+
+// TestPerFileErrorDoesNotFailCompletedJob: batch tools attach Err to
+// non-terminal, per-file events and still finish successfully (partial
+// success; the failed files ride in the terminal Failures). Only the
+// terminal event decides the job's error.
+func TestPerFileErrorDoesNotFailCompletedJob(t *testing.T) {
+	q := New()
+	id := q.Enqueue("image", "batch-convert", func(_ context.Context, emit func(tools.Progress)) {
+		emit(tools.Progress{Level: tools.SeverityError, Message: "[1/2] bad.png: decode failed",
+			Err: &tools.Error{Code: tools.CodeIO, Message: "decode failed"}})
+		emit(tools.Progress{Completed: true, Message: "converted 1/2 image(s)",
+			Failures: []tools.Failure{{Path: "bad.png", Code: tools.CodeIO}}})
+	})
+	ch, err := q.Subscribe(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range ch { //nolint:revive // drain until the job completes
+	}
+	j := q.Get(id)
+	if j == nil || !j.Completed {
+		t.Fatalf("job not completed: %+v", j)
+	}
+	if j.Err != nil {
+		t.Fatalf("Err = %+v; a per-file error must not mark a successful job as failed", j.Err)
+	}
+}
+
+// TestTerminalErrorFailsJob is the counterpart: a terminal event carrying Err
+// is still recorded.
+func TestTerminalErrorFailsJob(t *testing.T) {
+	q := New()
+	id := q.Enqueue("image", "convert", func(_ context.Context, emit func(tools.Progress)) {
+		emit(tools.Progress{Completed: true, Err: &tools.Error{Code: tools.CodeNotFound, Message: "missing"}})
+	})
+	ch, err := q.Subscribe(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range ch { //nolint:revive // drain until the job completes
+	}
+	if j := q.Get(id); j == nil || j.Err == nil || j.Err.Code != tools.CodeNotFound {
+		t.Fatalf("job = %+v, want terminal NOT_FOUND recorded", j)
+	}
+}

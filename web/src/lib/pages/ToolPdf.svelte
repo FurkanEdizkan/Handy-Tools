@@ -4,8 +4,8 @@
   import RunStatus from '../components/RunStatus.svelte';
   import FolderPicker from '../components/FolderPicker.svelte';
   import { PDF_OPS, pdfFormReady, pdfSummary, type PdfOp, type PickedFile } from './toolform';
-  import { ApiError, api } from '../api';
-  import { runJob, resolveSources, stemOf } from './run';
+  import { api, type JobResponse } from '../api';
+  import { buildPdfRequests, runJob, resolveSources, type PdfJobRequest } from './run';
 
   let op = $state<PdfOp>('merge');
   let files = $state<PickedFile[]>([]);
@@ -38,46 +38,40 @@
     files = files.filter((_, i) => i !== index);
   }
 
+  function startPdfJob(r: PdfJobRequest): Promise<JobResponse> {
+    switch (r.kind) {
+      case 'split':
+        return api.pdfSplit(r.req);
+      case 'render':
+        return api.pdfToImage(r.req);
+      case 'text':
+        return api.pdfToText(r.req);
+      default:
+        return api.pdfMerge(r.req);
+    }
+  }
+
   async function run(): Promise<void> {
     if (!ready || running) return;
     let resolved;
     try {
       resolved = resolveSources(files);
     } catch (e) {
-      toastMsg = e instanceof ApiError ? e.message : 'Could not start the job.';
+      toastMsg = e instanceof Error ? e.message : 'Could not start the job.';
       toastTone = 'error';
       toastVisible = true;
       return;
     }
-    const first = resolved.sources[0].path;
-    const dir = outDir.trim() || resolved.outputDir;
-    running = true;
-    const outcome = await runJob(() => {
-      switch (op) {
-        case 'split':
-          return api.pdfSplit({ source: { path: first }, pageRanges: [], everyN: splitEvery, output: { directory: dir } });
-        case 'render':
-          return api.pdfToImage({
-            source: { path: first },
-            pages: { from: 0, to: 0 },
-            dpi,
-            targetFormat: renderFormat,
-            output: { directory: dir },
-          });
-        case 'text':
-          return api.pdfToText({
-            source: { path: first },
-            pages: { from: 0, to: 0 },
-            layout: keepLayout,
-            output: { file: `${dir}/${stemOf(first)}.txt` },
-          });
-        default:
-          return api.pdfMerge({
-            sources: resolved.sources.map((s) => ({ path: s.path })),
-            output: { file: `${dir}/merged.pdf` },
-          });
-      }
+    // Merge is one job over every document; split / render / text run one
+    // job per document so none of the picked files is silently skipped.
+    const requests = buildPdfRequests(op, resolved.sources, outDir, {
+      splitEvery,
+      dpi,
+      renderFormat,
+      keepLayout,
     });
+    running = true;
+    const outcome = await runJob(() => Promise.all(requests.map(startPdfJob)));
     running = false;
     if (outcome.ok) activeJobIds = outcome.jobIds;
     toastMsg = outcome.message;

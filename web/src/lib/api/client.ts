@@ -207,12 +207,15 @@ export class ApiClient {
   /**
    * Subscribe to the all-jobs lifecycle stream (GET /v1/jobs/events). Each
    * frame is a JobSummary snapshot. Unlike subscribeJob this stream does not
-   * replay history — pair it with fetchJobs for the initial state. Returns an
-   * AbortController that closes the EventSource when aborted.
+   * replay history — pair it with fetchJobs for the initial state, and again
+   * after a reconnect (onOpen following onError), since frames sent while the
+   * EventSource was reconnecting are lost. Returns an AbortController that
+   * closes the EventSource when aborted.
    */
   subscribeJobs(
     onEvent: (event: JobSummary) => void,
     onError?: () => void,
+    onOpen?: () => void,
   ): AbortController {
     const es = new EventSource(`${this.baseUrl}/v1/jobs/events`);
     const ac = new AbortController();
@@ -228,6 +231,9 @@ export class ApiClient {
 
     if (onError) {
       es.onerror = onError;
+    }
+    if (onOpen) {
+      es.onopen = onOpen;
     }
 
     ac.signal.addEventListener('abort', () => es.close(), { once: true });

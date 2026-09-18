@@ -43,12 +43,7 @@ func (h *HashHandler) Run(ctx context.Context, p HashRunParams, emit func(tools.
 	}
 	algo, _ := hash.ParseAlgo(p.Algo)
 	ch := hash.Run(ctx, hash.Request{Sources: srcs, Algo: algo, Parallelism: p.Parallelism})
-	for prog := range ch {
-		if err := emit(prog); err != nil {
-			return err
-		}
-	}
-	return nil
+	return forwardProgress(ctx, ch, emit)
 }
 
 // Inspect is the dry-run / preflight for Run: it path-validates every source
@@ -97,7 +92,10 @@ func (h *HashHandler) Verify(ctx context.Context, p HashVerifyParams) (*HashVeri
 		return nil, err
 	}
 	algo, _ := hash.ParseAlgo(p.Algo)
-	entries, terr := hash.Verify(ctx, manifest, algo)
+	// Every manifest entry goes through the same sandbox as the manifest
+	// itself: the manifest names the files, so without this a manifest inside
+	// the roots could hash (and so probe) any file the daemon can read.
+	entries, terr := hash.VerifyWith(ctx, manifest, algo, hash.VerifyOptions{CheckPath: h.Opts.CheckPath})
 	if terr != nil {
 		return nil, terr
 	}

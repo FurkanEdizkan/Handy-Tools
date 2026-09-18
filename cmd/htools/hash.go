@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/furkandedizkan/handy-tools/internal/config"
@@ -32,7 +33,7 @@ func cmdHash(ctx context.Context, _ config.Config, args []string) int {
 	asJSON := fs.Bool("json", false, "emit one JSON object per file / verify-entry")
 	positional, err := parseFlags(fs, args)
 	if err != nil {
-		return usageErr(os.Stderr, "hash", err.Error())
+		return flagErr(fs, err)
 	}
 	algo, ok := hash.ParseAlgo(*algoStr)
 	if !ok {
@@ -71,7 +72,10 @@ func cmdHash(ctx context.Context, _ config.Config, args []string) int {
 // runHash computes digests for every source path via hash.Run, which fans
 // the work out across runtime.GOMAXPROCS(0) goroutines. Prints results in
 // canonical `<digest>  <path>` format (two spaces) or as one JSON object
-// per file when --json is set. Exits 1 if any file failed; 0 otherwise.
+// per file when --json is set, followed in JSON mode by a terminal
+// {"completed":true,...} line whose "failures" lists every file that could
+// not be hashed. Exits 1 if any file failed (like sha256sum), 2 when the
+// run was interrupted, 0 otherwise.
 //
 // Output order is per-file completion order, not source-list order — the
 // parallel worker pool means smaller files print first when batched with
@@ -79,23 +83,37 @@ func cmdHash(ctx context.Context, _ config.Config, args []string) int {
 func runHash(ctx context.Context, sources []string, algo hash.Algo, quiet, asJSON bool) int {
 	enc := json.NewEncoder(os.Stdout)
 	var perFileFailed int
+	var completed bool
 	for ev := range hash.Run(ctx, hash.Request{Sources: sources, Algo: algo}) {
-		// Terminal event with a structured Err: surface and exit.
-		if ev.Completed && ev.Err != nil {
-			fmt.Fprintf(os.Stderr, "hash: %s\n", ev.Err.Message)
-			return exitCode(ev.Err)
-		}
-		// Terminal success: print the summary line on stderr.
 		if ev.Completed {
-			if !quiet {
+			completed = true
+			if asJSON {
+				_ = enc.Encode(progressJSON{
+					Tool: ev.Tool, Action: ev.Action, Completed: true, Message: ev.Message,
+					ErrorCode: errCode(ev.Err), ErrorDetail: errDetail(ev.Err),
+					Failures: failuresJSON(ev.Failures),
+				})
+			}
+			// Terminal event with a structured Err: surface and exit.
+			if ev.Err != nil {
+				if !asJSON {
+					fmt.Fprintf(os.Stderr, "hash: %s\n", ev.Err.Message)
+				}
+				return exitCode(ev.Err)
+			}
+			// Terminal success: print the summary line on stderr.
+			if !quiet && !asJSON {
 				fmt.Fprintf(os.Stderr, "hash: %s\n", ev.Message)
 			}
 			continue
 		}
-		// Per-file failure (SeverityError, not Completed).
+		// Per-file failure (SeverityError, not Completed). JSON consumers get
+		// it from the terminal line's failures list instead.
 		if ev.Level == tools.SeverityError {
 			perFileFailed++
-			fmt.Fprintf(os.Stderr, "hash: %s\n", ev.Message)
+			if !asJSON {
+				fmt.Fprintf(os.Stderr, "hash: %s\n", ev.Message)
+			}
 			continue
 		}
 		// Per-file success: ev.Message already has the `<digest>  <path>` shape.
@@ -108,6 +126,11 @@ func runHash(ctx context.Context, sources []string, algo hash.Algo, quiet, asJSO
 		} else {
 			fmt.Println(ev.Message)
 		}
+	}
+	if !completed {
+		// Cancelled (Ctrl-C): the terminal event was dropped, so the digests
+		// printed so far are not the full set.
+		return finalize(tools.Progress{}, progressOpts{quiet: quiet, json: asJSON})
 	}
 	if perFileFailed > 0 {
 		return 1
@@ -129,7 +152,15 @@ func parseHashLine(msg string) (digest, path string, ok bool) {
 // runVerify reads a manifest and reports OK / FAILED per entry. Exits 1 on
 // the first mismatch / per-entry error; 0 when every row matched.
 func runVerify(ctx context.Context, manifestPath string, algo hash.Algo, quiet, asJSON bool) int {
-	entries, terr := hash.Verify(ctx, manifestPath, algo)
+	// Relative entries resolve like `sha256sum -c` (against the working
+	// directory) so `htools hash d/a.txt > d/SUMS; htools hash --check d/SUMS`
+	// round-trips; the manifest's own directory is the fallback, so a
+	// manifest of bare names still verifies when run from elsewhere.
+	dirs := []string{filepath.Dir(manifestPath)}
+	if cwd, err := os.Getwd(); err == nil {
+		dirs = []string{cwd, filepath.Dir(manifestPath)}
+	}
+	entries, terr := hash.VerifyWith(ctx, manifestPath, algo, hash.VerifyOptions{SearchDirs: dirs})
 	if terr != nil {
 		fmt.Fprintf(os.Stderr, "hash --check: %s\n", terr.Message)
 		return exitCode(terr)

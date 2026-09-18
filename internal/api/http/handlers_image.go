@@ -111,19 +111,18 @@ func parseImageFormat(s string) (image.Format, bool) {
 	return image.FormatUnspecified, false
 }
 
-// failureProgress wraps a non-tool error into a terminal Progress so SSE
+// failureProgress wraps a handler error into a terminal Progress so SSE
 // subscribers receive a structured failure instead of a silent close. The
-// queue's emit stamps JobID, so it is not set here.
+// error is normalized via server.ToolError so an async job reports the same
+// code as a synchronous endpoint (e.g. BAD_REQUEST for a CheckPath
+// rejection, not IO_ERROR). The queue's emit stamps JobID, so it is not set
+// here.
 func failureProgress(tool, action string, err error) tools.Progress {
-	te, ok := err.(*tools.Error)
-	if !ok {
-		te = &tools.Error{Code: tools.CodeIO, Message: err.Error()}
-	}
 	return tools.Progress{
 		Tool:      tool,
 		Action:    action,
 		Level:     tools.SeverityError,
 		Completed: true,
-		Err:       te,
+		Err:       server.ToolError(err),
 	}
 }

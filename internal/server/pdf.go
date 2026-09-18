@@ -35,12 +35,7 @@ func (h *PDFHandler) ToImage(ctx context.Context, p PDFToImageParams, emit func(
 		OutputDir: out,
 		JPEG:      p.JPEG,
 	})
-	for prog := range ch {
-		if err := emit(prog); err != nil {
-			return err
-		}
-	}
-	return nil
+	return forwardProgress(ctx, ch, emit)
 }
 
 type PDFToTextParams struct {
@@ -69,12 +64,7 @@ func (h *PDFHandler) ToText(ctx context.Context, p PDFToTextParams, emit func(to
 		Layout:     p.Layout,
 		OutputFile: out,
 	})
-	for prog := range ch {
-		if err := emit(prog); err != nil {
-			return err
-		}
-	}
-	return nil
+	return forwardProgress(ctx, ch, emit)
 }
 
 type PDFMergeParams struct {
@@ -96,12 +86,7 @@ func (h *PDFHandler) Merge(ctx context.Context, p PDFMergeParams, emit func(tool
 		return err
 	}
 	ch := pdf.Merge(ctx, pdf.MergeRequest{Sources: srcs, OutputFile: out})
-	for prog := range ch {
-		if err := emit(prog); err != nil {
-			return err
-		}
-	}
-	return nil
+	return forwardProgress(ctx, ch, emit)
 }
 
 // PDFSplitParams drives PDFHandler.Split. PageRanges and EveryN are the two
@@ -129,10 +114,5 @@ func (h *PDFHandler) Split(ctx context.Context, p PDFSplitParams, emit func(tool
 		EveryN:     p.EveryN,
 		OutputDir:  out,
 	})
-	for prog := range ch {
-		if err := emit(prog); err != nil {
-			return err
-		}
-	}
-	return nil
+	return forwardProgress(ctx, ch, emit)
 }

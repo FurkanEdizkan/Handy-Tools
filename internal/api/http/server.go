@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"mime"
 	"net"
 	"net/http"
 	"time"
@@ -123,11 +124,35 @@ func (s *Server) routes() *http.ServeMux {
 
 // decodeJSON parses the request body into v with a strict reader: extra fields
 // are tolerated (forward-compat for frontends) but bodies larger than 1 MiB are
-// refused so a misbehaving client can't OOM the server.
+// refused so a misbehaving client can't OOM the server. The body must be
+// declared as JSON — see requireJSON.
 func decodeJSON(r *http.Request, v any) error {
+	if err := requireJSON(r); err != nil {
+		return err
+	}
 	const limit = 1 << 20
 	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, limit))
 	return dec.Decode(v)
+}
+
+// requireJSON rejects a request whose Content-Type is not application/json
+// (parameters such as charset and any letter case are fine). This is the
+// CSRF guard for the state-changing endpoints: a cross-origin page can only
+// send "simple" requests (text/plain, form encodings) without a CORS
+// preflight, and the server never answers a preflight, so demanding the JSON
+// media type means a drive-by page cannot start jobs on a local htoolsd.
+// Every endpoint that calls this requires a JSON body anyway, so a missing
+// Content-Type is rejected too rather than special-cased.
+func requireJSON(r *http.Request) error {
+	ct := r.Header.Get("Content-Type")
+	if mt, _, err := mime.ParseMediaType(ct); err == nil && mt == "application/json" {
+		return nil
+	}
+	return &tools.Error{
+		Code:    tools.CodeBadRequest,
+		Message: "Content-Type must be application/json",
+		Detail:  ct,
+	}
 }
 
 // writeJSON serializes v with the given status code.

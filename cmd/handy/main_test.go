@@ -3,6 +3,10 @@ package main
 import (
 	"bytes"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -138,4 +142,44 @@ func equalArgs(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// TestHtoolsVerbsMatchDispatch parses cmd/htools/main.go and checks that every
+// verb its dispatch() switch accepts is routed by handy. `inspect` was missing,
+// so `handy inspect x.zip` printed "unknown subcommand" while `htools inspect`
+// worked.
+func TestHtoolsVerbsMatchDispatch(t *testing.T) {
+	file, err := parser.ParseFile(token.NewFileSet(), filepath.Join("..", "htools", "main.go"), nil, 0)
+	if err != nil {
+		t.Fatalf("parse cmd/htools/main.go: %v", err)
+	}
+	var verbs []string
+	ast.Inspect(file, func(n ast.Node) bool {
+		fn, ok := n.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "dispatch" {
+			return true
+		}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			if cc, ok := n.(*ast.CaseClause); ok {
+				for _, e := range cc.List {
+					if lit, ok := e.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+						verbs = append(verbs, strings.Trim(lit.Value, `"`))
+					}
+				}
+			}
+			return true
+		})
+		return false
+	})
+	if len(verbs) == 0 {
+		t.Fatal("found no case labels in cmd/htools dispatch()")
+	}
+	for _, v := range verbs {
+		if strings.HasPrefix(v, "-") || v == "help" || v == "version" {
+			continue // handy answers these itself
+		}
+		if !htoolsVerbs[v] {
+			t.Errorf("htools verb %q is not routed by handy (add it to htoolsVerbs and helpText)", v)
+		}
+	}
 }

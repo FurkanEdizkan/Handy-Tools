@@ -190,6 +190,7 @@ describe('ApiClient.subscribeJobs', () => {
     url: string;
     onmessage: ((e: MessageEvent<string>) => void) | null = null;
     onerror: (() => void) | null = null;
+    onopen: (() => void) | null = null;
     closed = false;
     constructor(url: string) {
       this.url = url;
@@ -221,5 +222,20 @@ describe('ApiClient.subscribeJobs', () => {
 
     ac.abort();
     expect(es?.closed).toBe(true);
+  });
+
+  it('forwards transport errors and (re)connects to the optional callbacks', () => {
+    vi.stubGlobal('EventSource', FakeEventSource);
+    const client = new ApiClient();
+    const onError = vi.fn();
+    const onOpen = vi.fn();
+    client.subscribeJobs(() => {}, onError, onOpen);
+
+    const es = FakeEventSource.last;
+    es?.onopen?.();
+    es?.onerror?.();
+    es?.onopen?.();
+    expect(onOpen).toHaveBeenCalledTimes(2);
+    expect(onError).toHaveBeenCalledOnce();
   });
 });

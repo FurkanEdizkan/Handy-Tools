@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -22,6 +23,8 @@ func TestClassifyFSError(t *testing.T) {
 		{"wrapped ErrPermission", fmt.Errorf("open foo: %w", fs.ErrPermission), CodePermissionDenied},
 		{"wrapped ErrNotExist", fmt.Errorf("stat foo: %w", fs.ErrNotExist), CodeNotFound},
 		{"double-wrapped ErrPermission", fmt.Errorf("outer: %w", fmt.Errorf("inner: %w", fs.ErrPermission)), CodePermissionDenied},
+		{"context canceled", context.Canceled, CodeAborted},
+		{"wrapped deadline", fmt.Errorf("copy: %w", context.DeadlineExceeded), CodeAborted},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

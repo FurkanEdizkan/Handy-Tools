@@ -36,7 +36,7 @@ type Job struct {
 	Action    string // "convert" | "extract" | "merge" | ...
 	StartedAt time.Time
 	Completed bool           // the Runner has returned
-	Err       *tools.Error   // last error reported via Progress, if any
+	Err       *tools.Error   // error carried by the terminal (Completed) Progress, if any
 	Progress  tools.Progress // most recent progress snapshot
 }
 
@@ -66,11 +66,14 @@ func (e *jobEntry) snapshot() Job {
 }
 
 // append records p, refreshes the snapshot, and wakes parked subscribers.
+// Only a terminal (Completed) event sets the job's Err: batch tools attach
+// Err to non-terminal per-file events and can still finish successfully,
+// with the failed files listed in the terminal event's Failures.
 func (e *jobEntry) append(p tools.Progress) {
 	e.mu.Lock()
 	e.events = append(e.events, p)
 	e.meta.Progress = p
-	if p.Err != nil {
+	if p.Completed && p.Err != nil {
 		e.meta.Err = p.Err
 	}
 	waiters := e.waiters
@@ -82,10 +85,15 @@ func (e *jobEntry) append(p tools.Progress) {
 }
 
 // complete marks the job finished; subscribers drain history then return.
+// A Runner that returns without ever emitting a Completed event has its
+// final event's error, if any, recorded as the job's outcome.
 func (e *jobEntry) complete() {
 	e.mu.Lock()
 	e.done = true
 	e.meta.Completed = true
+	if e.meta.Err == nil && !e.meta.Progress.Completed && e.meta.Progress.Err != nil {
+		e.meta.Err = e.meta.Progress.Err
+	}
 	waiters := e.waiters
 	e.waiters = nil
 	e.mu.Unlock()

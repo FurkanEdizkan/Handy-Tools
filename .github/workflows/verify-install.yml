@@ -57,8 +57,9 @@ jobs:
         run: |
           set -eu
           export PATH="$HOME/.local/bin:$PATH"
-          htools --version
-          htoolsd --version
           VER="${HANDY_TOOLS_VERSION#v}"
-          htools --version | grep -q "$VER" || { echo "::error::version mismatch — expected $VER in htools --version"; exit 1; }
-          htoolsd --version | grep -q "$VER" || { echo "::error::version mismatch — expected $VER in htoolsd --version"; exit 1; }
+          # Every binary in the default release archive (see .goreleaser.yaml).
+          for bin in handy htools htoolsd htools-mcp; do
+            "$bin" --version </dev/null
+            "$bin" --version </dev/null | grep -q "$VER" || { echo "::error::version mismatch — expected $VER in $bin --version"; exit 1; }
+          done

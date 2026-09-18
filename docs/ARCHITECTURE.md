@@ -90,6 +90,13 @@ GET  /v1/jobs/{id}/events         → text/event-stream of Progress
 GET  /v1/sysdep                   → 200 [SysdepResult, ...]
 ```
 
+Every POST/PATCH body must be sent as `Content-Type: application/json`
+(parameters such as `; charset=utf-8` are fine); anything else is a 400
+`BAD_REQUEST`. That forces a CORS preflight — which is never granted — so a
+web page open in the same browser can't drive the local daemon with a
+"simple" cross-site `text/plain` POST. With curl, pass
+`-H 'Content-Type: application/json'`.
+
 ### `internal/queue`
 
 Owns the live `Job` list and per-job `tools.Progress` fan-out. Consumed by

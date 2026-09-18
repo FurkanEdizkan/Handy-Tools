@@ -144,15 +144,19 @@ func looksBinary(b []byte) bool {
 func parseUnified(raw string) []FileDiffLine {
 	out := make([]FileDiffLine, 0, 64)
 	aLine, bLine := 0, 0
+	inHunk := false
 	for _, line := range strings.Split(raw, "\n") {
 		if line == "" {
 			continue
 		}
 		switch {
-		case strings.HasPrefix(line, "--- "), strings.HasPrefix(line, "+++ "):
-			// File headers; we don't need them — the row already names the file.
+		case !inHunk && (strings.HasPrefix(line, "--- ") || strings.HasPrefix(line, "+++ ")):
+			// File headers; we don't need them — the row already names the
+			// file. Only before the first hunk: inside one, "--- x" is a
+			// removed "-- x" line (an SQL/Lua comment) and "+++ x" an added one.
 			continue
 		case strings.HasPrefix(line, "@@"):
+			inHunk = true
 			aLine, bLine = parseHunkHeader(line)
 			out = append(out, FileDiffLine{Kind: FileDiffHunk, Text: line})
 		case strings.HasPrefix(line, "+"):

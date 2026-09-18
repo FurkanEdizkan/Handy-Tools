@@ -19,6 +19,7 @@ import (
 	"github.com/ulikunitz/xz"
 
 	"github.com/furkandedizkan/handy-tools/internal/config"
+	"github.com/furkandedizkan/handy-tools/internal/tools"
 	"github.com/furkandedizkan/handy-tools/internal/tools/archive"
 )
 
@@ -35,7 +36,7 @@ func cmdInspect(ctx context.Context, _ config.Config, args []string) int {
 	asJSON := fs.Bool("json", false, "emit metadata or matches as JSON")
 	srcs, err := parseFlags(fs, args)
 	if err != nil {
-		return usageErr(os.Stderr, "inspect", err.Error())
+		return flagErr(fs, err)
 	}
 	if len(srcs) != 1 {
 		return usageErr(os.Stderr, "inspect", "need exactly one archive path")
@@ -43,9 +44,16 @@ func cmdInspect(ctx context.Context, _ config.Config, args []string) int {
 	source := srcs[0]
 
 	ins, err := archive.Inspect(ctx, source)
+	if err == nil && len(ins.Issues) > 0 {
+		err = errors.New(ins.Issues[0].Detail) // e.g. stats fine but unreadable
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "inspect: %v\n", err)
-		return 1
+		code := tools.CodeIO
+		if ins != nil && len(ins.Issues) > 0 {
+			code = ins.Issues[0].Code
+		}
+		return exitCode(&tools.Error{Code: code})
 	}
 
 	if *pattern == "" {
@@ -108,7 +116,7 @@ func printInspection(source string, ins *archive.Inspection, asJSON bool) int {
 
 // grepArchive iterates entries in the archive and prints regex matches as
 // `<path>:<line>:<text>`. Pure-Go formats only (zip / tar / tar.gz /
-// tar.bz2 / tar.zst). RAR and 7z entries emit a single skip-warning since
+// tar.bz2 / tar.zst / tar.xz). RAR and 7z entries emit a single skip-warning since
 // the unrar/7z binaries don't expose per-entry stream readers cleanly.
 func grepArchive(source string, ins *archive.Inspection, re *regexp.Regexp, maxBytes int64, quiet, asJSON bool) int {
 	switch ins.Format {

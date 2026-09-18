@@ -560,3 +560,111 @@ func mapKeys(m map[string]any) []string {
 	}
 	return keys
 }
+
+// TestE2E_ArchiveCompressRejectsUnknownFormat: an explicit but unrecognized
+// format is a BAD_REQUEST (matching the HTTP transport), not a silent
+// fallback to inferring the format from the output extension.
+func TestE2E_ArchiveCompressRejectsUnknownFormat(t *testing.T) {
+	client := newMCPClient(t, "/")
+	out := filepath.Join(t.TempDir(), "backup.tar")
+	res := client.callTool(t, "archive_compress", map[string]any{
+		"sources": []string{mustAbs(t, "testdata/hello.txt")},
+		"output":  out,
+		"format":  "tar.gzip",
+	})
+	if !res.IsError || res.Structured["error_code"] != "BAD_REQUEST" {
+		t.Fatalf("want BAD_REQUEST error, got isError=%v code=%v\n%s", res.IsError, res.Structured["error_code"], res.Text)
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Fatalf("archive written despite the unknown format (stat err=%v)", err)
+	}
+}
+
+// TestE2E_ArchiveCompressTarXz: format "tar.xz" must produce an xz stream even
+// when the output name doesn't say so — it used to be ignored and a plain tar
+// written instead.
+func TestE2E_ArchiveCompressTarXz(t *testing.T) {
+	client := newMCPClient(t, "/")
+	out := filepath.Join(t.TempDir(), "backup.tar")
+	res := client.callTool(t, "archive_compress", map[string]any{
+		"sources": []string{mustAbs(t, "testdata/hello.txt")},
+		"output":  out,
+		"format":  "tar.xz",
+	})
+	if res.IsError {
+		t.Fatalf("archive_compress error:\n%s", res.Text)
+	}
+	b, err := os.ReadFile(out) //nolint:gosec // path is under t.TempDir
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	xzMagic := []byte{0xFD, '7', 'z', 'X', 'Z', 0x00}
+	if !bytes.HasPrefix(b, xzMagic) {
+		n := min(len(b), 6)
+		t.Fatalf("output is not xz: first bytes %x", b[:n])
+	}
+}
+
+// TestE2E_StripMetaReportsGroupFailures: image_strip_meta splits sources into
+// one batch per format; a failure in any group (or an unsupported extension)
+// must fail the combined result and appear in its Failures — it used to
+// report ok whenever some other group succeeded.
+func TestE2E_StripMetaReportsGroupFailures(t *testing.T) {
+	client := newMCPClient(t, "/")
+	dir := t.TempDir()
+	png, err := os.ReadFile(mustAbs(t, "testdata/sample.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	good := filepath.Join(dir, "good.png")
+	broken := filepath.Join(dir, "broken.jpg")
+	unknown := filepath.Join(dir, "notes.xyz")
+	for p, b := range map[string][]byte{good: png, broken: []byte("not a jpeg"), unknown: []byte("x")} {
+		if err := os.WriteFile(p, b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := filepath.Join(dir, "out")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	res := client.callTool(t, "image_strip_meta", map[string]any{
+		"sources":    []string{good, broken, unknown},
+		"output_dir": out,
+		"overwrite":  true,
+	})
+	if !res.IsError || res.Structured["ok"] == true {
+		t.Fatalf("want a failed result, got isError=%v ok=%v\n%s", res.IsError, res.Structured["ok"], res.Text)
+	}
+	failed := map[string]string{}
+	fl, _ := res.Structured["failures"].([]any)
+	for _, f := range fl {
+		m, _ := f.(map[string]any)
+		p, _ := m["path"].(string)
+		c, _ := m["code"].(string)
+		failed[p] = c
+	}
+	if _, ok := failed[broken]; !ok {
+		t.Errorf("broken.jpg missing from failures: %v", failed)
+	}
+	if failed[unknown] != "UNSUPPORTED_INPUT" {
+		t.Errorf("notes.xyz failure = %q, want UNSUPPORTED_INPUT (failures: %v)", failed[unknown], failed)
+	}
+	if _, ok := failed[good]; ok {
+		t.Errorf("good.png should not be a failure: %v", failed)
+	}
+	if _, err := os.Stat(filepath.Join(out, "good.png")); err != nil {
+		t.Errorf("good.png was not processed: %v", err)
+	}
+
+	// Positive control: a single clean group is ok.
+	res = client.callTool(t, "image_strip_meta", map[string]any{
+		"sources":    []string{good},
+		"output_dir": out,
+		"overwrite":  true,
+	})
+	if res.IsError || res.Structured["ok"] != true {
+		t.Fatalf("clean batch: isError=%v ok=%v\n%s", res.IsError, res.Structured["ok"], res.Text)
+	}
+}

@@ -27,16 +27,23 @@ func cmdDiffTree(ctx context.Context, _ config.Config, args []string) int {
 	by := fs.String("by", "mtime", "compare strategy: mtime (size + mtime) | hash (SHA256 content)")
 	quiet := fs.Bool("quiet", false, "suppress the trailing summary on stderr")
 	asJSON := fs.Bool("json", false, "emit one JSON object per diff entry and a final summary object")
+	// Every failure below exits 2, never 1: exit 1 means "trees differ", so a
+	// typo'd flag or a bad root must not read as a difference to a script.
 	positional, err := parseFlags(fs, args)
 	if err != nil {
-		return usageErr(os.Stderr, "diff-tree", err.Error())
+		if code := flagErr(fs, err); code != 0 {
+			return 2
+		}
+		return 0
 	}
 	if len(positional) != 2 {
-		return usageErr(os.Stderr, "diff-tree", "need exactly two paths: <a> <b>")
+		usageErr(os.Stderr, "diff-tree", "need exactly two paths: <a> <b>")
+		return 2
 	}
 	mode, ok := difftree.ParseMode(*by)
 	if !ok {
-		return usageErr(os.Stderr, "diff-tree", fmt.Sprintf("unknown --by %q (want mtime or hash)", *by))
+		usageErr(os.Stderr, "diff-tree", fmt.Sprintf("unknown --by %q (want mtime or hash)", *by))
+		return 2
 	}
 
 	diffs, terr := difftree.Inspect(ctx, difftree.Request{
@@ -53,7 +60,7 @@ func cmdDiffTree(ctx context.Context, _ config.Config, args []string) int {
 		} else {
 			fmt.Fprintf(os.Stderr, "diff-tree: %s\n", terr.Error())
 		}
-		return exitCode(terr)
+		return 2
 	}
 
 	var added, removed, changed int

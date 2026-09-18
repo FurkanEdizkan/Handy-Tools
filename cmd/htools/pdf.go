@@ -39,7 +39,7 @@ func cmdPDFMerge(ctx context.Context, args []string) int {
 	asJSON := fs.Bool("json", false, "emit one JSON object per progress event")
 	srcs, err := parseFlags(fs, args)
 	if err != nil {
-		return usageErr(os.Stderr, fs.Name(), err.Error())
+		return flagErr(fs, err)
 	}
 	if len(srcs) < 2 {
 		return usageErr(os.Stderr, "pdf merge", "need at least two source PDFs")
@@ -61,7 +61,7 @@ func cmdPDFSplit(ctx context.Context, args []string) int {
 	asJSON := fs.Bool("json", false, "emit one JSON object per progress event")
 	srcs, err := parseFlags(fs, args)
 	if err != nil {
-		return usageErr(os.Stderr, fs.Name(), err.Error())
+		return flagErr(fs, err)
 	}
 	if len(srcs) != 1 {
 		return usageErr(os.Stderr, "pdf split", "need exactly one source PDF")
@@ -96,7 +96,7 @@ func cmdPDFRender(ctx context.Context, cfg config.Config, args []string) int {
 	asJSON := fs.Bool("json", false, "emit one JSON object per progress event")
 	srcs, err := parseFlags(fs, args)
 	if err != nil {
-		return usageErr(os.Stderr, fs.Name(), err.Error())
+		return flagErr(fs, err)
 	}
 	if len(srcs) != 1 {
 		return usageErr(os.Stderr, "pdf render", "need exactly one source PDF")
@@ -133,7 +133,7 @@ func cmdPDFText(ctx context.Context, args []string) int {
 	asJSON := fs.Bool("json", false, "emit one JSON object per progress event")
 	srcs, err := parseFlags(fs, args)
 	if err != nil {
-		return usageErr(os.Stderr, fs.Name(), err.Error())
+		return flagErr(fs, err)
 	}
 	if len(srcs) != 1 {
 		return usageErr(os.Stderr, "pdf text", "need exactly one source PDF")
