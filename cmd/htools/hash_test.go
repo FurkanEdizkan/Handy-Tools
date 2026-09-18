@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -119,5 +120,61 @@ func TestCmdHashJSON(t *testing.T) {
 	})
 	if !strings.Contains(out, `"digest":"`+sha256OfABC+`"`) {
 		t.Errorf("--json output missing expected digest field:\n%s", out)
+	}
+}
+
+// TestCmdHashCheckVerifiesItsOwnOutput: `htools hash d/a.txt > d/SUMS` then
+// `htools hash --check d/SUMS` must pass — entries resolve against the cwd
+// like `sha256sum -c`. They used to resolve only against the manifest's dir
+// (d/d/a.txt), so htools couldn't verify its own manifests.
+func TestCmdHashCheckVerifiesItsOwnOutput(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	if err := os.Mkdir("d", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeBin(t, filepath.Join("d", "a.txt"), "abc")
+	sums := captureStdout(t, func() {
+		if code := cmdHash(context.Background(), config.Defaults(), []string{"--quiet", "d/a.txt"}); code != 0 {
+			t.Fatalf("hash exit = %d", code)
+		}
+	})
+	writeBin(t, filepath.Join("d", "SUMS"), sums)
+	out := captureStdout(t, func() {
+		if code := cmdHash(context.Background(), config.Defaults(), []string{"--quiet", "--check", "d/SUMS"}); code != 0 {
+			t.Errorf("--check of its own manifest exit = %d, want 0", code)
+		}
+	})
+	if !strings.Contains(out, "d/a.txt: OK") {
+		t.Errorf("verify output:\n%s", out)
+	}
+}
+
+// TestCmdHashJSONReportsFailures: with --json, stdout is JSON lines only and
+// ends with a terminal object whose failures list the files that couldn't be
+// hashed (they used to go to stderr as text, with no terminal line at all).
+func TestCmdHashJSONReportsFailures(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a.txt")
+	writeBin(t, a, "abc")
+	ghost := filepath.Join(dir, "ghost.txt")
+	var code int
+	out := captureStdout(t, func() {
+		code = cmdHash(context.Background(), config.Defaults(), []string{"--json", a, ghost})
+	})
+	if code != 1 {
+		t.Errorf("partial failure exit = %d, want 1 (like sha256sum)", code)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	var last map[string]any
+	for _, line := range lines {
+		last = nil
+		if err := json.Unmarshal([]byte(line), &last); err != nil {
+			t.Fatalf("non-JSON line on stdout: %q", line)
+		}
+	}
+	failures, _ := last["failures"].([]any)
+	if last["completed"] != true || len(failures) != 1 {
+		t.Fatalf("terminal line = %v, want completed with 1 failure", last)
 	}
 }

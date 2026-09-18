@@ -21,7 +21,7 @@ func cmdExtract(ctx context.Context, cfg config.Config, args []string) int {
 	asJSON := fs.Bool("json", false, "emit one JSON object per progress event")
 	srcs, err := parseFlags(fs, args)
 	if err != nil {
-		return usageErr(os.Stderr, "extract", err.Error())
+		return flagErr(fs, err)
 	}
 	if len(srcs) != 1 {
 		return usageErr(os.Stderr, "extract", "need exactly one archive path")

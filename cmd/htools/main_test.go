@@ -1,11 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"flag"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/furkandedizkan/handy-tools/internal/config"
+	"github.com/furkandedizkan/handy-tools/internal/tools"
 )
 
 func TestRunUnknownCommand(t *testing.T) {
@@ -144,5 +149,61 @@ func TestParseRange(t *testing.T) {
 		if r.From != tc.wantFrom || r.To != tc.wantTo {
 			t.Errorf("parseRange(%q) = {%d, %d}; want {%d, %d}", tc.in, r.From, r.To, tc.wantFrom, tc.wantTo)
 		}
+	}
+}
+
+// TestVerbHelp: `htools <verb> --help` / `-h` prints that verb's flags and
+// exits 0. It used to fail with "unknown flag --help" (exit 1) on every verb.
+func TestVerbHelp(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.Defaults()
+	cases := [][]string{
+		{"convert", "--help"}, {"pack", "-h"}, {"extract", "--help"}, {"inspect", "--help"},
+		{"pdf", "merge", "--help"}, {"pdf", "split", "-h"}, {"pdf", "render", "--help"}, {"pdf", "text", "--help"},
+		{"rename", "--help"}, {"hash", "--help"}, {"diff-tree", "--help"}, {"strip-meta", "--help"},
+	}
+	for _, tc := range cases {
+		t.Run(strings.Join(tc, " "), func(t *testing.T) {
+			if code := dispatch(ctx, cfg, tc[0], tc[1:]); code != 0 {
+				t.Errorf("exit = %d, want 0", code)
+			}
+		})
+	}
+}
+
+func TestParseFlagsHelp(t *testing.T) {
+	fs := flag.NewFlagSet("pack", flag.ContinueOnError)
+	fs.String("format", "", "target format")
+	fs.Bool("quiet", false, "suppress progress")
+
+	if _, err := parseFlags(fs, []string{"in.txt", "--help"}); !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("--help: err = %v, want flag.ErrHelp", err)
+	}
+	// After the `--` terminator, -h is an ordinary positional.
+	pos, err := parseFlags(fs, []string{"--", "-h"})
+	if err != nil || len(pos) != 1 || pos[0] != "-h" {
+		t.Fatalf("-- -h: pos = %v, err = %v; want [-h], nil", pos, err)
+	}
+
+	var buf bytes.Buffer
+	printFlagHelp(&buf, fs)
+	out := buf.String()
+	for _, want := range []string{"htools pack", "--format string", "--quiet\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("help output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestStreamProgressInterruptedIsNotSuccess: when a tool's context is
+// cancelled (Ctrl-C) its terminal event is dropped and the channel just
+// closes. That used to fall through to exit 0 — an interrupted pack looked
+// like a success to scripts.
+func TestStreamProgressInterruptedIsNotSuccess(t *testing.T) {
+	ch := make(chan tools.Progress, 1)
+	ch <- tools.Progress{Message: "[1/3] a.txt", Fraction: 0.3}
+	close(ch)
+	if code := streamProgress(ch, progressOpts{quiet: true}); code != 2 {
+		t.Fatalf("exit = %d, want 2 (ABORTED)", code)
 	}
 }

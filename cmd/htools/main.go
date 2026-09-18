@@ -8,6 +8,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/furkandedizkan/handy-tools/internal/buildinfo"
 	"github.com/furkandedizkan/handy-tools/internal/config"
@@ -29,7 +31,18 @@ func run(args []string) int {
 		fmt.Fprintln(os.Stderr, "config:", err)
 		cfg = config.Defaults()
 	}
-	return dispatch(context.Background(), cfg, args[0], args[1:])
+	// Ctrl-C / SIGTERM cancel the running tool instead of killing the process
+	// mid-write, so it can clean up before we exit: pack removes its
+	// <output>.partial, --rollback-on-error batches replay their undo stack.
+	// After the first signal the default handler is restored, so a second
+	// Ctrl-C still force-quits.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
+	return dispatch(ctx, cfg, args[0], args[1:])
 }
 
 func dispatch(ctx context.Context, cfg config.Config, verb string, args []string) int {
