@@ -30,6 +30,7 @@ var htoolsVerbs = map[string]bool{
 	"convert":    true,
 	"pack":       true,
 	"extract":    true,
+	"inspect":    true,
 	"pdf":        true,
 	"hash":       true,
 	"rename":     true,
@@ -97,6 +98,7 @@ Terminal verbs (re-execs htools):
   convert      Convert images between formats
   pack         Create archives
   extract      Extract archives
+  inspect      Show archive metadata / grep inside archives
   pdf          PDF merge / split / render / text
   hash         File hashes (md5 / sha256 / blake3)
   rename       Batch-rename files with a regex
