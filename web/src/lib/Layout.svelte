@@ -19,13 +19,13 @@
   // One live job feed for the whole app — the dock, sidebar badge, Jobs page
   // and mascot all read the shared `jobs` store.
   onMount(() => {
-    const ac = startJobsFeed();
-    // Subscribe AFTER the feed so the initial snapshot replay seeds the
-    // popup subscriber's "last seen status" map without firing spurious
-    // failure popups for jobs that already failed before this session.
-    const unsubFailures = subscribeJobsForFailures();
+    const feed = startJobsFeed();
+    // The initial /v1/jobs snapshot arrives asynchronously; handing its
+    // promise over lets it seed the popup subscriber's "last seen status" map
+    // without firing failure popups for jobs that failed before this session.
+    const unsubFailures = subscribeJobsForFailures(feed.loaded);
     return () => {
-      ac.abort();
+      feed.abort();
       unsubFailures();
     };
   });

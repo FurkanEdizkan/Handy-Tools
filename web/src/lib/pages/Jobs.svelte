@@ -1,6 +1,6 @@
 <script lang="ts">
   /* Jobs — the full live queue, streamed over SSE from htoolsd. */
-  import { tick, onMount } from 'svelte';
+  import { tick } from 'svelte';
   import {
     jobs,
     expandedJobs,
@@ -14,14 +14,17 @@
 
   // When the page is opened via a deep-link (e.g. a failure popup), reset
   // the filter so the target row is visible, then scroll it into view and
-  // clear the marker so subsequent visits don't re-scroll.
-  onMount(async () => {
+  // clear the marker so subsequent visits don't re-scroll. An effect (not
+  // onMount) so a deep-link fired while already on /jobs — where push('/jobs')
+  // is a no-op and the page doesn't remount — is still honoured.
+  $effect(() => {
     const id = $focusedJobId;
     if (!id) return;
     focusedJobId.set(null);
     filter = 'all';
-    await tick();
-    document.getElementById(`job-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    void tick().then(() =>
+      document.getElementById(`job-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }),
+    );
   });
 
   const counts = $derived.by(() => {

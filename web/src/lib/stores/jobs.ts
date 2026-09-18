@@ -75,10 +75,34 @@ function emptyJob(id: string): Job {
 }
 
 /**
+ * foldSummary merges one snapshot onto a job's previous row. A log line is
+ * appended for each distinct progress message — a snapshot only carries the
+ * latest one, so the live stream accumulates the history.
+ */
+function foldSummary(prev: Job, s: JobSummary): Job {
+  const logs = [...prev.logs];
+  const msg = s.error?.message ?? s.message;
+  if (msg && (logs.length === 0 || logs[logs.length - 1].message !== msg)) {
+    logs.push({
+      ts: formatTs(s.startedUnixMs),
+      level: s.error ? 'ERROR' : s.completed ? 'DONE' : 'INFO',
+      message: msg,
+    });
+  }
+  return {
+    id: s.jobId,
+    tool: displayTool(s) || prev.tool,
+    currentItem: s.currentItem ?? prev.currentItem,
+    progress: s.fraction ?? prev.progress,
+    estimated: s.estimated ?? (s.fraction === undefined ? prev.estimated : false),
+    status: statusFromWire(s.status),
+    logs,
+  };
+}
+
+/**
  * applyJobSummary folds one /v1/jobs(/events) snapshot into the jobs store.
- * The row is updated in place (or prepended when new); a log line is appended
- * for each distinct progress message — a snapshot only carries the latest one,
- * so the live stream accumulates the history.
+ * The row is updated in place (or prepended when new).
  */
 export function applyJobSummary(s: JobSummary): void {
   jobs.update((list) => {
@@ -88,26 +112,30 @@ export function applyJobSummary(s: JobSummary): void {
       next.unshift(emptyJob(s.jobId));
       idx = 0;
     }
-    const prev = next[idx];
-    const logs = [...prev.logs];
-    const msg = s.error?.message ?? s.message;
-    if (msg && (logs.length === 0 || logs[logs.length - 1].message !== msg)) {
-      logs.push({
-        ts: formatTs(s.startedUnixMs),
-        level: s.error ? 'ERROR' : s.completed ? 'DONE' : 'INFO',
-        message: msg,
-      });
-    }
-    next[idx] = {
-      id: s.jobId,
-      tool: displayTool(s) || prev.tool,
-      currentItem: s.currentItem ?? prev.currentItem,
-      progress: s.fraction ?? prev.progress,
-      estimated: s.estimated ?? (s.fraction === undefined ? prev.estimated : false),
-      status: statusFromWire(s.status),
-      logs,
-    };
+    next[idx] = foldSummary(next[idx], s);
     return next;
+  });
+}
+
+/**
+ * replaceJobs swaps the store's contents for a full GET /v1/jobs snapshot
+ * (oldest first), rather than merging: rows the server no longer reports
+ * (e.g. after an htoolsd restart) are dropped, and rows whose final frames
+ * were missed get corrected. Rows still present keep their log history.
+ * `liveIds` are jobs the SSE stream updated after the snapshot was requested
+ * — their current row is newer than the snapshot, so it is kept as-is.
+ */
+export function replaceJobs(snapshot: JobSummary[], liveIds: ReadonlySet<string> = new Set()): void {
+  jobs.update((list) => {
+    const current = new Map(list.map((j) => [j.id, j]));
+    const inSnapshot = new Set(snapshot.map((s) => s.jobId));
+    const next: Job[] = [];
+    for (const s of snapshot) {
+      const cur = current.get(s.jobId);
+      next.unshift(cur && liveIds.has(s.jobId) ? cur : foldSummary(cur ?? emptyJob(s.jobId), s));
+    }
+    const newer = list.filter((j) => liveIds.has(j.id) && !inSnapshot.has(j.id));
+    return [...newer, ...next];
   });
 }
 
@@ -117,17 +145,65 @@ export async function loadJobs(client: ApiClient = api): Promise<void> {
   for (const s of res.jobs) applyJobSummary(s);
 }
 
+export interface JobsFeed {
+  /** Settles once the initial /v1/jobs snapshot is in the store (or failed). */
+  loaded: Promise<void>;
+  /** Closes the SSE stream and ignores any snapshot still in flight. */
+  abort(): void;
+}
+
 /**
  * startJobsFeed wires the dock and Jobs page to the live backend: it opens
- * the all-jobs SSE stream, then loads the initial /v1/jobs snapshot. Subscribing
- * first means no lifecycle event is missed in the gap between the two calls —
- * both paths fold by job id, so an overlap is deduped. Returns an
- * AbortController; the caller aborts it on teardown.
+ * the all-jobs SSE stream, then loads the initial /v1/jobs snapshot.
+ * Subscribing first means no lifecycle event is missed in the gap between the
+ * two calls. The stream does not replay history, so whenever the EventSource
+ * reconnects after an error (htoolsd restart, dropped connection) the
+ * snapshot is fetched again and replaces the store — otherwise a job whose
+ * completion frame fell into the gap would show "running" forever. The
+ * caller aborts the returned feed on teardown.
  */
-export function startJobsFeed(client: ApiClient = api): AbortController {
-  const ac = client.subscribeJobs((s) => applyJobSummary(s));
-  // A failed initial load (htoolsd offline) leaves the panel empty; the SSE
-  // stream still backfills rows as jobs start.
-  void loadJobs(client).catch(() => {});
-  return ac;
+export function startJobsFeed(client: ApiClient = api): JobsFeed {
+  let stopped = false;
+  let disconnected = false;
+  let latestSync = 0;
+  // Ids the stream updated while each snapshot fetch was in flight.
+  const pending = new Set<Set<string>>();
+
+  async function resync(): Promise<void> {
+    const mine = ++latestSync;
+    const liveIds = new Set<string>();
+    pending.add(liveIds);
+    try {
+      const res = await client.fetchJobs();
+      // Drop a snapshot superseded by a newer resync (quick reconnect cycles).
+      if (!stopped && mine === latestSync) replaceJobs(res.jobs, liveIds);
+    } catch {
+      // htoolsd offline: the panel keeps what it has; the next reconnect retries.
+    } finally {
+      pending.delete(liveIds);
+    }
+  }
+
+  const ac = client.subscribeJobs(
+    (s) => {
+      for (const ids of pending) ids.add(s.jobId);
+      applyJobSummary(s);
+    },
+    () => {
+      disconnected = true;
+    },
+    () => {
+      if (!disconnected) return; // the first connection is covered by `loaded`
+      disconnected = false;
+      void resync();
+    },
+  );
+  const loaded = resync();
+  return {
+    loaded,
+    abort() {
+      stopped = true;
+      ac.abort();
+    },
+  };
 }

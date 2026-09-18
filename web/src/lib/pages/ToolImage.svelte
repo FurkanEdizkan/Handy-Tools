@@ -4,17 +4,16 @@
   import RunStatus from '../components/RunStatus.svelte';
   import FolderPicker from '../components/FolderPicker.svelte';
   import { IMAGE_FORMATS, type ImageFile, type ImageFormat } from './toolform';
-  import { ApiError, api, type ImageTargetFormat } from '../api';
-  import { runJob, resolveSources } from './run';
+  import { api, type ImageTargetFormat } from '../api';
+  import { dirOf, imageOutputDir, runJob, resolveSources, type ImageOutMode } from './run';
 
   let files = $state<ImageFile[]>([]);
   let defaultFmt = $state<ImageFormat>('JPEG');
-  let outMode = $state<'default' | 'alongside' | 'custom'>('default');
+  let outMode = $state<ImageOutMode>('default');
   let customPath = $state('');
   let quality = $state(90);
   let overwrite = $state(false);
   let stripMetadata = $state(false);
-  let recurse = $state(true);
   let toastVisible = $state(false);
   let toastMsg = $state('');
   let toastTone = $state<'info' | 'error'>('info');
@@ -72,12 +71,12 @@
     try {
       resolved = resolveSources(files);
     } catch (e) {
-      toastMsg = e instanceof ApiError ? e.message : 'Could not start the job.';
+      toastMsg = e instanceof Error ? e.message : 'Could not start the job.';
       toastTone = 'error';
       toastVisible = true;
       return;
     }
-    const outDir = outMode === 'custom' && customPath.trim() ? customPath.trim() : resolved.outputDir;
+    const first = resolved.sources[0].path;
     running = true;
     const outcome = await runJob(() =>
       Promise.all(
@@ -86,7 +85,7 @@
             source: { path: src.path },
             targetFormat: files[i].target.toUpperCase() as ImageTargetFormat,
             options: { quality, maxWidth: 0, maxHeight: 0, stripMetadata },
-            output: { directory: outDir, overwrite },
+            output: { directory: imageOutputDir(outMode, src.path, first, customPath), overwrite },
           }),
         ),
       ),
@@ -180,7 +179,7 @@
             onkeydown={(e) => e.key === 'Enter' && (outMode = 'default')}
           >
             <span class="ring"></span>
-            <span class="lbl">Default location<span class="sub mono">./out</span></span>
+            <span class="lbl">Default location<span class="sub mono">{files[0]?.path ? dirOf(files[0].path) : "first file's folder"}</span></span>
             <span class="tag reco">RECO</span>
           </div>
           <div
@@ -229,10 +228,6 @@
         <div class="toggle-row">
           <div class="lbl"><span>Strip metadata</span><span class="sub">Drop EXIF and colour profiles</span></div>
           <button class="toggle {stripMetadata ? 'on' : ''}" aria-label="Strip metadata" onclick={() => (stripMetadata = !stripMetadata)}></button>
-        </div>
-        <div class="toggle-row">
-          <div class="lbl"><span>Recurse subfolders</span><span class="sub">When the input is a folder</span></div>
-          <button class="toggle {recurse ? 'on' : ''}" aria-label="Recurse subfolders" onclick={() => (recurse = !recurse)}></button>
         </div>
       </div>
     </div>
