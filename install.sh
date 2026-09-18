@@ -93,11 +93,12 @@ The desktop GUI ships only on linux/amd64 (Wails + libwebkit2gtk); on other
 platforms or with --no-gui the script installs only the four CLI binaries.
 
 Uninstall removes the handy, htools, htoolsd, htools-mcp, htools-gui binaries
-from the install dir (default $HOME/.local/bin or --dir), the config dir
-($HANDY_TOOLS_CONFIG parent or $XDG_CONFIG_HOME/handy-tools or
-~/.config/handy-tools), and the cache dir ($XDG_CACHE_HOME/handy-tools or
-~/.cache/handy-tools). User-created output files are never touched. Prompts
-before deleting unless --yes is set.
+from the install dir (default $HOME/.local/bin or --dir), the config (the
+$HANDY_TOOLS_CONFIG file itself if set — never its directory — otherwise
+$XDG_CONFIG_HOME/handy-tools or ~/.config/handy-tools), and the cache dir
+($XDG_CACHE_HOME/handy-tools or ~/.cache/handy-tools). User-created output
+files are never touched. Prompts on the terminal before deleting unless --yes
+is set.
 
 Targets Linux and macOS. Windows is not yet supported.
 EOF
@@ -127,19 +128,69 @@ warn() { printf '%s %s\n' "$(amber 'warn:')" "$*" >&2; }
 die()  { printf '%s %s\n' "$(red 'error:')" "$*" >&2; exit 1; }
 ok()   { printf '%s %s\n' "$(green ' ok ')" "$*"; }
 
-# resolve_config_dir prints the directory Handy Tools persists settings into,
-# using the same lookup order as internal/config/config.go Path():
-#   1. dirname($HANDY_TOOLS_CONFIG) if set
+# ldcache lists the dynamic-linker cache (`ldconfig -p`). On Debian ldconfig
+# lives in /sbin, which isn't on an unprivileged user's PATH — without the
+# fallbacks every webkit probe below reads "not installed".
+ldcache() {
+  for l in ldconfig /sbin/ldconfig /usr/sbin/ldconfig; do
+    if command -v "$l" >/dev/null 2>&1; then
+      "$l" -p 2>/dev/null && return 0
+    fi
+  done
+  return 1
+}
+
+# resolve_config_path prints what uninstall removes for the config, using the
+# same lookup order as internal/config/config.go Path():
+#   1. $HANDY_TOOLS_CONFIG itself if set. Only that file: it can live anywhere
+#      (~/dotfiles/handy.yaml, even $HOME/handy.yaml), so its directory is
+#      never ours to delete.
 #   2. $XDG_CONFIG_HOME/handy-tools if set
 #   3. $HOME/.config/handy-tools
-resolve_config_dir() {
+resolve_config_path() {
   if [ -n "${HANDY_TOOLS_CONFIG:-}" ]; then
-    dirname "$HANDY_TOOLS_CONFIG"
+    printf '%s' "$HANDY_TOOLS_CONFIG"
   elif [ -n "${XDG_CONFIG_HOME:-}" ]; then
     printf '%s/handy-tools' "$XDG_CONFIG_HOME"
   else
     printf '%s/.config/handy-tools' "$HOME"
   fi
+}
+
+# remove_owned deletes a config/cache path only if it is unmistakably ours: a
+# regular file (the $HANDY_TOOLS_CONFIG case) or a directory named
+# "handy-tools". Anything else is reported and left alone. Returns 0 when
+# something was removed.
+remove_owned() {
+  if [ -f "$1" ] && [ ! -L "$1" ]; then
+    rm -f "$1" && ok "removed $1"
+  elif [ -d "$1" ] && [ ! -L "$1" ] && [ "$(basename "$1")" = "handy-tools" ]; then
+    rm -rf "$1" && ok "removed $1"
+  else
+    warn "left $1 in place (not a handy-tools file or directory)"
+    return 1
+  fi
+}
+
+# confirm prints a [y/N] prompt and succeeds only on an explicit yes. The
+# answer is read from the terminal, not stdin: under the documented
+# `curl … | sh -s -- --uninstall`, stdin is the script itself. With no
+# terminal at all the answer is "no" — pass --yes to run unattended.
+confirm() {
+  printf '%s ' "$(amber "$1")"
+  reply=""
+  if [ -t 0 ]; then
+    read -r reply || reply=""
+  elif (exec </dev/tty) 2>/dev/null; then
+    read -r reply </dev/tty || reply=""
+  else
+    printf '\n'
+    warn "no terminal to confirm on; re-run with --yes to proceed unattended"
+  fi
+  case "$reply" in
+    y|Y|yes|YES) return 0 ;;
+  esac
+  return 1
 }
 
 # resolve_cache_dir prints the directory Handy Tools may keep transient state
@@ -158,7 +209,7 @@ resolve_cache_dir() {
 # to look up the latest release. User-created output files (./out, ./converted,
 # etc.) are never touched.
 do_uninstall() {
-  cfg_dir=$(resolve_config_dir)
+  cfg_path=$(resolve_config_path)
   cache_dir=$(resolve_cache_dir)
   bins="$INSTALL_DIR/handy $INSTALL_DIR/htools $INSTALL_DIR/htoolsd $INSTALL_DIR/htools-mcp $INSTALL_DIR/htools-gui"
 
@@ -170,10 +221,10 @@ do_uninstall() {
       printf '  %s skip   %s %s\n' "$(dim '-')" "$b" "$(dim '(not present)')"
     fi
   done
-  if [ -d "$cfg_dir" ]; then
-    printf '  %s remove %s\n' "$(dim '-')" "$cfg_dir"
+  if [ -e "$cfg_path" ]; then
+    printf '  %s remove %s\n' "$(dim '-')" "$cfg_path"
   else
-    printf '  %s skip   %s %s\n' "$(dim '-')" "$cfg_dir" "$(dim '(not present)')"
+    printf '  %s skip   %s %s\n' "$(dim '-')" "$cfg_path" "$(dim '(not present)')"
   fi
   if [ -d "$cache_dir" ]; then
     printf '  %s remove %s\n' "$(dim '-')" "$cache_dir"
@@ -182,12 +233,7 @@ do_uninstall() {
   fi
 
   if [ "$ASSUME_YES" != "1" ]; then
-    printf '%s ' "$(amber 'Proceed? [y/N]')"
-    read -r reply || reply=""
-    case "$reply" in
-      y|Y|yes|YES) ;;
-      *) die "aborted by user" ;;
-    esac
+    confirm 'Proceed? [y/N]' || die "aborted"
   fi
 
   removed=0
@@ -196,12 +242,11 @@ do_uninstall() {
       rm -f "$b" && { ok "removed $b"; removed=$((removed+1)); }
     fi
   done
-  if [ -d "$cfg_dir" ]; then
-    rm -rf "$cfg_dir" && { ok "removed $cfg_dir"; removed=$((removed+1)); }
-  fi
-  if [ -d "$cache_dir" ]; then
-    rm -rf "$cache_dir" && { ok "removed $cache_dir"; removed=$((removed+1)); }
-  fi
+  for p in "$cfg_path" "$cache_dir"; do
+    if [ -e "$p" ]; then
+      remove_owned "$p" && removed=$((removed+1))
+    fi
+  done
   log "done. removed $removed path(s)."
 }
 
@@ -377,10 +422,10 @@ else
   # ABI is loadable. If neither is present, guess 4.1 — `--install-deps`
   # will pull libwebkit2gtk-4.1-0 from the missing-tools detection below,
   # which only knows about 4.1.
-  if ldconfig -p 2>/dev/null | grep -q 'libwebkit2gtk-4\.1\.so'; then
+  if ldcache | grep -q 'libwebkit2gtk-4\.1\.so'; then
     gui_variant="webkit41"
     gui_asset="${PROJECT_NAME}-gui-webkit41_${VERSION}_${OS}_${ARCH}.tar.gz"
-  elif ldconfig -p 2>/dev/null | grep -q 'libwebkit2gtk-4\.0\.so'; then
+  elif ldcache | grep -q 'libwebkit2gtk-4\.0\.so'; then
     gui_variant="webkit40 (legacy)"
     gui_asset="${PROJECT_NAME}-gui_${VERSION}_${OS}_${ARCH}.tar.gz"
   else
@@ -449,7 +494,7 @@ for t in $ALL_TOOLS; do
   # ldconfig (Linux). 4.0 (Ubuntu 22.04) and 4.1 (Ubuntu 24.04+) are both
   # acceptable; Wails resolves whichever is present at startup.
   if [ "$t" = "libwebkit2gtk" ]; then
-    if ldconfig -p 2>/dev/null | grep -qE 'libwebkit2gtk-4\.(0|1)\.so'; then
+    if ldcache | grep -qE 'libwebkit2gtk-4\.(0|1)\.so'; then
       continue
     fi
     missing="$missing $t"
