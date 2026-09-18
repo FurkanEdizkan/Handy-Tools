@@ -108,7 +108,8 @@ func Inspect(ctx context.Context, req Request) ([]Diff, *tools.Error) {
 	if _, ok := ParseMode(string(mode)); !ok {
 		return nil, &tools.Error{Code: tools.CodeBadRequest, Message: "unknown mode", Detail: string(mode)}
 	}
-	for _, root := range []string{req.A, req.B} {
+	roots := [2]string{req.A, req.B}
+	for i, root := range roots {
 		info, err := os.Stat(root)
 		if err != nil {
 			return nil, &tools.Error{Code: tools.ClassifyFSError(err), Message: "stat root", Detail: err.Error()}
@@ -116,16 +117,24 @@ func Inspect(ctx context.Context, req Request) ([]Diff, *tools.Error) {
 		if !info.IsDir() {
 			return nil, &tools.Error{Code: tools.CodeBadRequest, Message: "root is not a directory", Detail: root}
 		}
+		// WalkDir doesn't follow a symlinked root (e.g. `current ->
+		// releases/42`): it would visit only the link and report the tree
+		// as empty. Walk the resolved directory; report paths stay relative.
+		resolved, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			return nil, &tools.Error{Code: tools.ClassifyFSError(err), Message: "resolve root", Detail: err.Error()}
+		}
+		roots[i] = resolved
 	}
-	aMap, terr := walkRoot(req.A)
+	aMap, terr := walkRoot(roots[0])
 	if terr != nil {
 		return nil, terr
 	}
-	bMap, terr := walkRoot(req.B)
+	bMap, terr := walkRoot(roots[1])
 	if terr != nil {
 		return nil, terr
 	}
-	return compareMaps(ctx, req.A, req.B, aMap, bMap, mode, req.Parallelism)
+	return compareMaps(ctx, roots[0], roots[1], aMap, bMap, mode, req.Parallelism)
 }
 
 // Run streams one Progress event per diff entry plus a terminal summary.

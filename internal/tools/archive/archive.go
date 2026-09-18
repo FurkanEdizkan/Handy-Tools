@@ -69,7 +69,9 @@ type Inspection struct {
 // When the source path can't be stat'd, the error is returned (so existing
 // callers that bubble it still fail-closed) AND the returned *Inspection is
 // non-nil with a populated Issues slice so callers that prefer structured
-// preflight info don't need to errors.Is the raw error.
+// preflight info don't need to errors.Is the raw error. A source that stats
+// but can't be read (e.g. mode 000) is not an error — the metadata above is
+// still valid — but it is reported in Issues.
 func Inspect(_ context.Context, source string) (*Inspection, error) {
 	ins, err := inspect(source, true)
 	if err != nil {
@@ -83,6 +85,13 @@ func Inspect(_ context.Context, source string) (*Inspection, error) {
 				Detail: err.Error(),
 			}},
 		}, err
+	}
+	if f, oerr := os.Open(source); oerr != nil { //nolint:gosec // readability probe on the caller's path
+		ins.Issues = append(ins.Issues, tools.PathIssue{
+			Path: source, Code: tools.ClassifyFSError(oerr), Detail: oerr.Error(),
+		})
+	} else {
+		_ = f.Close()
 	}
 	return ins, nil
 }
@@ -498,18 +507,27 @@ func extractZip(ctx context.Context, req ExtractRequest, emit emitFn) error {
 	return nil
 }
 
-type tarOpener func(io.Reader) (io.Reader, error)
+// tarOpener wraps the raw archive stream in its decompressor. The result must
+// be closed: the zstd decoder decodes on background goroutines that only Close
+// stops, and extraction can bail out long before the stream is drained.
+type tarOpener func(io.Reader) (io.ReadCloser, error)
 
-func plainOpener(r io.Reader) (io.Reader, error) { return r, nil }
-func gzipOpener(r io.Reader) (io.Reader, error)  { return gzip.NewReader(r) }
-func bzip2Opener(r io.Reader) (io.Reader, error) { return bzip2.NewReader(r), nil }
-func xzOpener(r io.Reader) (io.Reader, error)    { return xz.NewReader(r) }
-func zstdOpener(r io.Reader) (io.Reader, error) {
+func plainOpener(r io.Reader) (io.ReadCloser, error) { return io.NopCloser(r), nil }
+func gzipOpener(r io.Reader) (io.ReadCloser, error)  { return gzip.NewReader(r) }
+func bzip2Opener(r io.Reader) (io.ReadCloser, error) { return io.NopCloser(bzip2.NewReader(r)), nil }
+func xzOpener(r io.Reader) (io.ReadCloser, error) {
+	xr, err := xz.NewReader(r)
+	if err != nil {
+		return nil, err
+	}
+	return io.NopCloser(xr), nil
+}
+func zstdOpener(r io.Reader) (io.ReadCloser, error) {
 	zr, err := zstd.NewReader(r)
 	if err != nil {
 		return nil, err
 	}
-	return zr, nil
+	return zr.IOReadCloser(), nil
 }
 
 // tarReadBuf is the buffered-reader size used in front of the compressed
@@ -539,6 +557,7 @@ func extractTar(ctx context.Context, req ExtractRequest, emit emitFn, open tarOp
 	if err != nil {
 		return err
 	}
+	defer r.Close()
 	stop := tools.Ticker(ctx, func(p tools.Progress) { emit(p) }, 0,
 		func() (float64, int64, int64) {
 			done := cr.Count()
