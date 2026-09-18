@@ -55,18 +55,28 @@ export function dismissAll(): void {
  * job that transitions into 'fail' produces a single sticky error popup. The
  * message is the last ERROR-level log line on the job, falling back to a
  * generic note when the log is empty. Returns the unsubscribe function.
+ *
+ * Pass the feed's `loaded` promise (see startJobsFeed): the initial
+ * GET /v1/jobs snapshot lands asynchronously, after this subscribes, and
+ * until it settles every observed status only seeds the "last seen" map —
+ * so jobs that had already failed before the page loaded never pop.
  */
-export function subscribeJobsForFailures(): () => void {
+export function subscribeJobsForFailures(initialLoad?: Promise<unknown>): () => void {
   const seen = new Map<string, JobStatus>();
   let primed = false;
+  let loaded = initialLoad === undefined;
+  const markLoaded = (): void => {
+    loaded = true;
+  };
+  initialLoad?.then(markLoaded, markLoaded);
   return jobs.subscribe((list) => {
     for (const j of list) {
       const prev = seen.get(j.id);
-      // First subscriber invocation just seeds the map — Svelte fires the
+      // The first subscriber invocation just seeds the map — Svelte fires the
       // subscriber synchronously with the current snapshot, which may already
-      // contain previously-failed jobs from the initial /v1/jobs replay. We
-      // only want popups for transitions observed *during this session*.
-      if (primed && j.status === 'fail' && prev !== 'fail') {
+      // contain previously-failed jobs. We only want popups for transitions
+      // observed *during this session*.
+      if (primed && loaded && j.status === 'fail' && prev !== 'fail') {
         pushPopup({
           id: `job:${j.id}`,
           tone: 'error',

@@ -1,9 +1,16 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import Dropzone from '../components/Dropzone.svelte';
   import Toast from '../components/Toast.svelte';
   import RunStatus from '../components/RunStatus.svelte';
-  import { ApiError, api, type RenameCollision, type RenamePlan } from '../api';
-  import { runJob, resolveSources } from './run';
+  import { api, type RenameCollision } from '../api';
+  import { basenameOf, runJob, resolveSources } from './run';
+  import {
+    createRenamePreview,
+    planChanges,
+    renamePreviewKey,
+    type RenamePreview,
+  } from './rename-preview';
   import type { PickedFile } from './toolform';
 
   const COLLISIONS: RenameCollision[] = ['error', 'skip', 'suffix'];
@@ -19,26 +26,27 @@
   let toastMsg = $state('');
   let toastTone = $state<'info' | 'error'>('info');
 
-  // Live preview: JS regex over the file list, recomputed on every keystroke.
-  // The actual rename on Apply goes through the server-side Go regexp, which
-  // is the source of truth. Most syntax matches between the two engines —
-  // character classes, $1 backrefs, alternation. JS-only features (named
-  // groups via (?<name>...), lookbehinds) won't run server-side; the hint
-  // below tells the user.
-  const preview = $derived.by<RenamePlan[] | null>(() => {
-    if (!pattern || files.length === 0) return null;
-    let re: RegExp;
-    try {
-      re = new RegExp(pattern);
-    } catch {
-      return null;
-    }
-    return files.map((f) => ({
-      from: f.path ?? f.name,
-      to: f.name.replace(re, replace),
-    }));
+  // Live preview: a debounced server dry run (POST /v1/rename/inspect), so
+  // the rows show exactly what Apply will do under Go's regexp semantics.
+  let preview = $state<RenamePreview>({ key: '', plans: null, error: '' });
+  const previewer = createRenamePreview((req) => api.renameInspect(req), (p) => (preview = p));
+  $effect(() => {
+    previewer.request(files, pattern, replace);
   });
-  const applyReady = $derived(preview !== null && preview.some((p) => p.from !== p.to));
+  onDestroy(() => previewer.dispose());
+
+  const currentKey = $derived(renamePreviewKey(files, pattern, replace));
+  // Rows keep showing the latest plan while it still describes the current
+  // file list (no flicker while typing); Apply waits for a plan computed for
+  // exactly the current inputs.
+  const rows = $derived.by(() => {
+    const plans = preview.plans;
+    if (!plans || plans.length !== files.length) return null;
+    return plans.every((p, i) => basenameOf(p.from) === basenameOf(files[i].path ?? '')) ? plans : null;
+  });
+  const applyReady = $derived(
+    preview.key === currentKey && preview.plans !== null && preview.plans.some(planChanges),
+  );
 
   function addFiles(dropped: File[] | string[]): void {
     files = [
@@ -61,7 +69,7 @@
     try {
       resolved = resolveSources(files);
     } catch (e) {
-      toastMsg = e instanceof ApiError ? e.message : 'Could not start the job.';
+      toastMsg = e instanceof Error ? e.message : 'Could not start the job.';
       toastTone = 'error';
       toastVisible = true;
       return;
@@ -80,10 +88,6 @@
     toastMsg = outcome.message;
     toastTone = outcome.ok ? 'info' : 'error';
     toastVisible = true;
-  }
-
-  function basename(path: string): string {
-    return path.split(/[/\\]/).pop() ?? path;
   }
 </script>
 
@@ -107,7 +111,7 @@
     </div>
     {#if files.length === 0}
       <div class="empty-note">No files yet. Drop something into the box above.</div>
-    {:else if preview === null}
+    {:else if rows === null}
       {#each files as f, i (f.name + i)}
         <div class="file-row">
           <div class="thumb">✎</div>
@@ -122,17 +126,18 @@
         </div>
       {/each}
     {:else}
-      {#each preview as p, i (p.from + i)}
-        <div class="file-row {p.from === p.to ? '' : 'diverged'}">
-          <div class="thumb">{p.from === p.to ? '·' : '→'}</div>
+      {#each rows as p, i (p.from + i)}
+        {@const changed = planChanges(p)}
+        <div class="file-row {changed ? 'diverged' : ''}">
+          <div class="thumb">{changed ? '→' : '·'}</div>
           <div class="file-name">
-            {basename(p.from)}
-            {#if p.from !== p.to}<span class="dim">→ {basename(p.to)}</span>{:else}<span class="dim">unchanged</span>{/if}
+            {basenameOf(p.from)}
+            {#if changed}<span class="dim">→ {basenameOf(p.to)}</span>{:else}<span class="dim">unchanged</span>{/if}
           </div>
           <span></span>
           <span></span>
           <span></span>
-          <button class="file-x" onclick={() => removeFile(i)} title="remove" aria-label="Remove {basename(p.from)}">×</button>
+          <button class="file-x" onclick={() => removeFile(i)} title="remove" aria-label="Remove {basenameOf(p.from)}">×</button>
         </div>
       {/each}
     {/if}
@@ -156,10 +161,13 @@
           bind:value={replace}
           placeholder="photo-$1"
         />
+        {#if preview.error && preview.key === currentKey}
+          <div style="margin-top:8px;font-size:12px;color:var(--error)">{preview.error}</div>
+        {/if}
         <div class="dim" style="margin-top:8px;font-size:11px">
-          Preview uses JavaScript regex; the actual rename uses Go's RE2 server-side.
-          Most syntax matches (char classes, <code>$1</code> backrefs) — JS-only features
-          like lookbehinds and named groups won't run on Apply.
+          Preview is a server-side dry run using Go's RE2 regexp — every match is replaced.
+          Lookbehinds aren't supported; write <code>{'${1}_x'}</code>, not <code>$1_x</code>, when
+          text follows a group reference.
         </div>
       </div>
     </div>

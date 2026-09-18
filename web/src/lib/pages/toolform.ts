@@ -4,6 +4,8 @@
  * summary-line rules can be unit-tested without a component harness.
  */
 
+import type { ArchiveWireFormat } from '../api/types';
+
 export const IMAGE_FORMATS = ['JPEG', 'PNG', 'WebP', 'GIF', 'BMP', 'TIFF'] as const;
 export type ImageFormat = (typeof IMAGE_FORMATS)[number];
 
@@ -78,6 +80,56 @@ export function pdfSummary(op: PdfOp, fileCount: number): string {
 
 export const ARCHIVE_FORMATS = ['zip', 'tar.gz', 'tar.bz2', 'tar.zst', 'tar.xz', '7z'] as const;
 export type ArchiveFormat = (typeof ARCHIVE_FORMATS)[number];
+
+/** Wire enum for POST /v1/archive/compress (see parseArchiveFormat server-side). */
+const ARCHIVE_WIRE_FORMATS: Record<ArchiveFormat, ArchiveWireFormat> = {
+  zip: 'ZIP',
+  'tar.gz': 'TAR_GZ',
+  'tar.bz2': 'TAR_BZ2',
+  'tar.zst': 'TAR_ZST',
+  'tar.xz': 'TAR_XZ',
+  '7z': 'SEVENZ',
+};
+
+/** archiveWireFormat maps a selectable format onto the compress request enum. */
+export function archiveWireFormat(fmt: ArchiveFormat): ArchiveWireFormat {
+  return ARCHIVE_WIRE_FORMATS[fmt];
+}
+
+/** Every archive extension the backend's detectFormat recognises (compound first). */
+const ARCHIVE_EXT_RE = /\.(tar\.gz|tgz|tar\.bz2|tbz2|tar\.zst|tzst|tar\.xz|txz|tar|zip|7z|rar)$/i;
+
+/**
+ * withArchiveExt swaps an output filename's archive extension for `fmt`'s,
+ * e.g. `archive.tar.xz` → `archive.zip`. Names without a known archive
+ * extension keep their full text as the stem.
+ */
+export function withArchiveExt(output: string, fmt: ArchiveFormat): string {
+  const stem = output.trim().replace(ARCHIVE_EXT_RE, '') || 'archive';
+  return `${stem}.${fmt}`;
+}
+
+const EXT_TO_FORMAT: Record<string, ArchiveFormat> = {
+  zip: 'zip',
+  'tar.gz': 'tar.gz',
+  tgz: 'tar.gz',
+  'tar.bz2': 'tar.bz2',
+  tbz2: 'tar.bz2',
+  'tar.zst': 'tar.zst',
+  tzst: 'tar.zst',
+  'tar.xz': 'tar.xz',
+  txz: 'tar.xz',
+  '7z': '7z',
+};
+
+/**
+ * archiveFormatFromName returns the selectable format a typed output name's
+ * extension implies (e.g. `a.tgz` → `tar.gz`), or null when it has none.
+ */
+export function archiveFormatFromName(output: string): ArchiveFormat | null {
+  const ext = ARCHIVE_EXT_RE.exec(output.trim())?.[1]?.toLowerCase();
+  return (ext && EXT_TO_FORMAT[ext]) || null;
+}
 
 /** archivePackReady enables ToolArchivePack's Run: needs files and a name. */
 export function archivePackReady(fileCount: number, output: string): boolean {
