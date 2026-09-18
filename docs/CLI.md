@@ -55,14 +55,14 @@ handy pdf text report.pdf --layout --out report.txt
 handy hash *.tar.gz --algo sha256
 
 # Verify a manifest:
-handy hash --verify checksums.txt
+handy hash --check checksums.txt
 
 # Compare two trees:
-handy diff-tree ./before ./after --mode mtime
+handy diff-tree ./before ./after --by mtime
 
-# Regex rename (dry-run first):
-handy rename --inspect '*.jpeg' --pattern '\.jpeg$' --replace '.jpg'
-handy rename '*.jpeg' --pattern '\.jpeg$' --replace '.jpg'
+# Regex rename inside a directory (dry-run first to see the plan):
+handy rename ./photos --pattern '\.jpeg$' --replace '.jpg' --dry-run
+handy rename ./photos --pattern '\.jpeg$' --replace '.jpg'
 
 # Preflight + abort on any unreadable/missing source or unwritable target:
 handy rename --strict --pattern '\.JPG$' --replace '.jpg' /photos
