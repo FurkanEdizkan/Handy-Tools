@@ -10,7 +10,7 @@ Handy Tools is a single Go module that produces five binaries from one core:
 - `cmd/htools` — non-interactive subcommand CLI (`make build && ./bin/htools --help`). Each invocation runs exactly one operation (`convert`, `pack`, `extract`, `inspect`, `pdf merge|split|render|text`, `hash`, `diff-tree`, `rename`, `strip-meta`, `doctor`, `version`) using stdlib `flag`.
 - `cmd/htoolsd` — gRPC + HTTP/SSE server exposing the same tools (`make serve` / `go run ./cmd/htoolsd`).
 - `cmd/htools-mcp` — Model Context Protocol server over stdio (`make mcp` / `go run ./cmd/htools-mcp`). Lets an MCP-capable client (Claude Code, Claude Desktop, Cursor) drive every tool. CGO-free, ships on linux/darwin × amd64/arm64 like `htools` and `htoolsd`.
-- `cmd/htools-gui` — Wails v2 desktop app (`make gui` / `make gui-build`), gated behind the `wails` build tag (CGO + webkit2gtk, linux/amd64); without the tag a stub stands in so the other jobs stay CGO-free. `make gui` also adds the `webkit2_41` tag when `pkg-config` finds webkit2gtk-4.1 (Ubuntu 24.04+), so one command builds against either webkit 4.0 or 4.1. The release pipeline builds **both** ABIs (4.0 + 4.1) on the Ubuntu 22.04 runner and publishes two GUI tarballs (`handy-tools-gui_*` for 4.0, `handy-tools-gui-webkit41_*` for 4.1); `install.sh` ldconfig-probes and picks the matching one.
+- `cmd/htools-gui` — Wails v2 desktop app (`make gui` / `make gui-build`), gated behind the `wails` build tag (CGO + webkit2gtk, linux/amd64); without the tag a stub stands in so the other jobs stay CGO-free. `make gui` also adds a webkit API tag found via `pkg-config` — `webkit2_41` with webkit2gtk-4.1 (Ubuntu 24.04+), else `webkit2_40` with webkit2gtk-4.0 ≥ 2.40 — so one command builds against either ABI. Never build the GUI without one of those tags: Wails' legacy fallback delivers every AssetServer request as a bodyless GET, so the app's POSTs to its own `/v1` API never arrive. The release pipeline builds **both** ABIs (4.0 + 4.1) on the Ubuntu 22.04 runner and publishes two GUI tarballs (`handy-tools-gui_*` for 4.0, `handy-tools-gui-webkit41_*` for 4.1); `install.sh` ldconfig-probes and picks the matching one.
 
 The four backends depend on `internal/tools/<feature>/` (image, archive, pdf, hash, difftree, rename, ...), which is the **only** layer allowed to touch files, run external binaries, or know about formats. `cmd/htools/`, `cmd/htools-mcp/`, `internal/server/`, and `internal/api/http/` are thin adapters — never put tool logic in any of them. The MCP server reuses the same `internal/server/*Handler` types as the gRPC/HTTP transports. `cmd/handy/` doesn't import any of `internal/tools` or `internal/server` — it only routes. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -48,7 +48,7 @@ make cover      # coverage.out + coverage.html
 
 Run a single test: `go test -race -run TestName ./internal/tools/archive`.
 
-CI uses Go 1.25 and `golangci-lint v2.12.2` — match locally or lint output may diverge. The lint config (`.golangci.yml`) is golangci-lint v2 schema; `gofmt`/`goimports` are configured as v2 *formatters*.
+CI uses Go 1.26 (the `go.mod` floor) and `golangci-lint v2.12.2` — match locally or lint output may diverge. The lint config (`.golangci.yml`) is golangci-lint v2 schema; `gofmt`/`goimports` are configured as v2 *formatters*.
 
 ## Generated code
 
@@ -110,15 +110,19 @@ Don't tag manually; the workflow owns the tag/release surface. When we eventuall
 
 ## CI jobs
 
-CI ([ci.yml](.github/workflows/ci.yml)) is Linux-only and runs on every push/PR to `main` and `test` — no path filter, so required status checks always report (even on docs-only PRs):
+CI ([ci.yml](.github/workflows/ci.yml)) runs on Linux runners on every push/PR to `main` and `test` — no path filter, so required status checks always report (even on docs-only PRs):
 
 - `lint-go` — golangci-lint v2.12.2, runs `buf generate` first so generated code is in scope.
 - `lint-proto` — `buf lint` against `api/proto/`.
 - `web-build` — installs/builds/tests the Svelte frontend, uploads the `web-dist` artifact.
-- `test-quick` — `go test -race` plus a 20-second fuzz pass over the config YAML decoder (`FuzzDecodeYAML`); consumes `web-dist`.
-- `build` — final assembly check for the Linux binaries.
+- `test-quick` — `go mod tidy` drift check, `go test -race`, plus a 20-second fuzz pass over the config YAML decoder (`FuzzDecodeYAML`); consumes `web-dist`.
+- `build` — final assembly check for the four CGO-free binaries (`handy`, `htools`, `htoolsd`, `htools-mcp`).
+- `gui-build` — builds `htools-gui` with `-tags "wails production webkit2_40"` on ubuntu-22.04 (webkit2gtk-4.0), the same tags as the release's 4.0 GUI.
+- `compat-build` — compile-only cross-build of the four CGO-free binaries for darwin/windows × amd64/arm64.
 
-There is no OS matrix while the project is pre-1.0; non-Linux coverage is release-time only, via [verify-install.yml](.github/workflows/verify-install.yml). Restoring an ubuntu × macos (+ Windows compile) matrix is tracked for ~v1.0.0.
+Tests run on Linux only while the project is pre-1.0; beyond `compat-build`'s compile check, non-Linux coverage is release-time only, via [verify-install.yml](.github/workflows/verify-install.yml). Restoring an ubuntu × macos test matrix is tracked for ~v1.0.0.
+
+Dependabot ([dependabot.yml](.github/dependabot.yml)) opens weekly grouped PRs against `test` for Go modules, the `web/` npm packages, and GitHub Actions.
 
 ## Branding
 

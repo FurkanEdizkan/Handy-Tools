@@ -85,13 +85,34 @@ step's failure (if any) becomes a `Failure` entry tagged
 
 Strip-meta in-place mode uses a `<source>.handy-bak` sidecar per file.
 On batch success these are removed; on rollback they're renamed back.
-**Hard-kill caveat:** if the process is SIGKILLed mid-batch the `.bak`
-sidecars are left next to processed files. The naming is stable so a
+**Hard-kill caveat:** if the process is SIGKILLed mid-batch (a plain
+cancellation replays the rollback — see below) the `.bak` sidecars are left
+next to processed files. The naming is stable so a
 follow-up sweep can collect them.
 
 Archive pack is always atomic — writes to `<output>.partial` then renames
 on success, removes on failure. No `--rollback` flag because there's
 nothing to opt into.
+
+## Cancellation (Ctrl+C, job timeout)
+
+A cancelled context stops a tool at its next check and classifies as
+`ABORTED` (`tools.ClassifyFSError` maps `context.Canceled` /
+`DeadlineExceeded`). Because every tool's `emit` selects on `ctx.Done()`,
+the terminal event itself may be dropped — so consumers treat "channel
+closed without a `Completed` event" as `ABORTED`, never as success:
+
+- `htools` catches the first SIGINT/SIGTERM and cancels instead of dying
+  mid-write, so the tool cleans up (pack removes `<output>.partial`); a
+  second signal force-quits. An interrupted run exits 2, and in `--json`
+  mode ends with a synthetic `{"completed":true,"error_code":"ABORTED"}` line.
+- `htoolsd` / MCP handlers drain through `forwardProgress`, which returns
+  `ABORTED` in that case, so the queue records the job as failed rather
+  than "done".
+- With `--rollback-on-error`, rename and strip-meta replay their rollback
+  stack on cancellation too. A restored strip-meta `.handy-bak` is renamed
+  back over its source; only a backup whose restore failed is kept, since
+  it is then the sole copy of the original.
 
 ## How to repro the canonical scenarios
 
@@ -104,9 +125,11 @@ mkdir /tmp/demo
 echo data > /tmp/demo/a.txt
 echo data > /tmp/demo/blocked.txt && chmod 0 /tmp/demo/blocked.txt
 ./bin/htools hash /tmp/demo/a.txt /tmp/demo/blocked.txt /tmp/demo/ghost.txt
-# Exit 0 (a.txt succeeded). stderr lists per-file failures with codes;
-# the terminal event's Progress.Failures (visible via --json or MCP/HTTP)
-# enumerates the blocked and missing paths.
+# a.txt's digest prints; exit 1 because some files couldn't be hashed
+# (sha256sum semantics — the digest list is incomplete). stderr lists the
+# per-file failures with codes; with --json the terminal line's `failures`
+# (and Progress.Failures over MCP/HTTP) enumerates the blocked and missing
+# paths.
 ```
 
 ### 2. Aborting before a destructive operation when something looks wrong
@@ -135,15 +158,19 @@ regression-tested.
 
 | Layer | Test |
 |---|---|
-| Tool package — hash | [TestHashRunMixedBatchScenario, TestHashRunUnanimousNotFoundCoalesces](../internal/tools/hash/hash_test.go) |
-| Tool package — rename | [TestRunMixedBatchScenario, TestRunPermissionDeniedPerFile, TestRunRollbackUndoesEarlierRenames](../internal/tools/rename/rename_test.go) |
-| Tool package — image batch | [TestBatchConvertMixedBatchScenario, TestBatchConvertAllFail](../internal/tools/image/image_test.go) |
-| Tool package — strip-meta | [TestRunMixedBatchScenario, TestRunInPlaceRollbackRestoresOriginal, TestRunNonInPlaceRollbackDeletesWrittenOutputs](../internal/tools/stripmeta/stripmeta_test.go) |
+| Tool package — hash | [TestHashRunMixedBatchScenario, TestHashRunUnanimousNotFoundCoalesces, TestVerifyWithCheckPathSandboxesEntries, TestVerifyWithSearchDirs](../internal/tools/hash/hash_test.go) |
+| Tool package — rename | [TestRunMixedBatchScenario, TestRunPermissionDeniedPerFile, TestRunRollbackUndoesEarlierRenames](../internal/tools/rename/rename_test.go), [TestRunEveryMatchingRenameFailedIsAnError, TestRunCancelWithRollbackUndoesRenames](../internal/tools/rename/integrity_test.go) |
+| Tool package — image batch | [TestBatchConvertMixedBatchScenario, TestBatchConvertAllFail](../internal/tools/image/image_test.go), [TestConvertFailedEncodeKeepsExistingOutput, TestConvertFailedEncodeLeavesNoPlaceholder, TestHEICWithoutMagickIsMissingBinary, TestBatchConvertOutputDirIsAFile](../internal/tools/image/integrity_test.go) |
+| Tool package — strip-meta | [TestRunMixedBatchScenario, TestRunInPlaceRollbackRestoresOriginal, TestRunNonInPlaceRollbackDeletesWrittenOutputs](../internal/tools/stripmeta/stripmeta_test.go), [TestRunInPlaceEncodeFailureKeepsSource, TestRunCancelWithRollbackRestoresSources](../internal/tools/stripmeta/integrity_test.go) |
+| Tool package — pdf | [TestMergeFailureKeepsExistingOutput, TestSplitRejectsReversedRange, TestSplitMissingSourceIsNotFound](../internal/tools/pdf/integrity_test.go) |
 | Tool package — archive pack | [TestCompressMixedSourceScenario, TestCompressNoPartialOnSuccess, TestCompressRemovesPartialOnFailure](../internal/tools/archive/compress_test.go) |
-| Shared helpers | [TestStatInputs, TestCheckOutputDirWritable, TestClassifyFSError, TestCoalesceFailureCode](../internal/tools/tools_test.go), [TestRollbackStackReplaysInReverse](../internal/tools/rollback_test.go) |
-| HTTP wire | [TestHashRunFailuresCrossTheWire, TestHashRunFailuresOmittedWhenAllSucceed](../internal/api/http/handlers_failures_test.go) |
+| Shared helpers | [TestStatInputs, TestCheckOutputDirWritable, TestClassifyFSError](../internal/tools/tools_test.go), [TestRollbackStackReplaysInReverse, TestCoalesceFailureCode](../internal/tools/rollback_test.go) |
+| Server handlers | [TestForwardProgressReportsAbortWhenTerminalDropped, TestCanceledBatchNeverEndsSilently, TestToolErrorClassifiesPlainErrors, TestGRPCCodeMapping](../internal/server/errors_test.go) |
+| Job queue | [TestPerFileErrorDoesNotFailCompletedJob, TestTerminalErrorFailsJob](../internal/queue/queue_test.go) |
+| HTTP wire | [TestHashRunFailuresCrossTheWire, TestHashRunFailuresOmittedWhenAllSucceed](../internal/api/http/handlers_failures_test.go), [TestSandboxRejectionCodeIsConsistent](../internal/api/http/hardening_test.go) |
 | HTTP error codes | [TestStatusForCode](../internal/api/http/errors_test.go) |
-| MCP wire | [TestE2E_HashFailuresInRunResult, TestE2E_RenameInspectIssuesPresent](../cmd/htools-mcp/e2e_test.go) |
+| MCP wire | [TestE2E_HashFailuresInRunResult, TestE2E_RenameInspectIssuesPresent, TestE2E_StripMetaReportsGroupFailures](../cmd/htools-mcp/e2e_test.go) |
+| CLI | [TestStreamProgressInterruptedIsNotSuccess](../cmd/htools/main_test.go), [TestCmdHashJSONReportsFailures](../cmd/htools/hash_test.go), [TestCmdInspectExitCodesFollowErrorCodes](../cmd/htools/inspect_test.go), [TestCmdDiffTreeUsageErrors](../cmd/htools/difftree_test.go) |
 
 Run the full suite with:
 
