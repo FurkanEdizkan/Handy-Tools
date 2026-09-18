@@ -6,7 +6,9 @@ package pdf
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -200,6 +202,18 @@ func Merge(ctx context.Context, req MergeRequest) <-chan tools.Progress {
 			}})
 			return
 		}
+		if req.OutputFile == "" {
+			emit(tools.Progress{Completed: true, Err: &tools.Error{
+				Code: tools.CodeBadRequest, Message: "merge needs an output file",
+			}})
+			return
+		}
+		if src := sourceAt(req.OutputFile, req.Sources); src != "" {
+			emit(tools.Progress{Completed: true, Err: &tools.Error{
+				Code: tools.CodeBadRequest, Message: "output file is one of the merge sources", Detail: src,
+			}})
+			return
+		}
 
 		if err := ctx.Err(); err != nil {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
@@ -207,11 +221,16 @@ func Merge(ctx context.Context, req MergeRequest) <-chan tools.Progress {
 			}})
 			return
 		}
+		// Merge into a sibling temp file and rename it over OutputFile only on
+		// success: pdfcpu's MergeCreateFile truncates the output up front and
+		// deletes it on failure, destroying whatever was there before.
 		if err := estimatedRun(ctx, emit, "merge", sumSourceSizes(req.Sources), func() error {
-			return api.MergeCreateFile(req.Sources, req.OutputFile, false, nil)
+			return replaceFile(req.OutputFile, func(f *os.File) error {
+				return api.Merge("", req.Sources, f, nil, false)
+			})
 		}); err != nil {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
-				Code: tools.CodeIO, Message: "pdf merge failed", Detail: err.Error(),
+				Code: tools.ClassifyFSError(err), Message: "pdf merge failed", Detail: err.Error(),
 			}})
 			return
 		}
@@ -260,6 +279,17 @@ func Split(ctx context.Context, req SplitRequest) <-chan tools.Progress {
 			}})
 			return
 		}
+		for _, r := range req.PageRanges {
+			// From <= 0 means "from the first page" (see rangeSelector).
+			if r.To > 0 && r.To < max(r.From, 1) {
+				emit(tools.Progress{Completed: true, Err: &tools.Error{
+					Code:    tools.CodeBadRequest,
+					Message: "invalid page range",
+					Detail:  fmt.Sprintf("from=%d to=%d", r.From, r.To),
+				}})
+				return
+			}
+		}
 
 		if err := os.MkdirAll(req.OutputDir, 0o755); err != nil {
 			emit(tools.Progress{Completed: true, Err: &tools.Error{
@@ -273,7 +303,7 @@ func Split(ctx context.Context, req SplitRequest) <-chan tools.Progress {
 				return api.SplitFile(req.Source, req.OutputDir, req.EveryN, nil)
 			}); err != nil {
 				emit(tools.Progress{Completed: true, Err: &tools.Error{
-					Code: tools.CodeIO, Message: "pdf split failed", Detail: err.Error(),
+					Code: tools.ClassifyFSError(err), Message: "pdf split failed", Detail: err.Error(),
 				}})
 				return
 			}
@@ -294,7 +324,7 @@ func Split(ctx context.Context, req SplitRequest) <-chan tools.Progress {
 			outFile := filepath.Join(req.OutputDir, fmt.Sprintf("%s_%d.pdf", stem, i+1))
 			if err := api.CollectFile(req.Source, outFile, []string{rangeSelector(r)}, nil); err != nil {
 				emit(tools.Progress{Completed: true, Err: &tools.Error{
-					Code: tools.CodeIO, Message: "pdf collect failed", Detail: err.Error(),
+					Code: tools.ClassifyFSError(err), Message: "pdf collect failed", Detail: err.Error(),
 				}})
 				return
 			}
@@ -312,15 +342,87 @@ func Split(ctx context.Context, req SplitRequest) <-chan tools.Progress {
 }
 
 // rangeSelector renders a Range as a pdfcpu page-selection string: "from-to",
-// "from-" when To is open-ended, or a single "n".
+// "from-" when To is open-ended, or a single "n". From <= 0 means "from the
+// first page" (the CLI's "-5" form, or an unset MCP from) — pdfcpu has no
+// page 0, so it is rendered as 1.
 func rangeSelector(r Range) string {
+	from := max(r.From, 1)
 	if r.To <= 0 {
-		return strconv.Itoa(r.From) + "-"
+		return strconv.Itoa(from) + "-"
 	}
-	if r.From == r.To {
-		return strconv.Itoa(r.From)
+	if from == r.To {
+		return strconv.Itoa(from)
 	}
-	return strconv.Itoa(r.From) + "-" + strconv.Itoa(r.To)
+	return strconv.Itoa(from) + "-" + strconv.Itoa(r.To)
+}
+
+// sourceAt returns the entry of sources that out refers to — by cleaned
+// absolute path, or as the same file on disk (symlink / hard link) — or ""
+// when out is not one of them.
+func sourceAt(out string, sources []string) string {
+	outAbs, absErr := filepath.Abs(out)
+	outInfo, statErr := os.Stat(out)
+	for _, s := range sources {
+		if sAbs, err := filepath.Abs(s); absErr == nil && err == nil && sAbs == outAbs {
+			return s
+		}
+		if statErr == nil {
+			if si, err := os.Stat(s); err == nil && os.SameFile(outInfo, si) {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+// replaceFile writes path through a temp file in the same directory and
+// renames it into place only after write succeeds; on failure the temp file
+// is removed and path is left untouched. An existing destination keeps its
+// permission bits. (Mirrors the helper in internal/tools/image.)
+func replaceFile(path string, write func(*os.File) error) (err error) {
+	if resolved, rerr := filepath.EvalSymlinks(path); rerr == nil {
+		path = resolved
+	}
+	existing, statErr := os.Stat(path)
+	tmp, err := createSibling(path)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tmp.Close()
+			_ = os.Remove(tmp.Name())
+		}
+	}()
+	if err = write(tmp); err != nil {
+		return err
+	}
+	if statErr == nil {
+		if err = tmp.Chmod(existing.Mode().Perm()); err != nil {
+			return err
+		}
+	}
+	if err = tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
+}
+
+// createSibling creates a new hidden temp file next to path with os.Create's
+// 0666 (so the umask decides a new output's mode, as before).
+func createSibling(path string) (*os.File, error) {
+	dir, base := filepath.Split(path)
+	for i := 0; i < 100; i++ {
+		// The random suffix only needs to be unique, not unpredictable.
+		name := filepath.Join(dir, fmt.Sprintf(".%s.handy-tmp-%d", base, rand.Uint32())) //nolint:gosec
+		// Sibling of a caller-supplied path, like the output itself.
+		f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o666) //nolint:gosec
+		if errors.Is(err, os.ErrExist) {
+			continue
+		}
+		return f, err
+	}
+	return nil, fmt.Errorf("could not create a temp file next to %s", path)
 }
 
 // estimatedRun animates an ETA progress bar (Estimated: true) for an opaque
