@@ -6,6 +6,10 @@ import {
   pdfSummary,
   archivePackReady,
   archivePackSummary,
+  archiveWireFormat,
+  archiveFormatFromName,
+  withArchiveExt,
+  ARCHIVE_FORMATS,
   archiveExtractReady,
   archiveExtractSummary,
   type ImageFile,
@@ -74,6 +78,46 @@ describe('archivePack', () => {
     expect(archivePackSummary(2, 'zip', '')).toBe('name the output archive');
     expect(archivePackSummary(1, 'tar.gz', 'a.tgz')).toBe('ready: 1 item → a.tgz (tar.gz)');
     expect(archivePackSummary(3, 'zip', 'a.zip')).toBe('ready: 3 items → a.zip (zip)');
+  });
+
+  it('maps every selectable format onto the server\'s wire enum', () => {
+    // Must match parseArchiveFormat in internal/api/http/handlers_archive.go.
+    expect(ARCHIVE_FORMATS.map(archiveWireFormat)).toEqual([
+      'ZIP',
+      'TAR_GZ',
+      'TAR_BZ2',
+      'TAR_ZST',
+      'TAR_XZ',
+      'SEVENZ',
+    ]);
+  });
+
+  it('swaps the output extension when the format changes, incl. tar.xz', () => {
+    let out = 'archive.zip';
+    out = withArchiveExt(out, 'tar.xz');
+    expect(out).toBe('archive.tar.xz');
+    out = withArchiveExt(out, 'zip');
+    expect(out).toBe('archive.zip');
+    out = withArchiveExt(out, 'tar.gz');
+    expect(out).toBe('archive.tar.gz');
+    expect(withArchiveExt('backup.tgz', '7z')).toBe('backup.7z');
+    expect(withArchiveExt('backup.TXZ', 'zip')).toBe('backup.zip');
+    expect(withArchiveExt('backup.tar', 'tar.zst')).toBe('backup.tar.zst');
+    expect(withArchiveExt('my.photos', 'zip')).toBe('my.photos.zip');
+    expect(withArchiveExt('.zip', 'tar.gz')).toBe('archive.tar.gz');
+  });
+
+  it('reads the selectable format back from a typed output name', () => {
+    // The selector follows a typed extension so the explicitly-sent format
+    // never contradicts the filename.
+    expect(archiveFormatFromName('photos.tar.gz')).toBe('tar.gz');
+    expect(archiveFormatFromName('photos.TGZ')).toBe('tar.gz');
+    expect(archiveFormatFromName('photos.txz')).toBe('tar.xz');
+    expect(archiveFormatFromName('photos.tar.xz')).toBe('tar.xz');
+    expect(archiveFormatFromName('photos.7z')).toBe('7z');
+    expect(archiveFormatFromName('photos.zip')).toBe('zip');
+    expect(archiveFormatFromName('photos')).toBeNull();
+    expect(archiveFormatFromName('photos.tar')).toBeNull();
   });
 });
 

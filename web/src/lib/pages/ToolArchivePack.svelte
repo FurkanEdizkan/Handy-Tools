@@ -3,8 +3,17 @@
   import Toast from '../components/Toast.svelte';
   import RunStatus from '../components/RunStatus.svelte';
   import FolderPicker from '../components/FolderPicker.svelte';
-  import { ARCHIVE_FORMATS, archivePackReady, archivePackSummary, type ArchiveFormat, type PickedFile } from './toolform';
-  import { ApiError, api } from '../api';
+  import {
+    ARCHIVE_FORMATS,
+    archivePackReady,
+    archivePackSummary,
+    archiveFormatFromName,
+    archiveWireFormat,
+    withArchiveExt,
+    type ArchiveFormat,
+    type PickedFile,
+  } from './toolform';
+  import { api } from '../api';
   import { runJob, resolveSources } from './run';
 
   let files = $state<PickedFile[]>([]);
@@ -39,8 +48,13 @@
   function pickFormat(fmt: ArchiveFormat): void {
     format = fmt;
     // Keep the output filename's extension aligned with the chosen format.
-    const stem = output.replace(/\.(zip|tar\.gz|tar\.bz2|tar\.zst|7z)$/i, '') || 'archive';
-    output = `${stem}.${fmt}`;
+    output = withArchiveExt(output, fmt);
+  }
+
+  // ...and the selector follow a typed extension, so the format sent with the
+  // request never contradicts the filename (e.g. typing `photos.tgz`).
+  function syncFormatFromName(): void {
+    format = archiveFormatFromName(output) ?? format;
   }
 
   async function run(): Promise<void> {
@@ -49,7 +63,7 @@
     try {
       resolved = resolveSources(files);
     } catch (e) {
-      toastMsg = e instanceof ApiError ? e.message : 'Could not start the job.';
+      toastMsg = e instanceof Error ? e.message : 'Could not start the job.';
       toastTone = 'error';
       toastVisible = true;
       return;
@@ -60,7 +74,9 @@
       api.archiveCompress({
         sources: resolved.sources.map((s) => ({ path: s.path })),
         destination: { file: `${targetDir}/${output}`, overwrite },
-        format: '',
+        // Send the selected format explicitly rather than letting the server
+        // infer it from whatever extension the typed filename happens to have.
+        format: archiveWireFormat(format),
         compressionLevel: level,
       }),
     );
@@ -122,7 +138,7 @@
         <div class="opt-label" style="margin-top:12px">Output folder</div>
         <FolderPicker bind:value={outDir} placeholder="(defaults to the sources' folder)" />
         <div class="opt-label" style="margin-top:12px">Output file</div>
-        <input class="text-input" style="width:100%" bind:value={output} placeholder="archive.zip" />
+        <input class="text-input" style="width:100%" bind:value={output} oninput={syncFormatFromName} placeholder="archive.zip" />
       </div>
     </div>
 

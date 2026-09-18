@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import {
   dismissAll,
@@ -7,7 +7,9 @@ import {
   pushPopup,
   subscribeJobsForFailures,
 } from './notifications';
-import { jobs, type Job } from './jobs';
+import { applyJobSummary, jobs, startJobsFeed, type Job } from './jobs';
+import type { ApiClient } from '../api/client';
+import type { JobSummary } from '../api/types';
 
 function job(over: Partial<Job> = {}): Job {
   return {
@@ -47,6 +49,71 @@ describe('pushPopup / dismissPopup', () => {
     pushPopup({ id: 'x', tone: 'info', sticky: false, title: 't', message: 'm' });
     const p = get(popups)[0];
     expect(p.createdAt).toBeGreaterThanOrEqual(before);
+  });
+});
+
+describe('subscribeJobsForFailures with the live feed (Layout wiring)', () => {
+  let emitLive: (s: JobSummary) => void = () => {};
+
+  /** Fake client: the GET /v1/jobs snapshot resolves asynchronously, like fetch. */
+  function fakeClient(snapshot: JobSummary[]): ApiClient {
+    return {
+      subscribeJobs: (onEvent: (s: JobSummary) => void) => {
+        emitLive = onEvent;
+        return new AbortController();
+      },
+      fetchJobs: () => Promise.resolve({ jobs: snapshot }),
+    } as unknown as ApiClient;
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('does not pop for jobs that had already failed before the page loaded', async () => {
+    const feed = startJobsFeed(
+      fakeClient([
+        {
+          jobId: 'old',
+          tool: 'archive',
+          action: 'extract',
+          status: 'failed',
+          completed: true,
+          error: { code: 'IO_ERROR', message: 'failed in an earlier session' },
+        },
+      ]),
+    );
+    const unsub = subscribeJobsForFailures(feed.loaded);
+    await feed.loaded;
+    await Promise.resolve();
+
+    expect(get(jobs).map((j) => [j.id, j.status])).toEqual([['old', 'fail']]);
+    expect(get(popups)).toHaveLength(0);
+
+    unsub();
+    feed.abort();
+  });
+
+  it('pops exactly once for a job that fails after the page loaded', async () => {
+    const feed = startJobsFeed(fakeClient([]));
+    const unsub = subscribeJobsForFailures(feed.loaded);
+    await feed.loaded;
+    await Promise.resolve();
+
+    const s = { jobId: 'new', tool: 'image', action: 'convert', completed: false } as const;
+    emitLive({ ...s, status: 'queued' });
+    emitLive({ ...s, status: 'running' });
+    emitLive({ ...s, status: 'failed', completed: true, error: { code: 'IO_ERROR', message: 'disk full' } });
+    emitLive({ ...s, status: 'failed', completed: true, error: { code: 'IO_ERROR', message: 'disk full' } });
+    expect(get(popups).map((p) => [p.id, p.message])).toEqual([['job:new', 'disk full']]);
+
+    // A job first seen already failed after load (its earlier frames were
+    // missed) still happened during this session, so it pops too.
+    applyJobSummary({ jobId: 'fast', tool: 'pdf', action: 'merge', status: 'failed', completed: true });
+    expect(get(popups).map((p) => p.id)).toEqual(['job:new', 'job:fast']);
+
+    unsub();
+    feed.abort();
   });
 });
 

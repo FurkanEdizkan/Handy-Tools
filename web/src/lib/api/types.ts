@@ -101,12 +101,15 @@ export interface PdfSplitRequest {
   output: OutputRef;
 }
 
+/** Archive format enum accepted by POST /v1/archive/compress. */
+export type ArchiveWireFormat = 'ZIP' | 'TAR' | 'TAR_GZ' | 'TAR_BZ2' | 'TAR_ZST' | 'TAR_XZ' | 'SEVENZ';
+
 /** POST /v1/archive/compress. */
 export interface CompressRequest {
   sources: FileRef[];
   destination: OutputRef;
-  /** ZIP|TAR|TAR_GZ|TAR_BZ2|TAR_ZST|SEVENZ; "" infers from the file extension. */
-  format: string;
+  /** ZIP|TAR|TAR_GZ|TAR_BZ2|TAR_ZST|TAR_XZ|SEVENZ; "" infers from the file extension. */
+  format: ArchiveWireFormat | '';
   compressionLevel: number;
   password?: string;
 }
