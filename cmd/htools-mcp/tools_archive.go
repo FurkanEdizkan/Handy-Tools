@@ -27,30 +27,47 @@ type archiveExtractInput struct {
 type archiveCompressInput struct {
 	Sources          []string `json:"sources" jsonschema:"absolute paths to pack (files or directories; directories are added recursively)"`
 	Output           string   `json:"output" jsonschema:"absolute path of the archive to write"`
-	Format           string   `json:"format,omitempty" jsonschema:"one of: zip, tar, tar.gz, tar.bz2, tar.zst, 7z; empty = infer from output extension"`
+	Format           string   `json:"format,omitempty" jsonschema:"one of: zip, tar, tar.gz, tar.bz2, tar.zst, tar.xz, 7z; empty = infer from output extension"`
 	Password         string   `json:"password,omitempty" jsonschema:"only honored by 7z"`
 	CompressionLevel int      `json:"compression_level,omitempty" jsonschema:"0-9 where supported by the format"`
 	Overwrite        bool     `json:"overwrite,omitempty" jsonschema:"true: replace an existing file at output; false (default): rename to <stem>-1.<ext>"`
 }
 
-func parseArchiveFormat(s string) archive.Format {
-	switch strings.ToLower(strings.TrimSpace(s)) {
+// parseArchiveFormat maps the MCP format string onto archive.Format. Empty
+// or "auto" means "infer from the output extension" (FormatUnknown, true).
+// Names are case-insensitive and accept both the dotted MCP spelling
+// ("tar.gz") and the HTTP enum spelling ("TAR_GZ"). An unrecognized
+// non-empty name returns ok=false so the caller can reject it rather than
+// silently inferring a different format. RAR is accepted so archive.Compress
+// can reject it with its own UNSUPPORTED_INPUT, as over HTTP.
+func parseArchiveFormat(s string) (archive.Format, bool) {
+	switch strings.ReplaceAll(strings.ToLower(strings.TrimSpace(s)), "_", ".") {
 	case "", "auto":
-		return archive.FormatUnknown
+		return archive.FormatUnknown, true
 	case "zip":
-		return archive.FormatZip
+		return archive.FormatZip, true
 	case "tar":
-		return archive.FormatTar
+		return archive.FormatTar, true
 	case "tar.gz", "tgz", "gz":
-		return archive.FormatTarGz
+		return archive.FormatTarGz, true
 	case "tar.bz2", "tbz", "tbz2", "bz2":
-		return archive.FormatTarBz2
+		return archive.FormatTarBz2, true
 	case "tar.zst", "tzst", "zst":
-		return archive.FormatTarZst
-	case "7z":
-		return archive.FormatSevenZ
+		return archive.FormatTarZst, true
+	case "tar.xz", "txz", "xz":
+		return archive.FormatTarXz, true
+	case "7z", "sevenz":
+		return archive.FormatSevenZ, true
+	case "rar":
+		return archive.FormatRar, true
 	}
-	return archive.FormatUnknown
+	return archive.FormatUnknown, false
+}
+
+// unknownFormatError is the BAD_REQUEST for an unrecognized format name,
+// matching the HTTP transport's response.
+func unknownFormatError(format string) *tools.Error {
+	return &tools.Error{Code: tools.CodeBadRequest, Message: "unknown archive format", Detail: format}
 }
 
 func registerArchiveTools(srv *mcp.Server, h *handlers) {
@@ -87,10 +104,14 @@ func registerArchiveTools(srv *mcp.Server, h *handlers) {
 		Name:        "archive_compress",
 		Description: "Pack sources into a single archive. zip/tar variants are pure-Go; 7z needs the 7z binary; RAR creation is not supported.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in archiveCompressInput) (*mcp.CallToolResult, any, error) {
+		format, ok := parseArchiveFormat(in.Format)
+		if !ok {
+			return errorResult("archive", "compress", unknownFormatError(in.Format)), nil, nil
+		}
 		res := drainProgress(ctx, "archive", "compress", func(emit func(tools.Progress) error) error {
 			return h.Archive.Compress(ctx, server.CompressParams{
 				Sources:          in.Sources,
-				Format:           parseArchiveFormat(in.Format),
+				Format:           format,
 				Output:           in.Output,
 				Password:         in.Password,
 				CompressionLevel: in.CompressionLevel,
@@ -104,9 +125,13 @@ func registerArchiveTools(srv *mcp.Server, h *handlers) {
 		Name:        "archive_pack_inspect",
 		Description: "Dry-run an archive pack: validate sources, probe output directory writability, return preflight Issues without writing the archive.",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in archiveCompressInput) (*mcp.CallToolResult, any, error) {
+		format, ok := parseArchiveFormat(in.Format)
+		if !ok {
+			return errorResult("archive", "pack_inspect", unknownFormatError(in.Format)), nil, nil
+		}
 		ins, err := h.Archive.InspectCompress(server.CompressParams{
 			Sources: in.Sources,
-			Format:  parseArchiveFormat(in.Format),
+			Format:  format,
 			Output:  in.Output,
 		})
 		if err != nil {

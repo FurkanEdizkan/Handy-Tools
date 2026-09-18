@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/furkandedizkan/handy-tools/internal/server"
 	"github.com/furkandedizkan/handy-tools/internal/tools"
 )
 
@@ -73,18 +73,14 @@ func drainProgress(ctx context.Context, toolName, action string, fn func(emit fu
 	}
 	if err := fn(emit); err != nil {
 		// fn returned before producing a terminal Progress (typically a path
-		// CheckPath rejection or a context error). Surface it the same way a
-		// terminal Err would render.
+		// CheckPath rejection or a canceled context). Surface it the same way
+		// a terminal Err would render, with the code normalized exactly as
+		// the HTTP and gRPC transports do.
 		res.OK = false
-		var terr *tools.Error
-		if errors.As(err, &terr) {
-			res.ErrorCode = terr.Code
-			res.ErrorMsg = terr.Message
-			res.ErrorHint = terr.Detail
-		} else {
-			res.ErrorCode = tools.CodeBadRequest
-			res.ErrorMsg = err.Error()
-		}
+		terr := server.ToolError(err)
+		res.ErrorCode = terr.Code
+		res.ErrorMsg = terr.Message
+		res.ErrorHint = terr.Detail
 	}
 	res.Messages = lines
 	return toResult(res)
@@ -134,14 +130,9 @@ func jsonResult(header string, structured any) *mcp.CallToolResult {
 // validation or another preflight fails before the tool package is reached.
 func errorResult(toolName, action string, err error) *mcp.CallToolResult {
 	r := &runResult{Tool: toolName, Action: action}
-	var terr *tools.Error
-	if errors.As(err, &terr) {
-		r.ErrorCode = terr.Code
-		r.ErrorMsg = terr.Message
-		r.ErrorHint = terr.Detail
-	} else {
-		r.ErrorCode = tools.CodeBadRequest
-		r.ErrorMsg = err.Error()
-	}
+	terr := server.ToolError(err)
+	r.ErrorCode = terr.Code
+	r.ErrorMsg = terr.Message
+	r.ErrorHint = terr.Detail
 	return toResult(r)
 }
