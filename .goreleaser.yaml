@@ -85,10 +85,15 @@ builds:
     # `wails` selects the real app over the CGO-free stub; `production` is
     # required by Wails itself — without it the binary aborts at startup with
     # "will not build without the correct build tags". No `webkit2_41` tag
-    # here → CGO links against libwebkit2gtk-4.0.so.37.
+    # here → CGO links against libwebkit2gtk-4.0.so.37. `webkit2_40` selects
+    # Wails' webkit >= 2.40 request API: without any webkit2_4x tag the legacy
+    # shims hand the AssetServer every request as a bodyless GET, so the app's
+    # POSTs to its own /v1 API never arrive. Ubuntu 22.04 and Debian 12 ship
+    # webkit2gtk-4.0 >= 2.40 through their security updates.
     tags:
       - wails
       - production
+      - webkit2_40
     ldflags:
       - -s -w
       - -X github.com/furkandedizkan/handy-tools/internal/buildinfo.Version={{.Version}}
@@ -115,10 +120,10 @@ builds:
       - -X github.com/furkandedizkan/handy-tools/internal/buildinfo.Date={{.Date}}
 
 archives:
-  # htools + htoolsd ship on every linux/darwin × amd64/arch64 platform, so
-  # they go in the default archive. htools-gui is linux/amd64-only (CGO +
-  # webkit), so it gets its own archive — GoReleaser rejects a single archive
-  # whose binary count differs across platforms.
+  # handy + htools + htoolsd + htools-mcp ship on every linux/darwin ×
+  # amd64/arm64 platform, so they go in the default archive. htools-gui is
+  # linux/amd64-only (CGO + webkit), so it gets its own archive — GoReleaser
+  # rejects a single archive whose binary count differs across platforms.
   - id: default
     ids:
       - handy
@@ -180,8 +185,8 @@ changelog:
   sort: asc
   filters:
     exclude:
-      - "^docs:"
-      - "^test:"
+      - "^docs(\\(.+\\))?!?:"
+      - "^test(\\(.+\\))?!?:"
       - "^chore"
       - "^ci"
       - "^Merge "

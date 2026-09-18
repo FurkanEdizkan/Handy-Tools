@@ -1,11 +1,12 @@
 name: CI
 
-# Linux-only CI for the pre-1.0 phase: lint, tests, a 20s fuzz pass, and a
-# build assembly check on every push/PR to `main` and `test`.
+# Linux-hosted CI for the pre-1.0 phase: lint, tests, a 20s fuzz pass, a
+# build assembly check, the Wails desktop build, and a compile-only
+# darwin/windows cross-build on every push/PR to `main` and `test`.
 #
-# The earlier multi-OS "compat tier" (ubuntu × macos matrix + a Windows
-# compile check + COMPATIBILITY.md generation) was removed while the project
-# is small; restoring an OS matrix is tracked for ~v1.0.0 (issue #29).
+# Tests run on Linux only. The earlier multi-OS "compat tier" (ubuntu × macos
+# test matrix + COMPATIBILITY.md generation) was removed while the project is
+# small; restoring an OS test matrix is tracked for ~v1.0.0 (issue #29).
 # Release-time OS coverage still exists via verify-install.yml.
 #
 # This workflow runs on every push/PR with no path filter — required status
@@ -35,7 +36,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.25"
+          go-version: "1.26"
           cache: true
       - uses: bufbuild/buf-setup-action@v1
         with:
@@ -72,7 +73,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.25"
+          go-version: "1.26"
           cache: true
       - uses: bufbuild/buf-setup-action@v1
         with:
@@ -148,7 +149,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.25"
+          go-version: "1.26"
           cache: true
       - uses: bufbuild/buf-setup-action@v1
         with:
@@ -161,10 +162,13 @@ jobs:
       - name: Generate proto bindings
         run: buf generate
       - name: Build
+        # Every binary the release archive ships (see .goreleaser.yaml).
         run: |
           mkdir -p bin
-          go build -ldflags="-s -w" -o bin/htools  ./cmd/htools
-          go build -ldflags="-s -w" -o bin/htoolsd ./cmd/htoolsd
+          go build -ldflags="-s -w" -o bin/handy      ./cmd/handy
+          go build -ldflags="-s -w" -o bin/htools     ./cmd/htools
+          go build -ldflags="-s -w" -o bin/htoolsd    ./cmd/htoolsd
+          go build -ldflags="-s -w" -o bin/htools-mcp ./cmd/htools-mcp
 
   # The Wails desktop binary (cmd/htools-gui) needs CGO + the webkit2gtk
   # toolchain, so it builds in its own job rather than forcing those system
@@ -177,7 +181,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.25"
+          go-version: "1.26"
           cache: true
       - uses: bufbuild/buf-setup-action@v1
         with:
@@ -192,8 +196,9 @@ jobs:
       - name: Build htools-gui
         # `production` is required alongside `wails` — without it Wails builds
         # a binary that aborts at startup. The runner is ubuntu-22.04
-        # (webkit2gtk-4.0), so no `webkit2_41` tag here.
-        run: go build -tags "wails production" -o /tmp/htools-gui ./cmd/htools-gui
+        # (webkit2gtk-4.0), so `webkit2_40` rather than `webkit2_41` — the same
+        # tags as the release's webkit-4.0 GUI (see .goreleaser.yaml).
+        run: go build -tags "wails production webkit2_40" -o /tmp/htools-gui ./cmd/htools-gui
 
   # Compile-only smoke check for the non-Linux release targets. The full
   # test suite stays Linux-only (the project targets Linux primarily, #106);
@@ -206,18 +211,18 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.25"
+          go-version: "1.26"
           cache: true
       - uses: bufbuild/buf-setup-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Generate proto bindings
         run: buf generate
-      - name: Cross-compile htools + htoolsd
+      - name: Cross-compile handy + htools + htoolsd + htools-mcp
         run: |
           for os in darwin windows; do
             for arch in amd64 arm64; do
               echo "== $os/$arch =="
-              GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build ./cmd/htools ./cmd/htoolsd
+              GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build ./cmd/handy ./cmd/htools ./cmd/htoolsd ./cmd/htools-mcp
             done
           done
