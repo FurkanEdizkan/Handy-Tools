@@ -62,12 +62,14 @@ curl -fsSL https://raw.githubusercontent.com/FurkanEdizkan/Handy-Tools/main/inst
 ```
 
 The uninstaller removes the `handy`, `htools`, `htoolsd`, `htools-mcp`, and
-`htools-gui` binaries from the install dir; the config dir
-(`$HANDY_TOOLS_CONFIG` parent, or `$XDG_CONFIG_HOME/handy-tools`, or
-`~/.config/handy-tools`); and the cache dir (`$XDG_CACHE_HOME/handy-tools`
-or `~/.cache/handy-tools`). It prompts once before deleting; pass `--yes`
-to skip the prompt. User-created output files are never touched. `--dir
-PATH` overrides the binary location the same way it does for install.
+`htools-gui` binaries from the install dir; the config (the
+`$HANDY_TOOLS_CONFIG` file itself if set — never the directory it sits in —
+otherwise `$XDG_CONFIG_HOME/handy-tools` or `~/.config/handy-tools`); and the
+cache dir (`$XDG_CACHE_HOME/handy-tools` or `~/.cache/handy-tools`). It asks
+once on the terminal before deleting (even when the script arrives through
+`curl … | sh`); pass `--yes` to skip the prompt, which is required when there
+is no terminal. User-created output files are never touched. `--dir PATH`
+overrides the binary location the same way it does for install.
 
 ## Optional system dependencies
 
@@ -105,7 +107,7 @@ make lint        # golangci-lint + buf lint
 make cover       # coverage.out + coverage.html
 ```
 
-CI uses Go 1.25 and `golangci-lint v2.12.2` — match locally or lint output
+CI uses Go 1.26 and `golangci-lint v2.12.2` — match locally or lint output
 may diverge.
 
 ### Desktop app (`htools-gui`)
