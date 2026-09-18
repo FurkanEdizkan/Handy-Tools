@@ -29,9 +29,14 @@ endif
 # The Wails desktop build needs three tags: `wails` (this repo's own — selects
 # the real app over the CGO-free stub), `production` (Wails' own — without it
 # the binary aborts at startup with "will not build without the correct build
-# tags"), and `webkit2_41` on systems with only webkit2gtk-4.1 (Ubuntu 24.04+).
-# The last is detected via pkg-config so one command builds on 4.0 and 4.1.
-WAILS_TAGS  := wails production$(if $(shell pkg-config --exists webkit2gtk-4.1 2>/dev/null && echo y), webkit2_41,)
+# tags"), and a webkit API tag, detected via pkg-config so one command builds
+# on either ABI: `webkit2_41` with webkit2gtk-4.1 (Ubuntu 24.04+), else
+# `webkit2_40` with webkit2gtk-4.0 >= 2.40 (Ubuntu 22.04 / Debian 12). Without
+# a webkit2_4x tag Wails falls back to legacy shims that deliver every request
+# as a bodyless GET — the app's POSTs to its own /v1 API would never arrive.
+WEBKIT_TAG  := $(shell if pkg-config --exists webkit2gtk-4.1 2>/dev/null; then echo webkit2_41; \
+                 elif pkg-config --atleast-version=2.40 webkit2gtk-4.0 2>/dev/null; then echo webkit2_40; fi)
+WAILS_TAGS  := wails production $(WEBKIT_TAG)
 
 .DEFAULT_GOAL := help
 
@@ -40,7 +45,11 @@ help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "} {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
-.PHONY: build
+# The binary targets are phony on purpose: they have no source prerequisites,
+# so as plain file targets `make build` would never rebuild an existing
+# bin/htools after a pull or an edit. `go build`'s own cache keeps the
+# unchanged case fast.
+.PHONY: build $(HANDY_BIN) $(CLI_BIN) $(SERVER_BIN) $(MCP_BIN)
 build: web $(HANDY_BIN) $(CLI_BIN) $(SERVER_BIN) $(MCP_BIN) ## Build web assets + all CLI binaries (front-door, CLI, daemon, MCP server)
 
 $(HANDY_BIN):
