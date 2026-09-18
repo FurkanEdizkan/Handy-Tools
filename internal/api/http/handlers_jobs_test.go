@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -267,5 +268,45 @@ func TestJobsEventsAcceptsWriterWithoutFlusher(t *testing.T) {
 	}
 	if !strings.Contains(body, want) {
 		t.Fatalf("SSE body missing job %s: %q", id, body)
+	}
+}
+
+// TestJobsListPartialBatchIsDone: a batch where one file fails but the batch
+// finishes (terminal event without Err, failure listed in Failures) must be
+// reported "done", not "failed" — the per-file error events are not the
+// job's outcome.
+func TestJobsListPartialBatchIsDone(t *testing.T) {
+	root := t.TempDir()
+	good := writeTinyPNG(t, root)
+	bad := writeTextFile(t, root, "bad.png", "not a png")
+	out := filepath.Join(root, "out")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ts := newTestServer(t, root)
+
+	last := terminalOf(t, ts.URL, "/v1/image/batch-convert", batchConvertRequest{
+		Sources:      []fileRef{{Path: good}, {Path: bad}},
+		TargetFormat: "JPEG",
+		Output:       outputRef{Directory: out},
+	})
+	if last.Error != nil || len(last.Failures) != 1 {
+		t.Fatalf("terminal event = %+v, want partial success with 1 failure", last)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		jr := getJobs(t, ts.URL)
+		if len(jr.Jobs) == 1 && jr.Jobs[0].Completed {
+			j := jr.Jobs[0]
+			if j.Status != "done" || j.Error != nil {
+				t.Fatalf("status = %q error = %+v, want done with no error", j.Status, j.Error)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("job never completed: %+v", jr.Jobs)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

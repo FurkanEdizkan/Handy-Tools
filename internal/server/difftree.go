@@ -40,12 +40,7 @@ func (h *DiffTreeHandler) Run(ctx context.Context, p DiffTreeParams, emit func(t
 	}
 	mode, _ := difftree.ParseMode(p.Mode)
 	ch := difftree.Run(ctx, difftree.Request{A: a, B: b, Mode: mode, Parallelism: p.Parallelism})
-	for prog := range ch {
-		if err := emit(prog); err != nil {
-			return err
-		}
-	}
-	return nil
+	return forwardProgress(ctx, ch, emit)
 }
 
 // FileDiffParams names the two files to diff. Paths are validated through

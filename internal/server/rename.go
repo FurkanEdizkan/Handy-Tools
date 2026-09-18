@@ -33,6 +33,16 @@ func parseCollision(s string) rename.Collision {
 	return rename.CollisionError
 }
 
+// request builds the rename.Request shared by Inspect and Run.
+func (h *RenameHandler) request(p RenameParams, srcs []string) rename.Request {
+	return rename.Request{
+		Sources:     srcs,
+		Pattern:     p.Pattern,
+		Replace:     p.Replace,
+		OnCollision: parseCollision(p.OnCollision),
+	}
+}
+
 // validateSources runs each source through CheckPath and returns the cleaned
 // absolute slice. Shared by Inspect and Run.
 func (h *RenameHandler) validateSources(p RenameParams) ([]string, error) {
@@ -47,43 +57,56 @@ func (h *RenameHandler) validateSources(p RenameParams) ([]string, error) {
 	return srcs, nil
 }
 
+// checkTargets runs every planned destination through CheckPath. The sources
+// are already sandboxed, but the replacement template decides where each file
+// lands — "../elsewhere/x" would otherwise move it out of the allow-roots.
+// This guard is deliberately independent of whatever the rename package
+// validates about the replacement itself.
+func (h *RenameHandler) checkTargets(plans []rename.Plan) error {
+	for _, pl := range plans {
+		if _, err := h.Opts.CheckPath(pl.To); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Inspect returns the rename plan plus a preflight list of missing or
 // unreadable sources (and unwritable target directories) without touching
 // the filesystem. The Issues slice is informational; callers decide whether
-// to abort or proceed.
+// to abort or proceed. A plan whose target escapes the allow-roots is
+// rejected outright rather than reported as an Issue.
 func (h *RenameHandler) Inspect(p RenameParams) (rename.Inspection, error) {
 	srcs, err := h.validateSources(p)
 	if err != nil {
 		return rename.Inspection{}, err
 	}
-	ins, terr := rename.Inspect(rename.Request{
-		Sources:     srcs,
-		Pattern:     p.Pattern,
-		Replace:     p.Replace,
-		OnCollision: parseCollision(p.OnCollision),
-	})
+	ins, terr := rename.Inspect(h.request(p, srcs))
 	if terr != nil {
 		return rename.Inspection{}, terr
+	}
+	if err := h.checkTargets(ins.Plans); err != nil {
+		return rename.Inspection{}, err
 	}
 	return ins, nil
 }
 
-// Run executes the rename batch and streams per-file progress.
+// Run executes the rename batch and streams per-file progress. The plan is
+// computed and target-checked first; nothing is renamed if any target falls
+// outside the allow-roots.
 func (h *RenameHandler) Run(ctx context.Context, p RenameParams, emit func(tools.Progress) error) error {
 	srcs, err := h.validateSources(p)
 	if err != nil {
 		return err
 	}
-	ch := rename.Run(ctx, rename.Request{
-		Sources:     srcs,
-		Pattern:     p.Pattern,
-		Replace:     p.Replace,
-		OnCollision: parseCollision(p.OnCollision),
-	})
-	for prog := range ch {
-		if err := emit(prog); err != nil {
+	req := h.request(p, srcs)
+	// A plan error (bad regex, ...) is left for rename.Run to report through
+	// its own terminal event, exactly as before.
+	if ins, terr := rename.Inspect(req); terr == nil {
+		if err := h.checkTargets(ins.Plans); err != nil {
 			return err
 		}
 	}
-	return nil
+	ch := rename.Run(ctx, req)
+	return forwardProgress(ctx, ch, emit)
 }

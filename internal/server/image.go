@@ -37,13 +37,22 @@ func (h *ImageHandler) Convert(ctx context.Context, p ConvertParams, emit func(t
 	if err != nil {
 		return err
 	}
-	out := p.OutputFile
-	if out == "" && p.OutputDir != "" {
-		if v, err := h.Opts.CheckPath(p.OutputDir); err == nil {
-			out = v
-		} else {
+	// Both output forms go through the sandbox: an explicit OutputFile wins,
+	// otherwise OutputDir; empty for both writes alongside the (checked) source.
+	out := ""
+	switch {
+	case p.OutputFile != "":
+		v, err := h.Opts.CheckPath(p.OutputFile)
+		if err != nil {
 			return err
 		}
+		out = v
+	case p.OutputDir != "":
+		v, err := h.Opts.CheckPath(p.OutputDir)
+		if err != nil {
+			return err
+		}
+		out = v
 	}
 	ch := image.Convert(ctx, image.ConvertRequest{
 		Source:       src,
@@ -56,12 +65,7 @@ func (h *ImageHandler) Convert(ctx context.Context, p ConvertParams, emit func(t
 			MaxHeight: p.MaxHeight,
 		},
 	})
-	for prog := range ch {
-		if err := emit(prog); err != nil {
-			return err
-		}
-	}
-	return nil
+	return forwardProgress(ctx, ch, emit)
 }
 
 // BatchConvertParams is the wire-shape-agnostic input for a batch job: every
@@ -108,12 +112,7 @@ func (h *ImageHandler) BatchConvert(ctx context.Context, p BatchConvertParams, e
 		Overwrite:   p.Overwrite,
 		Parallelism: p.Parallelism,
 	})
-	for prog := range ch {
-		if err := emit(prog); err != nil {
-			return err
-		}
-	}
-	return nil
+	return forwardProgress(ctx, ch, emit)
 }
 
 // InspectBatch is the dry-run / preflight for BatchConvert: it path-validates

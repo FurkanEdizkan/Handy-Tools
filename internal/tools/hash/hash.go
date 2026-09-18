@@ -350,6 +350,30 @@ type VerifyEntry struct {
 //     not as a Verify-level failure — so a manifest with some missing files
 //     still produces a usable report.
 func Verify(ctx context.Context, manifestPath string, algo Algo) ([]VerifyEntry, *tools.Error) {
+	return VerifyWith(ctx, manifestPath, algo, VerifyOptions{})
+}
+
+// VerifyOptions tunes how VerifyWith resolves and vets manifest entries.
+type VerifyOptions struct {
+	// SearchDirs are tried in order to resolve a relative entry path: the
+	// first directory where the path exists wins, and when it exists in none
+	// the first one is used for the report. Empty means only the manifest's
+	// own directory — the right base for a daemon, whose working directory
+	// means nothing to its caller. The CLI passes [cwd, manifest dir] so a
+	// manifest written by `htools hash` (paths relative to the cwd, exactly
+	// as `sha256sum -c` resolves them) verifies, while `--check
+	// dir/SHA256SUMS` run from elsewhere still finds dir-relative entries.
+	SearchDirs []string
+	// CheckPath, when set, vets every resolved entry before it is opened —
+	// htoolsd's AllowRoots sandbox. A rejected entry, or one that isn't a
+	// regular file (/dev/zero would never finish), is reported per-entry
+	// (OK=false, Err) and never read, so a manifest can't be used to hash or
+	// probe files outside the roots.
+	CheckPath func(string) (string, error)
+}
+
+// VerifyWith is Verify with explicit entry-resolution options.
+func VerifyWith(ctx context.Context, manifestPath string, algo Algo, opts VerifyOptions) ([]VerifyEntry, *tools.Error) {
 	if _, terr := newHasher(algo); terr != nil {
 		return nil, terr
 	}
@@ -359,7 +383,10 @@ func Verify(ctx context.Context, manifestPath string, algo Algo) ([]VerifyEntry,
 	}
 	defer f.Close()
 
-	manifestDir := filepath.Dir(manifestPath)
+	dirs := opts.SearchDirs
+	if len(dirs) == 0 {
+		dirs = []string{filepath.Dir(manifestPath)}
+	}
 	var entries []VerifyEntry
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 1<<16), 1<<20)
@@ -376,17 +403,20 @@ func Verify(ctx context.Context, manifestPath string, algo Algo) ([]VerifyEntry,
 				Detail:  fmt.Sprintf("line %d: %q", line, row),
 			}
 		}
-		// Paths in a sha256sum manifest are typically relative to the
-		// manifest's directory; resolve before hashing so a user can run
-		// `htools hash --check SHA256SUMS` from anywhere.
-		target := path
-		if !filepath.IsAbs(target) {
-			target = filepath.Join(manifestDir, path)
-		}
+		target := resolveEntry(path, dirs)
 		if err := ctx.Err(); err != nil {
 			return nil, &tools.Error{Code: tools.CodeAborted, Message: "verify canceled", Detail: err.Error()}
 		}
 		entry := VerifyEntry{Path: path, Expected: digest}
+		if opts.CheckPath != nil {
+			vetted, reason := vetEntry(target, opts.CheckPath)
+			if reason != "" {
+				entry.Err = reason
+				entries = append(entries, entry)
+				continue
+			}
+			target = vetted
+		}
 		res, terr := Hash(ctx, target, algo)
 		if terr != nil {
 			entry.OK = false
@@ -402,6 +432,41 @@ func Verify(ctx context.Context, manifestPath string, algo Algo) ([]VerifyEntry,
 		return nil, &tools.Error{Code: tools.ClassifyFSError(err), Message: "read manifest", Detail: err.Error()}
 	}
 	return entries, nil
+}
+
+// resolveEntry turns a manifest entry into the path to hash. Absolute paths
+// are used as-is; a relative one resolves against the first of dirs where it
+// exists (only probed when there is a choice), else against dirs[0].
+func resolveEntry(path string, dirs []string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	if len(dirs) > 1 {
+		for _, d := range dirs {
+			cand := filepath.Join(d, path)
+			if _, err := os.Lstat(cand); err == nil {
+				return cand
+			}
+		}
+	}
+	return filepath.Join(dirs[0], path)
+}
+
+// vetEntry runs a resolved entry through the caller's sandbox and requires a
+// regular file. Returns the vetted path, or a non-empty per-entry reason.
+func vetEntry(target string, check func(string) (string, error)) (string, string) {
+	vetted, err := check(target)
+	if err != nil {
+		return "", err.Error()
+	}
+	info, err := os.Stat(vetted)
+	switch {
+	case err != nil:
+		return "", "open file"
+	case !info.Mode().IsRegular():
+		return "", "not a regular file"
+	}
+	return vetted, ""
 }
 
 // parseManifestLine splits a `<digest>  <path>` line. The canonical separator

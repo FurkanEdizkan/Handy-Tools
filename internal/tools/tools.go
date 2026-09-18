@@ -1,11 +1,13 @@
 // Package tools defines the shared progress / error types used by every
 // concrete tool implementation under internal/tools/<feature>.
 //
-// The TUI and the gRPC server both consume these types and translate them
-// to/from the proto messages in api/proto/v1.
+// The CLI, the gRPC/HTTP server, the MCP server and the desktop app all consume
+// these types; the servers translate them to/from the proto messages in
+// api/proto/handytools/v1.
 package tools
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -170,12 +172,15 @@ func CoalesceFailureCode(failures []Failure) string {
 // ClassifyFSError returns the most specific tools code for a filesystem error.
 // Returns "" on nil so callers can short-circuit. Falls back to CodeIO so it
 // can be used as a one-liner classifier at every os.Open / os.Stat / os.Rename
-// error-wrap site.
+// error-wrap site. A cancelled or timed-out context (Ctrl-C, job timeout)
+// classifies as CodeAborted, since that is what stopped the operation.
 func ClassifyFSError(err error) string {
 	if err == nil {
 		return ""
 	}
 	switch {
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return CodeAborted
 	case errors.Is(err, fs.ErrPermission):
 		return CodePermissionDenied
 	case errors.Is(err, fs.ErrNotExist):

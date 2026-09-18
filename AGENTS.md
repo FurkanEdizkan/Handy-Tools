@@ -203,8 +203,8 @@ needs `7z`; RAR creation is **not supported**.
 | ------------------- | -------- | -------- | --------------------------------------------------------------------------------------- |
 | `sources`           | string[] | yes      | Absolute paths to pack (files or directories; directories are added recursively).       |
 | `output`            | string   | yes      | Absolute path of the archive to write.                                                  |
-| `format`            | string   | no       | `zip`, `tar`, `tar.gz`, `tar.bz2`, `tar.zst`, `7z`. Empty = infer from output extension.|
-| `password`          | string   | no       | Only honored by `7z`.                                                                   |
+| `format`            | string   | no       | `zip`, `tar`, `tar.gz`, `tar.bz2`, `tar.zst`, `tar.xz`, `7z`. Empty = infer from output extension; anything else is `BAD_REQUEST`.|
+| `password`          | string   | no       | `7z` only (encrypts contents and file names); `UNSUPPORTED_INPUT` for the other formats. |
 | `compression_level` | int      | no       | `0`–`9` where the format supports it.                                                   |
 
 ### PDFs
